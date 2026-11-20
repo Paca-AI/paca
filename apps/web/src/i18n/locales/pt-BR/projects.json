@@ -1709,7 +1709,8 @@
 				"description": "Isso exclui permanentemente \"{{title}}\" e todos os seus dados. Esta ação não pode ser desfeita.",
 				"cancel": "Cancelar",
 				"delete": "Excluir"
-			}
+			},
+			"viewingNow": "Vendo agora: {{names}}"
 		},
 		"properties": {
 			"title": "Propriedades",
@@ -2170,7 +2171,9 @@
 			"loadMore": "Carregar mais subtarefas",
 			"add": "Adicionar subtarefa",
 			"addPlaceholder": "Título da subtarefa"
-		}
+		},
+		"mentionBadge": "Você tem {{n}} menção(ões) não lida(s) aqui",
+		"sprintMentionBadge": "{{n}} tarefa(s) deste sprint mencionam você"
 	},
 	"conversationsPage": {
 		"back": "Voltar",

@@ -50,7 +50,7 @@ func (m *mockNotificationSvc) NotifyDocMentioned(context.Context, uuid.UUID, uui
 func (m *mockNotificationSvc) NotifyTaskDescriptionMentioned(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID) {
 }
 
-func (m *mockNotificationSvc) ListNotifications(ctx context.Context, userID uuid.UUID, limit int, cursorAfter *string) ([]*notificationdom.Notification, bool, error) {
+func (m *mockNotificationSvc) ListNotifications(ctx context.Context, userID uuid.UUID, limit int, cursorAfter *string, _ notificationdom.ListFilter) ([]*notificationdom.Notification, bool, error) {
 	if m.listNotifications != nil {
 		return m.listNotifications(ctx, userID, limit, cursorAfter)
 	}
@@ -76,6 +76,22 @@ func (m *mockNotificationSvc) MarkAllAsRead(ctx context.Context, userID uuid.UUI
 		return m.markAllAsRead(ctx, userID)
 	}
 	return nil
+}
+
+func (m *mockNotificationSvc) UnreadMentionsByTask(context.Context, uuid.UUID, *uuid.UUID) ([]notificationdom.UnreadMentions, error) {
+	return nil, nil
+}
+
+func (m *mockNotificationSvc) MarkTaskMentionsRead(context.Context, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
+func (m *mockNotificationSvc) TaskLastSeen(context.Context, uuid.UUID, uuid.UUID) (*time.Time, error) {
+	return nil, nil
+}
+
+func (m *mockNotificationSvc) OpenTask(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (*time.Time, error) {
+	return nil, nil
 }
 
 var _ notificationdom.Service = (*mockNotificationSvc)(nil)

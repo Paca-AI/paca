@@ -6,6 +6,7 @@ import type {
 	ClusterMessage,
 	LeaseStore,
 } from "./collab-cluster.ts";
+import type { PresenceSummary } from "./presence.ts";
 
 const OWNER = (room: string) => `paca:collab:owner:${room}`;
 const REPLICA = (id: string) => `paca:collab:replica:${id}`;
@@ -89,6 +90,41 @@ export class ValkeyBus implements ClusterBus {
 			}
 		});
 		await this.subscriber.subscribe(channel);
+	}
+
+	close(): void {
+		this.subscriber.disconnect();
+	}
+}
+
+const PRESENCE_CHANNEL = "paca:presence";
+
+// ValkeyPresenceBus fans presence summaries out to every replica (including
+// the sender, whose own messages the hub ignores).
+export class ValkeyPresenceBus {
+	constructor(
+		private readonly commands: Redis,
+		private readonly subscriber: Redis,
+	) {}
+
+	publish(summary: PresenceSummary): void {
+		void this.commands
+			.publish(PRESENCE_CHANNEL, JSON.stringify(summary))
+			.catch(() => {
+				// Presence is best effort; the next heartbeat repairs it.
+			});
+	}
+
+	async listen(handler: (s: PresenceSummary) => void): Promise<void> {
+		this.subscriber.on("message", (ch: string, raw: string) => {
+			if (ch !== PRESENCE_CHANNEL) return;
+			try {
+				handler(JSON.parse(raw) as PresenceSummary);
+			} catch {
+				// not ours to understand
+			}
+		});
+		await this.subscriber.subscribe(PRESENCE_CHANNEL);
 	}
 
 	close(): void {

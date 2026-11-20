@@ -84,7 +84,33 @@
 		},
 		"untitledConversation": "未命名对话",
 		"globalChat": "全局聊天",
-		"untitledDocument": "未命名文档"
+		"untitledDocument": "未命名文档",
+		"mentionedYou": "{{actor}} 提到了你",
+		"groupedMentions": "#{{taskNumber}} — {{taskTitle}} 中有 {{n}} 次提及",
+		"backlog": "待办池",
+		"source": {
+			"comment": "评论",
+			"description": "描述",
+			"document": "文档",
+			"docComment": "文档评论"
+		},
+		"viewAll": "查看全部通知",
+		"page": {
+			"filterLabel": "筛选通知",
+			"tabs": {
+				"all": "全部",
+				"mentions": "提及",
+				"assigned": "已分配",
+				"agents": "智能体"
+			},
+			"projectFilter": "按项目筛选",
+			"allProjects": "所有项目",
+			"loadMore": "加载更多"
+		},
+		"toast": {
+			"mentioned": "{{actor}} 在 #{{taskNumber}} — {{taskTitle}} 中提到了你",
+			"open": "打开"
+		}
 	},
 	"userMenu": {
 		"signIn": "登录",

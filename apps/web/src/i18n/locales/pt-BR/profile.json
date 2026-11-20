@@ -230,5 +230,10 @@
 				"generic": "Algo deu errado. Tente novamente."
 			}
 		}
+	},
+	"presence": {
+		"title": "Atividade",
+		"description": "Escolha o que os outros veem enquanto você trabalha.",
+		"shareTyping": "Mostrar quando estou digitando um comentário"
 	}
 }

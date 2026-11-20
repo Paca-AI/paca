@@ -1709,7 +1709,8 @@
 				"description": "Cette action supprime définitivement « {{title}} » et toutes ses données. Cette action est irréversible.",
 				"cancel": "Annuler",
 				"delete": "Supprimer"
-			}
+			},
+			"viewingNow": "En ligne sur cette page : {{names}}"
 		},
 		"properties": {
 			"title": "Propriétés",
@@ -2170,7 +2171,9 @@
 			"loadMore": "Charger plus de sous-tâches",
 			"add": "Ajouter une sous-tâche",
 			"addPlaceholder": "Titre de la sous-tâche"
-		}
+		},
+		"mentionBadge": "Vous avez {{n}} mention(s) non lue(s) ici",
+		"sprintMentionBadge": "{{n}} tâche(s) de ce sprint vous mentionnent"
 	},
 	"conversationsPage": {
 		"back": "Retour",

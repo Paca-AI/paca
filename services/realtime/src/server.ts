@@ -59,6 +59,7 @@ import { Server } from "socket.io";
 import type { AccessDecider, Viewer } from "./access.ts";
 import {
 	ApiRequestError,
+	entityReadable,
 	fetchProjectPermissions,
 	verifyTokenWithAPI,
 } from "./api-client.ts";
@@ -83,6 +84,12 @@ import {
 } from "./collab-cluster.ts";
 import type { Config } from "./config.ts";
 import { agentChatRoomName, userChatRoomName } from "./permissions.ts";
+import {
+	liveRoomName,
+	type PresenceBus,
+	PresenceHub,
+	parseLiveRef,
+} from "./presence.ts";
 import { createResyncer, type Resyncer } from "./resync.ts";
 import { syncProjectRooms } from "./rooms.ts";
 import { SyncHub } from "./sync.ts";
@@ -120,6 +127,8 @@ export interface SocketServer {
 	// SYNC_ENABLED=false).
 	sync?: SyncHub;
 	chat: ChatHub;
+	// presence holds who views and who types (see presence.ts).
+	presence: PresenceHub;
 }
 
 // CollabFacade is what the server needs of collaborative editing: the hub itself
@@ -157,6 +166,7 @@ export function createSocketServer(
 	decider: AccessDecider,
 	changeLog?: ChangeLogReader,
 	collabNet?: CollabNet,
+	presenceBus?: PresenceBus,
 ): SocketServer {
 	const httpServer = createServer((req, res) => {
 		if (req.url === "/healthz" && req.method === "GET") {
@@ -304,7 +314,24 @@ export function createSocketServer(
 			: undefined;
 	sync?.start();
 
-	const chat = new ChatHub(io, decider, logger);
+	const chat = new ChatHub(io, decider, logger, (token, path) =>
+		entityReadable(config.apiUrl, token, path),
+	);
+
+	// Presence: viewers and typing in a task (see presence.ts).
+	const presence = new PresenceHub({
+		decider,
+		apiUrl: config.apiUrl,
+		replica: config.replicaId,
+		bus: presenceBus,
+		logger,
+		transport: {
+			emit: (room, snapshot) => {
+				io.to(room).emit("live:presence", snapshot);
+			},
+		},
+	});
+	presence.start();
 
 	// ── Connection lifecycle ───────────────────────────────────────────────────
 
@@ -521,7 +548,42 @@ export function createSocketServer(
 			if (ref) void socket.leave(roomName(ref));
 		});
 
+		// ── Presence (viewers, typing) ─────────────────────────────────────
+		socket.on("live:join", async (req: unknown, ack?: (r: unknown) => void) => {
+			if (typeof ack !== "function") return;
+			const ref = parseLiveRef(req);
+			if (!ref) {
+				ack({ ok: false, reason: "invalid" });
+				return;
+			}
+			// presence.join emits to the room synchronously before returning, so
+			// joining the socket.io room right after loses no update: the ack
+			// carries the snapshot and later changes arrive through the room.
+			const room = liveRoomName(ref.kind, ref.id);
+			const res = await presence.join(
+				socket.id,
+				socket.data,
+				ref,
+				() => socket.connected,
+			);
+			if (res.ok) void socket.join(room);
+			ack(res);
+		});
+		socket.on("live:leave", (req: unknown) => {
+			const ref = parseLiveRef(req);
+			if (!ref) return;
+			presence.leave(socket.id, ref);
+			void socket.leave(liveRoomName(ref.kind, ref.id));
+		});
+		socket.on(
+			"live:typing",
+			(msg: { kind?: unknown; id?: unknown; typing?: unknown }) => {
+				presence.typing(socket.id, msg?.kind, msg?.id, msg?.typing);
+			},
+		);
+
 		socket.on("disconnect", (reason) => {
+			presence.leaveAll(socket.id);
 			collab.leaveAll(socket.id);
 			sync?.dropSocket(socket.id);
 			cancelExpiry();
@@ -536,5 +598,5 @@ export function createSocketServer(
 	resyncer.start();
 	expiry.start();
 
-	return { httpServer, io, resyncer, expiry, collab, sync, chat };
+	return { httpServer, io, resyncer, expiry, collab, sync, chat, presence };
 }

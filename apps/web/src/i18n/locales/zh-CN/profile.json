@@ -230,5 +230,10 @@
 				"generic": "出了点问题，请重试。"
 			}
 		}
+	},
+	"presence": {
+		"title": "活动",
+		"description": "选择你工作时其他人可以看到的内容。",
+		"shareTyping": "在我输入评论时显示"
 	}
 }

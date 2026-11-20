@@ -84,7 +84,33 @@
 		},
 		"untitledConversation": "Cuộc trò chuyện chưa đặt tên",
 		"globalChat": "Trò chuyện chung",
-		"untitledDocument": "Tài liệu chưa đặt tên"
+		"untitledDocument": "Tài liệu chưa đặt tên",
+		"mentionedYou": "{{actor}} đã nhắc đến bạn",
+		"groupedMentions": "{{n}} lượt nhắc đến trong #{{taskNumber}} — {{taskTitle}}",
+		"backlog": "Backlog",
+		"source": {
+			"comment": "Bình luận",
+			"description": "Mô tả",
+			"document": "Tài liệu",
+			"docComment": "Bình luận tài liệu"
+		},
+		"viewAll": "Xem tất cả thông báo",
+		"page": {
+			"filterLabel": "Lọc thông báo",
+			"tabs": {
+				"all": "Tất cả",
+				"mentions": "Lượt nhắc",
+				"assigned": "Được giao",
+				"agents": "Tác tử"
+			},
+			"projectFilter": "Lọc theo dự án",
+			"allProjects": "Tất cả dự án",
+			"loadMore": "Tải thêm"
+		},
+		"toast": {
+			"mentioned": "{{actor}} đã nhắc đến bạn trong #{{taskNumber}} — {{taskTitle}}",
+			"open": "Mở"
+		}
 	},
 	"userMenu": {
 		"signIn": "Đăng nhập",

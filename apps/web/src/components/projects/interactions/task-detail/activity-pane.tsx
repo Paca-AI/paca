@@ -1,10 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useSearch } from "@tanstack/react-router";
 import { Bot } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityPane } from "@/components/shared/activity-pane";
 import { textToBlocks } from "@/components/shared/comment-blocknote";
+import { useTaskPresence } from "@/hooks/use-live-presence";
 import { currentUserQueryOptions } from "@/lib/auth-api";
 import {
 	type Activity,
@@ -15,6 +16,7 @@ import {
 	updateTask,
 } from "@/lib/interaction-api";
 import { useMemberDirectory } from "@/lib/member-directory";
+import { openTask } from "@/lib/notification-api";
 import {
 	taskStatusesQueryOptions,
 	taskTypesQueryOptions,
@@ -46,6 +48,29 @@ export function TaskActivityPane({
 	const { data: currentUser } = useQuery(currentUserQueryOptions);
 	const { data: statusesData } = useQuery(taskStatusesQueryOptions(projectId));
 	const { data: taskTypesData } = useQuery(taskTypesQueryOptions(projectId));
+
+	const presence = useTaskPresence(projectId, taskId);
+
+	// Opening the task records the visit and reads your mentions on it; the
+	// previous visit time is what the "unread since" divider is drawn from.
+	// Fetched once per open (not cached), so reopening the task moves it on.
+	const { data: previousSeenAt } = useQuery({
+		queryKey: ["task-open", taskId],
+		queryFn: async () => {
+			const prev = await openTask(projectId, taskId);
+			void qc.invalidateQueries({ queryKey: ["notifications"] });
+			return prev;
+		},
+		enabled: !!projectId && !!taskId,
+		staleTime: Number.POSITIVE_INFINITY,
+		gcTime: 0,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
+	});
+	// ?comment=<id>: a mention notification's deep link.
+	const { comment: focusCommentId } = useSearch({ strict: false }) as {
+		comment?: string;
+	};
 
 	const myMemberId = currentUser ? getMember(currentUser.id)?.id : undefined;
 
@@ -279,6 +304,10 @@ export function TaskActivityPane({
 
 	return (
 		<ActivityPane<Activity>
+			unreadSince={previousSeenAt}
+			focusEntryId={focusCommentId}
+			onTyping={canEdit ? presence.setTyping : undefined}
+			typingNames={presence.typingNames}
 			projectId={projectId}
 			entityId={taskId}
 			queryKey={queryKey}

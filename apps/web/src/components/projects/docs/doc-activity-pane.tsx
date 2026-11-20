@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityPane } from "@/components/shared/activity-pane";
 import { textToBlocks } from "@/components/shared/comment-blocknote";
+import { useLivePresence } from "@/hooks/use-live-presence";
 import { currentUserQueryOptions } from "@/lib/auth-api";
 import {
 	addDocComment,
@@ -126,6 +127,7 @@ export function DocActivityPane({
 	const qc = useQueryClient();
 	const { data: currentUser } = useQuery(currentUserQueryOptions);
 	const getMember = useMemberDirectory(projectId);
+	const presence = useLivePresence("doc", projectId, docId);
 
 	const myMemberId = currentUser ? getMember(currentUser.id)?.id : undefined;
 
@@ -234,6 +236,8 @@ export function DocActivityPane({
 				return [];
 			}}
 			currentUserId={myMemberId}
+			onTyping={canEdit ? presence.setTyping : undefined}
+			typingNames={presence.typingNames}
 		/>
 	);
 }

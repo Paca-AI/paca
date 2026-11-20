@@ -18,6 +18,11 @@ import {
 export const Route = createFileRoute(
 	"/_authenticated/projects/$projectId/tasks/$taskId",
 )({
+	// ?comment=<id>: a deep link to one comment (a mention notification).
+	validateSearch: (search: Record<string, unknown>): { comment?: string } =>
+		typeof search.comment === "string" && search.comment
+			? { comment: search.comment }
+			: {},
 	component: TaskDetailPage,
 });
 

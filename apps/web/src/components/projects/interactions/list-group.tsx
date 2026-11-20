@@ -1,10 +1,10 @@
-import { ChevronDown, ChevronRight, Play, Plus } from "lucide-react";
+import { AtSign, ChevronDown, ChevronRight, Play, Plus } from "lucide-react";
 import { Fragment, memo, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useStableCallback } from "@/hooks/use-stable-callback";
 import { useStableValue } from "@/hooks/use-stable-value";
+import { useSprintUnreadMentionTasks } from "@/hooks/use-unread-mentions";
 
 import type { ChildTaskFilters, Sprint, Task } from "@/lib/interaction-api";
 import {
@@ -273,6 +273,10 @@ export function ListGroup({
 	nesting,
 }: ListGroupProps) {
 	const { t } = useTranslation("projects");
+	const sprintMentionTasks = useSprintUnreadMentionTasks(
+		sprint?.project_id,
+		sprint?.id,
+	);
 	const isMobile = useIsMobile();
 	const [collapsed, setCollapsed] = useState(defaultCollapsed ?? false);
 	const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -727,6 +731,20 @@ export function ListGroup({
 				</span>
 				{sprint && (
 					<SprintStatusBadge status={sprint.status} className="shrink-0" />
+				)}
+				{sprintMentionTasks > 0 && (
+					<span
+						data-testid="sprint-mention-badge"
+						role="img"
+						title={t("board.sprintMentionBadge", { n: sprintMentionTasks })}
+						aria-label={t("board.sprintMentionBadge", {
+							n: sprintMentionTasks,
+						})}
+						className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-primary/15 px-1.5 py-0.5 text-xs font-semibold text-primary"
+					>
+						<AtSign aria-hidden="true" className="size-3" />
+						{sprintMentionTasks}
+					</span>
 				)}
 
 				{/* Sprint: "Start sprint" button */}

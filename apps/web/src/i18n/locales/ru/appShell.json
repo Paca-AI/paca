@@ -84,7 +84,33 @@
 		},
 		"untitledConversation": "Беседа без названия",
 		"globalChat": "Общий чат",
-		"untitledDocument": "Документ без названия"
+		"untitledDocument": "Документ без названия",
+		"mentionedYou": "{{actor}} упомянул(а) вас",
+		"groupedMentions": "Упоминаний в #{{taskNumber}} — {{taskTitle}}: {{n}}",
+		"backlog": "Бэклог",
+		"source": {
+			"comment": "Комментарий",
+			"description": "Описание",
+			"document": "Документ",
+			"docComment": "Комментарий к документу"
+		},
+		"viewAll": "Все уведомления",
+		"page": {
+			"filterLabel": "Фильтр уведомлений",
+			"tabs": {
+				"all": "Все",
+				"mentions": "Упоминания",
+				"assigned": "Назначения",
+				"agents": "Агенты"
+			},
+			"projectFilter": "Фильтр по проекту",
+			"allProjects": "Все проекты",
+			"loadMore": "Загрузить ещё"
+		},
+		"toast": {
+			"mentioned": "{{actor}} упомянул(а) вас в #{{taskNumber}} — {{taskTitle}}",
+			"open": "Открыть"
+		}
 	},
 	"userMenu": {
 		"signIn": "Войти",

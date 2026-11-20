@@ -116,6 +116,32 @@ export async function fetchProjectPermissions(
 	);
 }
 
+// entityReadable asks the API whether the token's account can open one entity
+// through the REST route that serves it, scoped to the project the client
+// named. A 200 means the entity exists in that project and the account may read
+// it; a 403 or 404 means it does not (or is in another project). Anything else
+// throws, so callers fail closed. It exists because the IAM probe only matches
+// the resource string it is given: it cannot tell that task T is not in project
+// P, while the project-scoped lookup behind the REST route can.
+export async function entityReadable(
+	apiUrl: string,
+	token: string,
+	path: string,
+): Promise<boolean> {
+	const res = await fetch(`${apiUrl}/api/v1${path}`, {
+		headers: { Authorization: `Bearer ${token}` },
+		signal: AbortSignal.timeout(8_000),
+	});
+	if (res.status === 403 || res.status === 404) return false;
+	if (!res.ok) {
+		throw new ApiRequestError(
+			`API entity lookup failed: HTTP ${res.status}`,
+			res.status,
+		);
+	}
+	return true;
+}
+
 // AccessQuery is one question for checkAccess: may the token's account
 // perform `action` on `resource` (an IAM resource name inside the project, or,
 // with an empty projectId, one under a platform root such as "channel/<id>")?

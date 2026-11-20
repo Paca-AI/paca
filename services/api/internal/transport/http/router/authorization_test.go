@@ -93,6 +93,7 @@ var openRouteGroups = []struct {
 			"POST /api/v1/users/me/permissions/check",
 			"POST /api/v1/users/me/chat/read-all",
 			"GET /api/v1/users/me/notifications",
+			"GET /api/v1/users/me/notifications/unread-mentions",
 			"PATCH /api/v1/users/me/notifications/{notificationId}/read",
 			"POST /api/v1/users/me/notifications/read-all",
 		},

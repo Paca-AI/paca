@@ -230,5 +230,10 @@
 				"generic": "Something went wrong. Please try again."
 			}
 		}
+	},
+	"presence": {
+		"title": "Activity",
+		"description": "Choose what others can see while you work.",
+		"shareTyping": "Show when I am typing a comment"
 	}
 }

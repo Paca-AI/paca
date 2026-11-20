@@ -15,6 +15,7 @@ import {
 import { ManagedCopyBanner } from "@/components/projects/docs/managed-copy-banner";
 import { ReportIssueButton } from "@/components/report-issue-button";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
+import { PresenceViewers } from "@/components/shared/presence-viewers";
 import {
 	Breadcrumb,
 	BreadcrumbItem,
@@ -285,8 +286,14 @@ function DocEditorPage() {
 					</BreadcrumbList>
 				</Breadcrumb>
 
-				{/* Right: save status + panel toggle */}
+				{/* Right: viewers, save status + panel toggle */}
 				<div className="flex items-center gap-2 shrink-0">
+					<PresenceViewers
+						kind="doc"
+						projectId={projectId}
+						id={docId}
+						testId="doc-viewers"
+					/>
 					{dirty && !updateMutation.isPending && (
 						<span className="text-xs text-muted-foreground/90">
 							{t("docs.editorPage.unsaved")}

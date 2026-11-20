@@ -1709,7 +1709,8 @@
 				"description": "Esto elimina permanentemente \"{{title}}\" y todos sus datos. Esta acción no se puede deshacer.",
 				"cancel": "Cancelar",
 				"delete": "Eliminar"
-			}
+			},
+			"viewingNow": "Viendo ahora: {{names}}"
 		},
 		"properties": {
 			"title": "Propiedades",
@@ -2170,7 +2171,9 @@
 			"loadMore": "Cargar más subtareas",
 			"add": "Añadir subtarea",
 			"addPlaceholder": "Título de la subtarea"
-		}
+		},
+		"mentionBadge": "Tienes {{n}} mención(es) sin leer aquí",
+		"sprintMentionBadge": "{{n}} tarea(s) de este sprint te mencionan"
 	},
 	"conversationsPage": {
 		"back": "Atrás",

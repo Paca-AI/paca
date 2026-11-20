@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,8 +17,9 @@ import (
 )
 
 type fakeNotificationRepo struct {
-	mu   sync.RWMutex
-	data map[uuid.UUID]*notificationdom.Notification
+	mu    sync.RWMutex
+	data  map[uuid.UUID]*notificationdom.Notification
+	reads map[string]time.Time
 }
 
 func newFakeNotificationRepo() *fakeNotificationRepo {
@@ -37,13 +39,13 @@ func (r *fakeNotificationRepo) Create(_ context.Context, n *notificationdom.Noti
 // after that boundary; hasMore reports whether more rows remain) so tests
 // can exercise pagination against something more than always returning
 // everything at once.
-func (r *fakeNotificationRepo) ListForUser(_ context.Context, userID uuid.UUID, limit int, cursorAfter *string) ([]*notificationdom.Notification, bool, error) {
+func (r *fakeNotificationRepo) ListForUser(_ context.Context, userID uuid.UUID, limit int, cursorAfter *string, filter notificationdom.ListFilter) ([]*notificationdom.Notification, bool, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	var all []*notificationdom.Notification
 	for _, n := range r.data {
-		if n.RecipientAccountID == userID {
+		if n.RecipientAccountID == userID && matchesFilter(n, filter) {
 			cp := *n
 			all = append(all, &cp)
 		}
@@ -80,6 +82,75 @@ func (r *fakeNotificationRepo) ListForUser(_ context.Context, userID uuid.UUID, 
 		all = all[:limit]
 	}
 	return all, hasMore, nil
+}
+
+func matchesFilter(n *notificationdom.Notification, f notificationdom.ListFilter) bool {
+	if f.ProjectID != nil && n.ProjectID != *f.ProjectID {
+		return false
+	}
+	if len(f.Types) == 0 {
+		return true
+	}
+	for _, t := range f.Types {
+		if n.Type == t {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *fakeNotificationRepo) UnreadMentionsByTask(_ context.Context, userID uuid.UUID, _ *uuid.UUID) ([]notificationdom.UnreadMentions, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	counts := map[uuid.UUID]*notificationdom.UnreadMentions{}
+	for _, n := range r.data {
+		if n.RecipientAccountID != userID || n.ReadAt != nil || n.Type != notificationdom.NotificationTypeMentioned || n.TaskID == nil {
+			continue
+		}
+		m, ok := counts[*n.TaskID]
+		if !ok {
+			m = &notificationdom.UnreadMentions{ProjectID: n.ProjectID, TaskID: *n.TaskID}
+			counts[*n.TaskID] = m
+		}
+		m.Count++
+	}
+	out := make([]notificationdom.UnreadMentions, 0, len(counts))
+	for _, m := range counts {
+		out = append(out, *m)
+	}
+	return out, nil
+}
+
+func (r *fakeNotificationRepo) MarkTaskMentionsRead(_ context.Context, userID, taskID uuid.UUID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	now := time.Now()
+	for _, n := range r.data {
+		if n.RecipientAccountID == userID && n.TaskID != nil && *n.TaskID == taskID && n.Type == notificationdom.NotificationTypeMentioned && n.ReadAt == nil {
+			n.ReadAt = &now
+		}
+	}
+	return nil
+}
+
+func (r *fakeNotificationRepo) TaskLastSeen(_ context.Context, userID, taskID uuid.UUID) (*time.Time, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if at, ok := r.reads[userID.String()+taskID.String()]; ok {
+		return &at, nil
+	}
+	return nil, nil
+}
+
+func (r *fakeNotificationRepo) TouchTaskRead(ctx context.Context, userID, _, taskID uuid.UUID, at time.Time) (*time.Time, error) {
+	prev, _ := r.TaskLastSeen(ctx, userID, taskID)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.reads == nil {
+		r.reads = map[string]time.Time{}
+	}
+	r.reads[userID.String()+taskID.String()] = at
+	return prev, nil
 }
 
 func (r *fakeNotificationRepo) UnreadCount(_ context.Context, userID uuid.UUID) (int64, error) {
@@ -1028,7 +1099,7 @@ func TestListNotifications_Pagination(t *testing.T) {
 		if pages > total {
 			t.Fatalf("pagination did not terminate after %d pages", pages)
 		}
-		page, hasMore, err := svc.ListNotifications(ctx, recipientID, pageSize, cursor)
+		page, hasMore, err := svc.ListNotifications(ctx, recipientID, pageSize, cursor, notificationdom.ListFilter{})
 		if err != nil {
 			t.Fatalf("unexpected error on page %d: %v", pages, err)
 		}
@@ -1079,7 +1150,7 @@ func TestListNotifications_LastPageHasNoNextCursor(t *testing.T) {
 	recipientID := uuid.New()
 	addTestNotification(repo, recipientID, time.Now())
 
-	page, hasMore, err := svc.ListNotifications(ctx, recipientID, 20, nil)
+	page, hasMore, err := svc.ListNotifications(ctx, recipientID, 20, nil, notificationdom.ListFilter{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1101,7 +1172,7 @@ func TestListNotifications_InvalidCursorErrors(t *testing.T) {
 	svc := New(repo, members, nil)
 
 	bad := "not-a-valid-cursor"
-	_, _, err := svc.ListNotifications(ctx, uuid.New(), 20, &bad)
+	_, _, err := svc.ListNotifications(ctx, uuid.New(), 20, &bad, notificationdom.ListFilter{})
 	if err == nil {
 		t.Fatal("expected error for invalid cursor, got nil")
 	}
@@ -1389,7 +1460,7 @@ func TestNotifyQuestion_GlobalChat_NoProjectOrActor(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	items, _, _ := repo.ListForUser(ctx, owner, 10, nil)
+	items, _, _ := repo.ListForUser(ctx, owner, 10, nil, notificationdom.ListFilter{})
 	if len(items) != 1 {
 		t.Fatalf("expected 1 notification, got %d", len(items))
 	}
@@ -1417,7 +1488,7 @@ func TestNotifyQuestion_ProjectChat_ResolvesAgentActor(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	items, _, _ := repo.ListForUser(ctx, owner, 10, nil)
+	items, _, _ := repo.ListForUser(ctx, owner, 10, nil, notificationdom.ListFilter{})
 	if len(items) != 1 || items[0].ActorMemberID == nil || *items[0].ActorMemberID != agentMemberID {
 		t.Fatalf("expected agent member as actor: %+v", items)
 	}
@@ -1440,7 +1511,7 @@ func TestNotifyDocCommentMentioned(t *testing.T) {
 	if err := svc.NotifyDocCommentMentioned(ctx, in); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	items, _, _ := repo.ListForUser(ctx, mentioned, 10, nil)
+	items, _, _ := repo.ListForUser(ctx, mentioned, 10, nil, notificationdom.ListFilter{})
 	if len(items) != 1 || items[0].DocumentID == nil || *items[0].DocumentID != docID || items[0].TaskID != nil ||
 		items[0].Type != notificationdom.NotificationTypeMentioned {
 		t.Fatalf("expected one doc mention notification, got %+v", items)
@@ -1451,10 +1522,120 @@ func TestNotifyDocCommentMentioned(t *testing.T) {
 	_ = svc.NotifyDocCommentMentioned(ctx, in)
 	in.ActorID, in.MentionedUserID = uuid.New(), uuid.New()
 	_ = svc.NotifyDocCommentMentioned(ctx, in)
-	if got, _, _ := repo.ListForUser(ctx, actorAccount, 10, nil); len(got) != 0 {
+	if got, _, _ := repo.ListForUser(ctx, actorAccount, 10, nil, notificationdom.ListFilter{}); len(got) != 0 {
 		t.Fatalf("self-mention must not notify, got %d", len(got))
 	}
-	if got, _, _ := repo.ListForUser(ctx, in.MentionedUserID, 10, nil); len(got) != 0 {
+	if got, _, _ := repo.ListForUser(ctx, in.MentionedUserID, 10, nil, notificationdom.ListFilter{}); len(got) != 0 {
 		t.Fatalf("non-member must not be notified, got %d", len(got))
+	}
+}
+
+func TestNotifyMentioned_StoresCommentAndExcerpt(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeNotificationRepo()
+	members := newFakeMemberRepo()
+	svc := New(repo, members, nil)
+
+	projectID, taskID, commentID := uuid.New(), uuid.New(), uuid.New()
+	actor, mentioned := uuid.New(), uuid.New()
+	members.add(&projectdom.ProjectMember{ID: actor, ProjectID: projectID, UserID: uuid.New(), Username: "mina"})
+	members.add(&projectdom.ProjectMember{ID: uuid.New(), ProjectID: projectID, UserID: mentioned, Username: "lee"})
+
+	long := strings.Repeat("word ", 60)
+	if err := svc.NotifyMentioned(ctx, notificationdom.NotifyMentionedInput{
+		TaskID: taskID, ProjectID: projectID, ActorMemberID: actor, ActorID: uuid.New(),
+		MentionedUserID: &mentioned, CommentID: commentID, Excerpt: "@lee " + long,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	items, _, _ := repo.ListForUser(ctx, mentioned, 10, nil, notificationdom.ListFilter{})
+	if len(items) != 1 {
+		t.Fatalf("want one notification, got %d", len(items))
+	}
+	n := items[0]
+	if n.CommentID == nil || *n.CommentID != commentID || n.MentionSource != notificationdom.MentionSourceComment {
+		t.Fatalf("comment link not stored: %+v", n)
+	}
+	if !strings.HasPrefix(n.Excerpt, "@lee word") || len([]rune(n.Excerpt)) > notificationdom.ExcerptLen+1 || !strings.HasSuffix(n.Excerpt, "…") {
+		t.Fatalf("excerpt = %q", n.Excerpt)
+	}
+}
+
+func TestNotifyDescriptionAndDocMentions_CreateInAppRows(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeNotificationRepo()
+	members := newFakeMemberRepo()
+	svc := New(repo, members, nil)
+
+	projectID, taskID, docID := uuid.New(), uuid.New(), uuid.New()
+	actor, mentioned := uuid.New(), uuid.New()
+	actorMember := uuid.New()
+	members.add(&projectdom.ProjectMember{ID: actorMember, ProjectID: projectID, UserID: actor, AccountID: actor, Username: "mina"})
+	members.add(&projectdom.ProjectMember{ID: uuid.New(), ProjectID: projectID, UserID: mentioned, AccountID: mentioned, Username: "lee"})
+
+	svc.NotifyTaskDescriptionMentioned(ctx, mentioned, actor, projectID, taskID)
+	svc.NotifyDocMentioned(ctx, mentioned, actor, projectID, docID)
+	svc.NotifyDocMentioned(ctx, uuid.New(), actor, projectID, docID) // non-member: nothing
+
+	items, _, _ := repo.ListForUser(ctx, mentioned, 10, nil, notificationdom.ListFilter{})
+	if len(items) != 2 {
+		t.Fatalf("want 2 rows, got %d", len(items))
+	}
+	var sawDesc, sawDoc bool
+	for _, n := range items {
+		if n.ActorMemberID == nil || *n.ActorMemberID != actorMember {
+			t.Fatalf("actor not attributed: %+v", n)
+		}
+		switch n.MentionSource {
+		case notificationdom.MentionSourceDescription:
+			sawDesc = n.TaskID != nil && *n.TaskID == taskID
+		case notificationdom.MentionSourceDocument:
+			sawDoc = n.DocumentID != nil && *n.DocumentID == docID
+		case notificationdom.MentionSourceComment, notificationdom.MentionSourceDocComment:
+			t.Fatalf("unexpected mention source %q", n.MentionSource)
+		}
+	}
+	if !sawDesc || !sawDoc {
+		t.Fatalf("missing description/document row: %+v", items)
+	}
+}
+
+func TestOpenTask_ReadsMentionsAndReturnsPreviousView(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeNotificationRepo()
+	svc := New(repo, newFakeMemberRepo(), nil)
+	user, taskID, projectID := uuid.New(), uuid.New(), uuid.New()
+	_ = repo.Create(ctx, &notificationdom.Notification{
+		ID: uuid.New(), RecipientAccountID: user, Type: notificationdom.NotificationTypeMentioned,
+		TaskID: &taskID, ProjectID: projectID, CreatedAt: time.Now(),
+	})
+	got, _ := svc.UnreadMentionsByTask(ctx, user, nil)
+	if len(got) != 1 || got[0].Count != 1 {
+		t.Fatalf("want one unread mention, got %+v", got)
+	}
+
+	prev, err := svc.OpenTask(ctx, user, projectID, taskID)
+	if err != nil || prev != nil {
+		t.Fatalf("first open: prev=%v err=%v", prev, err)
+	}
+	if got, _ := svc.UnreadMentionsByTask(ctx, user, nil); len(got) != 0 {
+		t.Fatalf("mentions should be read, got %+v", got)
+	}
+	if prev, _ := svc.OpenTask(ctx, user, projectID, taskID); prev == nil {
+		t.Fatal("second open should report the first view")
+	}
+}
+
+func TestListNotifications_FiltersByType(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeNotificationRepo()
+	svc := New(repo, newFakeMemberRepo(), nil)
+	user := uuid.New()
+	for _, ty := range []notificationdom.NotificationType{notificationdom.NotificationTypeAssigned, notificationdom.NotificationTypeMentioned} {
+		_ = repo.Create(ctx, &notificationdom.Notification{ID: uuid.New(), RecipientAccountID: user, Type: ty, CreatedAt: time.Now()})
+	}
+	got, _, _ := svc.ListNotifications(ctx, user, 10, nil, notificationdom.ListFilter{Types: []notificationdom.NotificationType{notificationdom.NotificationTypeMentioned}})
+	if len(got) != 1 || got[0].Type != notificationdom.NotificationTypeMentioned {
+		t.Fatalf("filter failed: %+v", got)
 	}
 }

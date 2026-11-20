@@ -4,20 +4,9 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import type { TFunction } from "i18next";
-import {
-	AtSign,
-	Bell,
-	MessageCircleQuestion,
-	UserPlus,
-	Volume2,
-	VolumeX,
-	Zap,
-} from "lucide-react";
+import { Bell, Volume2, VolumeX } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { EntityAvatar } from "@/components/shared/entity-avatar";
-import { AvatarBadge } from "@/components/ui/avatar";
 import {
 	Popover,
 	PopoverContent,
@@ -31,52 +20,17 @@ import {
 	markNotificationAsRead,
 	type Notification,
 	notificationsQueryOptions,
+	notificationTarget,
 } from "@/lib/notification-api";
 import {
 	isNotificationSoundMuted,
 	setNotificationSoundMuted,
 } from "@/lib/notification-sound";
-import { notificationActorAvatar } from "@/lib/provider-logos";
 import { createLoadMoreScrollHandler } from "@/lib/scroll-pagination";
-import { timeAgo } from "@/lib/time-ago";
-
-function notificationText(n: Notification, t: TFunction<"appShell">): string {
-	if (n.type === "question") {
-		return t("notifications.text.question", {
-			actor: n.actor_full_name,
-			title: n.conversation_title || t("notifications.untitledConversation"),
-		});
-	}
-	if (n.type === "automation") {
-		return t("notifications.text.automation", {
-			message: n.message,
-			taskNumber: n.task_number,
-			taskTitle: n.task_title,
-		});
-	}
-	if (n.type === "assigned") {
-		return t("notifications.text.assigned", {
-			actor: n.actor_full_name,
-			taskNumber: n.task_number,
-			taskTitle: n.task_title,
-		});
-	}
-	if (n.document_id) {
-		return t("notifications.text.mentionedInDoc", {
-			actor: n.actor_full_name,
-			title: n.document_title || t("notifications.untitledDocument"),
-		});
-	}
-	return t("notifications.text.mentioned", {
-		actor: n.actor_full_name,
-		taskNumber: n.task_number,
-		taskTitle: n.task_title,
-	});
-}
+import { groupNotifications, NotificationCard } from "./notification-card";
 
 export function NotificationBell() {
 	const { t } = useTranslation("appShell");
-	const { t: tCommon } = useTranslation("common");
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const { data, fetchNextPage, hasNextPage, isFetchingNextPage } =
@@ -86,6 +40,10 @@ export function NotificationBell() {
 	const notifications = useMemo(
 		() => data?.pages.flatMap((page) => page.items) ?? [],
 		[data],
+	);
+	const groups = useMemo(
+		() => groupNotifications(notifications),
+		[notifications],
 	);
 	useDocumentTitle(unreadCount);
 
@@ -118,39 +76,7 @@ export function NotificationBell() {
 	const handleNotificationClick = useCallback(
 		(n: Notification) => {
 			if (!n.read_at) markRead(n.id);
-			if (n.type === "question" && n.conversation_id) {
-				if (n.project_id) {
-					navigate({
-						to: "/projects/$projectId/conversations/$conversationId",
-						params: {
-							projectId: n.project_id,
-							conversationId: n.conversation_id,
-						},
-					});
-				} else {
-					navigate({
-						to: "/conversations/$conversationId",
-						params: { conversationId: n.conversation_id },
-					});
-				}
-			} else if (!n.project_id) {
-				return;
-			} else if (n.document_id) {
-				navigate({
-					to: "/projects/$projectId/docs/$docId",
-					params: { projectId: n.project_id, docId: n.document_id },
-				});
-			} else if (n.task_id) {
-				navigate({
-					to: "/projects/$projectId/tasks/$taskId",
-					params: { projectId: n.project_id, taskId: n.task_id },
-				});
-			} else {
-				navigate({
-					to: "/projects/$projectId",
-					params: { projectId: n.project_id },
-				});
-			}
+			openNotificationTarget(navigate, n);
 		},
 		[markRead, navigate],
 	);
@@ -220,66 +146,19 @@ export function NotificationBell() {
 				) : (
 					<div className="max-h-96 overflow-y-auto" onScroll={handleListScroll}>
 						<ul className="divide-y">
-							{notifications.map((n) => {
-								return (
-									<li key={n.id}>
-										<button
-											type="button"
-											onClick={() => handleNotificationClick(n)}
-											className={`w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors flex items-start gap-3 ${!n.read_at ? "bg-primary/5" : ""}`}
-										>
-											{n.type === "automation" ? (
-												<span
-													aria-hidden="true"
-													className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground"
-												>
-													<Zap className="size-4" />
-												</span>
-											) : (
-												<EntityAvatar
-													{...notificationActorAvatar(n)}
-													className="mt-0.5 shrink-0"
-													badge={
-														<AvatarBadge
-															aria-hidden="true"
-															className={
-																n.type === "assigned"
-																	? undefined
-																	: "bg-secondary text-secondary-foreground"
-															}
-														>
-															{n.type === "assigned" ? (
-																<UserPlus />
-															) : n.type === "question" ? (
-																<MessageCircleQuestion />
-															) : (
-																<AtSign />
-															)}
-														</AvatarBadge>
-													}
-												/>
-											)}
-											<div className="min-w-0 flex-1">
-												<p
-													className={`text-sm leading-snug ${!n.read_at ? "font-medium" : ""}`}
-												>
-													{notificationText(n, t)}
-												</p>
-												<p className="mt-0.5 truncate text-xs text-muted-foreground">
-													{n.project_name || t("notifications.globalChat")} ·{" "}
-													{timeAgo(n.created_at, tCommon)}
-												</p>
-											</div>
-											{!n.read_at && (
-												<span
-													aria-hidden="true"
-													className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
-												/>
-											)}
-										</button>
-									</li>
-								);
-							})}
+							{groups.map((g) => (
+								<li key={g.head.id}>
+									<NotificationCard
+										group={g}
+										onOpen={(n) => {
+											for (const x of g.items) {
+												if (!x.read_at && x.id !== n.id) markRead(x.id);
+											}
+											handleNotificationClick(n);
+										}}
+									/>
+								</li>
+							))}
 						</ul>
 						{isFetchingNextPage && (
 							<div className="flex items-center justify-center gap-1.5 py-3 text-xs text-muted-foreground">
@@ -289,7 +168,59 @@ export function NotificationBell() {
 						)}
 					</div>
 				)}
+				<button
+					type="button"
+					onClick={() => navigate({ to: "/notifications" })}
+					className="w-full border-t px-4 py-2.5 text-center text-xs font-medium text-primary transition-colors hover:bg-muted/50"
+				>
+					{t("notifications.viewAll")}
+				</button>
 			</PopoverContent>
 		</Popover>
 	);
+}
+
+type Navigate = ReturnType<typeof useNavigate>;
+
+/** Opens whatever a notification is about; a mention of a comment lands on
+ *  that comment. Shared by the bell and the /notifications page. */
+export function openNotificationTarget(navigate: Navigate, n: Notification) {
+	const target = notificationTarget(n);
+	if (!target) return;
+	switch (target.kind) {
+		case "conversation":
+			if (target.projectId) {
+				navigate({
+					to: "/projects/$projectId/conversations/$conversationId",
+					params: {
+						projectId: target.projectId,
+						conversationId: target.conversationId,
+					},
+				});
+			} else {
+				navigate({
+					to: "/conversations/$conversationId",
+					params: { conversationId: target.conversationId },
+				});
+			}
+			return;
+		case "doc":
+			navigate({
+				to: "/projects/$projectId/docs/$docId",
+				params: { projectId: target.projectId, docId: target.docId },
+			});
+			return;
+		case "task":
+			navigate({
+				to: "/projects/$projectId/tasks/$taskId",
+				params: { projectId: target.projectId, taskId: target.taskId },
+				...(target.commentId ? { search: { comment: target.commentId } } : {}),
+			});
+			return;
+		case "project":
+			navigate({
+				to: "/projects/$projectId",
+				params: { projectId: target.projectId },
+			});
+	}
 }

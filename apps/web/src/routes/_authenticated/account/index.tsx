@@ -18,12 +18,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { apiClient } from "@/lib/api-client";
 import type { SuccessEnvelope } from "@/lib/api-error";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import type { User as UserType } from "@/lib/auth-api";
 import { currentUserQueryOptions } from "@/lib/auth-api";
 import { formatDate } from "@/lib/format-date";
+import {
+	isTypingBroadcastEnabled,
+	setTypingBroadcastEnabled,
+} from "@/lib/live-presence";
 import { userAvatar } from "@/lib/provider-logos";
 
 export const Route = createFileRoute("/_authenticated/account/")({
@@ -56,6 +61,7 @@ function ProfilePage() {
 	const [fullName, setFullName] = useState(user?.full_name ?? "");
 	const [email, setEmail] = useState(user?.email ?? "");
 	const [serverError, setServerError] = useState<string | null>(null);
+	const [shareTyping, setShareTyping] = useState(isTypingBroadcastEnabled);
 
 	const mutation = useMutation({
 		meta: { success: "updated", subject: "profile" },
@@ -278,6 +284,26 @@ function ProfilePage() {
 						</Button>
 					)}
 				</CardFooter>
+			</Card>
+
+			<Card>
+				<CardHeader>
+					<CardTitle>{t("presence.title")}</CardTitle>
+					<CardDescription>{t("presence.description")}</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<div className="flex items-center justify-between gap-4">
+						<Label htmlFor="share-typing">{t("presence.shareTyping")}</Label>
+						<Switch
+							id="share-typing"
+							checked={shareTyping}
+							onCheckedChange={(on: boolean) => {
+								setShareTyping(on);
+								setTypingBroadcastEnabled(on);
+							}}
+						/>
+					</div>
+				</CardContent>
 			</Card>
 		</div>
 	);

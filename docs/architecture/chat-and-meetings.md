@@ -2,7 +2,7 @@
 
 Design and delivery plan for built-in team chat (a Slack alternative) and voice/video meetings (a Discord alternative) in Paca v1.0.0.
 
-> **Status:** proposal; Phase 1 is partly built (project channels, direct messages, replies from global agents in direct messages, messages, threads, reactions, mentions, followed threads, saved messages, read state, the sidebar and Inbox, IAM variable and realtime channel rooms, uncommitted). Everything else here is not implemented. The Phase 0 spikes ran on 2026-11-17 and all five came back go; see [Phase 0 results](#phase-0-results). The roadmap entry is in [ROADMAP.md](../../ROADMAP.md) under *Beyond v1.0 — Exploring*.
+> **Status:** proposal; Phase 1b (presence and task-comment UX) is built, see [Phase 1b status](#phase-1b-status). Phase 1 is partly built (project channels, direct messages, replies from global agents in direct messages, messages, threads, reactions, mentions, followed threads, saved messages, read state, the sidebar and Inbox, IAM variable and realtime channel rooms, uncommitted). Everything else here is not implemented. The Phase 0 spikes ran on 2026-11-17 and all five came back go; see [Phase 0 results](#phase-0-results). The roadmap entry is in [ROADMAP.md](../../ROADMAP.md) under *Beyond v1.0 — Exploring*.
 
 ## Goals
 
@@ -165,9 +165,9 @@ Task comments get the same "X is typing…" indicator as chat. Both use one ephe
 
 - The client joins a **live room** for what it is viewing (`task:<id>`, `channel:<id>`; docs later). Access is checked once at join through the API's IAM (the existing access check and its short cache), not per event.
 - `presence:typing` events are throttled on the client (on start, then every few seconds while typing), expire after about 5 seconds server-side, are fanned out across replicas through Valkey like the collaborative-editing cluster, and are never persisted.
-- UI: "Mina is typing…" (or "Mina and 2 others…") under the comment composer, plus viewer avatars in the task header ("2 viewing"). An agent working on the task shows "Atlas is working…" from its conversation status instead of typing events.
+- UI: "Mina is typing…" (or "Mina and 2 others…") above the comment composer, plus viewer avatars in the task header ("2 viewing"). An agent working on the task shows "Atlas is working…" from its conversation status instead of typing events.
 - A per-user setting can turn typing broadcast off. Nothing is sent for a cleared composer or a read-only viewer.
-- The same primitive later serves doc comments and sprint pages.
+- The same primitive serves doc comments and chat channels (built); sprint pages and chat threads can follow.
 
 ### Mention notifications that say where
 
@@ -175,7 +175,7 @@ Today a mention notification reads "Mina mentioned you in APO-142 Fix token refr
 
 - **Header:** actor avatar, "Mina mentioned you", time.
 - **Context row:** project chip, sprint chip (`Sprint 12`, or `Backlog` when the task has none; resolved when the notification is read, so it stays right if the task moves), task key and title, and the task's current status.
-- **Excerpt:** the first ~140 characters of the comment with your mention highlighted. Stored with the notification, so it survives edits and deletion.
+- **Excerpt:** the first ~140 characters of the comment with your mention highlighted. Stored with the notification, so it survives edits and deletion. Because it is a stored copy, it stays readable to the recipient after the comment is deleted or after they lose access to the project, and the unread-mention counts (task and sprint badges) likewise keep counting until the notification is read or the task is deleted. Both are deliberate: a notification is the recipient's own record. Anyone who needs mentions purged on access loss must delete the rows; nothing does it automatically.
 - **Click:** opens the task panel scrolled to that comment and highlights it briefly, then marks the notification read.
 - **Grouping:** several mentions on one task collapse to "3 mentions in APO-142".
 - **Filters:** All, Mentions, Assigned, Agents, plus a project filter.
@@ -459,6 +459,19 @@ Tested against the same stack with a Go client (`server-sdk-go` v2.20): an agent
 | **4. v1.1 extras** | Recording, voice-interactive agent (TTS, turn detection), realtime speech models, scheduled meetings, server-side approval. | |
 
 Phases 1 and 3 can run mostly in parallel once the `channels` table and IAM resources land: the LiveKit infra and token service touch different files from the chat UI. Each phase also updates the docs (`docs/architecture`, API docs, roadmap) and adds e2e specs. The e2e suite includes mobile projects, and calls need a mocked media device in Playwright.
+
+## Phase 1b status
+
+Built, unit-tested and covered by Playwright specs (`apps/e2e/tests/projects/task-presence.spec.ts`, `task-mentions.spec.ts`):
+
+- **Presence layer** (task, doc and chat-channel rooms, direct messages included; names come from the project member list with the server-sent username as a fallback) in `services/realtime/src/presence.ts` (live rooms, access checked at join, typing leases, cross-replica merge over Valkey); protocol and limits are in [services/realtime/README.md](../../services/realtime/README.md#presence-viewers-and-typing).
+- **Task, doc and chat UI:** "X is typing…" above the comment composer (at the bottom of the activity list) on tasks and docs, and above the message box in channels and direct messages; viewer avatars in the task, doc and channel headers; and a per-browser switch to stop sending typing (Account → Profile).
+- **Mention notifications that say where:** migration `000095` adds `comment_id`, `mention_source` and a stored `excerpt` to `notifications`. The list response gains `comment_id`, `mention_source`, `excerpt`, `task_status_name/color`, `sprint_id` and `sprint_name`; status and sprint are joined at read time so they stay right after the task moves. Cards show project, sprint (or *Backlog*), task, status and the excerpt with the mention highlighted; runs of mentions on one task collapse to "3 mentions in #142". Clicking opens the task with `?comment=<id>`, scrolled to and briefly highlighting that comment (the activity pane pages back until the comment is loaded, and stops at the end of the feed or a failed page).
+- **`/notifications` page** with All / Mentions / Assigned / Agents tabs and a project filter (`GET /users/me/notifications?type=&project_id=&actor=agent`), and a toast when a mention arrives while you are online.
+- **Unread cues:** `GET /users/me/notifications/unread-mentions` feeds a badge on task rows and a count on sprint headers. `task_reads` plus `PUT /projects/{id}/tasks/{taskId}/read` (gated on `tasks:read`) record the visit, read the caller's mentions on the task, and return the previous visit time for the *New since your last visit* divider in the activity pane.
+- **Description and document mentions** now create in-app rows (`mention_source` `description` / `document`) as well as the plugin event.
+
+Not done: the Watch toggle on tasks; the sprint-count shortcut in the Interactions sidebar (only sprint headers in the list view show it); badges on board cards; a Playwright scenario for the sprint-header badge (it only exists in a list grouped by sprint); copy for the mention excerpt beyond the first 140 characters of text. Chat threads do not report typing yet.
 
 ## Risks and open questions
 

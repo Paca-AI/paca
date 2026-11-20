@@ -1,9 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Archive, Hash, Lock, LogOut, Star } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { ConversationEvent } from "@/components/conversation/conversation-event";
+import { PresenceViewers } from "@/components/shared/presence-viewers";
+import { TypingIndicator } from "@/components/shared/typing-indicator";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -16,6 +25,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useChatPermissions } from "@/hooks/use-chat-permissions";
 import { useChatRealtime } from "@/hooks/use-chat-realtime";
+import { useLivePresence } from "@/hooks/use-live-presence";
 import { currentUserQueryOptions } from "@/lib/auth-api";
 import {
 	type AgentRuns,
@@ -72,6 +82,7 @@ export function ChannelView({
 	const queryClient = useQueryClient();
 	const { can } = useChatPermissions(projectId);
 	const isDM = projectId === DM_SCOPE;
+	const presence = useLivePresence("channel", isDM ? "" : projectId, channelId);
 	const me = useQuery(currentUserQueryOptions).data;
 	const meId = me?.id;
 	const channels = useQuery(channelsQueryOptions(projectId));
@@ -302,6 +313,14 @@ export function ChannelView({
 		<div className="relative flex min-h-0 flex-1">
 			<section className="flex min-h-0 min-w-0 flex-1 flex-col">
 				<ChannelHeader
+					viewers={
+						<PresenceViewers
+							kind="channel"
+							projectId={isDM ? "" : projectId}
+							id={channelId}
+							testId="channel-viewers"
+						/>
+					}
 					channel={channel}
 					onToggleStar={(on) => starMutation.mutate(on)}
 					agent={agent}
@@ -377,8 +396,10 @@ export function ChannelView({
 						{t("agent.failedHint", { name: channel.peer.name })}
 					</p>
 				) : null}
+				<TypingIndicator names={presence.typingNames} />
 				<Composer
 					mentionProjectId={isDM ? undefined : projectId}
+					onTyping={canWrite && !archived ? presence.setTyping : undefined}
 					draftId={`channel:${channelId}`}
 					placeholder={
 						channel?.peer
@@ -444,6 +465,7 @@ export function ChannelView({
 }
 
 function ChannelHeader({
+	viewers,
 	channel,
 	onToggleStar,
 	agent,
@@ -452,6 +474,8 @@ function ChannelHeader({
 	onToggleMembership,
 	onArchive,
 }: {
+	/** Who else is in the channel right now. */
+	viewers?: ReactNode;
 	channel: Channel | undefined;
 	agent?: AgentRuns;
 	onToggleStar: (starred: boolean) => void;
@@ -483,6 +507,7 @@ function ChannelHeader({
 				{agent?.replies ? (
 					<AgentRunsPanel runs={agent.runs} agentName={channel.peer.name} />
 				) : null}
+				{viewers}
 				<Button
 					size="icon-sm"
 					variant="ghost"
@@ -516,6 +541,7 @@ function ChannelHeader({
 					{channel?.topic || t("header.noTopic")}
 				</p>
 			</div>
+			{viewers}
 			{channel ? (
 				<Button
 					size="icon-sm"

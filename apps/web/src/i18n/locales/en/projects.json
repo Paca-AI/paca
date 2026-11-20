@@ -1709,7 +1709,8 @@
 				"description": "This permanently deletes \"{{title}}\" and all of its data. This action cannot be undone.",
 				"cancel": "Cancel",
 				"delete": "Delete"
-			}
+			},
+			"viewingNow": "Viewing now: {{names}}"
 		},
 		"properties": {
 			"title": "Properties",
@@ -2170,7 +2171,9 @@
 			"loadMore": "Load more subtasks",
 			"add": "Add subtask",
 			"addPlaceholder": "Subtask title"
-		}
+		},
+		"mentionBadge": "You have {{n}} unread mention(s) here",
+		"sprintMentionBadge": "{{n}} task(s) in this sprint mention you"
 	},
 	"conversationsPage": {
 		"back": "Back",

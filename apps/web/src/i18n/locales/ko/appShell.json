@@ -84,7 +84,33 @@
 		},
 		"untitledConversation": "제목 없는 대화",
 		"globalChat": "글로벌 채팅",
-		"untitledDocument": "제목 없는 문서"
+		"untitledDocument": "제목 없는 문서",
+		"mentionedYou": "{{actor}}님이 회원님을 멘션했습니다",
+		"groupedMentions": "#{{taskNumber}} — {{taskTitle}}에서 멘션 {{n}}건",
+		"backlog": "백로그",
+		"source": {
+			"comment": "댓글",
+			"description": "설명",
+			"document": "문서",
+			"docComment": "문서 댓글"
+		},
+		"viewAll": "모든 알림 보기",
+		"page": {
+			"filterLabel": "알림 필터",
+			"tabs": {
+				"all": "전체",
+				"mentions": "멘션",
+				"assigned": "할당됨",
+				"agents": "에이전트"
+			},
+			"projectFilter": "프로젝트별 필터",
+			"allProjects": "모든 프로젝트",
+			"loadMore": "더 보기"
+		},
+		"toast": {
+			"mentioned": "{{actor}}님이 #{{taskNumber}} — {{taskTitle}}에서 회원님을 멘션했습니다",
+			"open": "열기"
+		}
 	},
 	"userMenu": {
 		"signIn": "로그인",

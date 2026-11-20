@@ -84,7 +84,33 @@
 		},
 		"untitledConversation": "Conversation sans titre",
 		"globalChat": "Chat global",
-		"untitledDocument": "Document sans titre"
+		"untitledDocument": "Document sans titre",
+		"mentionedYou": "{{actor}} vous a mentionné",
+		"groupedMentions": "{{n}} mentions dans #{{taskNumber}} — {{taskTitle}}",
+		"backlog": "Backlog",
+		"source": {
+			"comment": "Commentaire",
+			"description": "Description",
+			"document": "Document",
+			"docComment": "Commentaire du document"
+		},
+		"viewAll": "Voir toutes les notifications",
+		"page": {
+			"filterLabel": "Filtrer les notifications",
+			"tabs": {
+				"all": "Toutes",
+				"mentions": "Mentions",
+				"assigned": "Assignées",
+				"agents": "Agents"
+			},
+			"projectFilter": "Filtrer par projet",
+			"allProjects": "Tous les projets",
+			"loadMore": "Charger plus"
+		},
+		"toast": {
+			"mentioned": "{{actor}} vous a mentionné dans #{{taskNumber}} — {{taskTitle}}",
+			"open": "Ouvrir"
+		}
 	},
 	"userMenu": {
 		"signIn": "Se connecter",

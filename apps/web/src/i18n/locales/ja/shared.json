@@ -22,7 +22,11 @@
 		"revert": "元に戻す",
 		"errors": {
 			"revertFailed": "元に戻せませんでした。もう一度お試しください。"
-		}
+		},
+		"typingOne": "{{name}} が入力中…",
+		"typingTwo": "{{a}} と {{b}} が入力中…",
+		"typingMany": "{{name}} ほか {{n}} 人が入力中…",
+		"newSince": "前回の訪問以降の新着"
 	},
 	"contentDiff": {
 		"emptyLine": "（空行）",

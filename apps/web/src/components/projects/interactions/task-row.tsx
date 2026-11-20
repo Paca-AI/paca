@@ -1,5 +1,6 @@
 import type { TFunction } from "i18next";
 import {
+	AtSign,
 	Check,
 	ChevronRight,
 	GripVertical,
@@ -26,6 +27,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useJevEnabled } from "@/hooks/use-jev-enabled";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useTaskUnreadMentions } from "@/hooks/use-unread-mentions";
 import {
 	customFieldBadgeStyle,
 	getCustomFieldOptionColor,
@@ -215,6 +217,7 @@ export function TaskRow({
 	subtasks,
 }: TaskRowProps) {
 	const { t } = useTranslation("projects");
+	const unreadMentions = useTaskUnreadMentions(task.project_id, task.id);
 	const isMobile = useIsMobile();
 	// Touch screens have no drag handle and little width, so nest tighter.
 	const indentStep = isMobile ? 12 : 20;
@@ -876,6 +879,18 @@ export function TaskRow({
 				<span className="min-w-12 truncate text-sm font-medium text-foreground">
 					{task.title}
 				</span>
+				{unreadMentions > 0 && (
+					<span
+						data-testid="task-mention-badge"
+						title={t("board.mentionBadge", { n: unreadMentions })}
+						role="img"
+						aria-label={t("board.mentionBadge", { n: unreadMentions })}
+						className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-primary/15 px-1.5 py-0.5 text-xs font-semibold text-primary"
+					>
+						<AtSign aria-hidden="true" className="size-3" />
+						{unreadMentions > 1 ? unreadMentions : null}
+					</span>
+				)}
 				{subtasks && subtaskCount > 0 && (
 					<span
 						title={t("board.subtasks.progress", {

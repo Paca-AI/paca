@@ -1,0 +1,328 @@
+import { describe, expect, it } from "bun:test";
+import type { AccessDecider, Viewer } from "./access.ts";
+import {
+	PresenceHub,
+	type PresenceSnapshot,
+	type PresenceSummary,
+	parseLiveRef,
+	TYPING_TTL_MS,
+} from "./presence.ts";
+
+const P = "11111111-1111-4111-8111-111111111111";
+const T = "22222222-2222-4222-8222-222222222222";
+const ref = { kind: "task" as const, projectId: P, id: T };
+
+const v = (userId: string): Viewer => ({ userId, rawToken: "t" });
+
+function setup(
+	opts: {
+		write?: boolean;
+		read?: boolean;
+		replica?: string;
+		entityCheck?: (
+			v: Viewer,
+			r: { kind: string; projectId: string; id: string },
+		) => Promise<boolean>;
+	} = {},
+) {
+	const emitted: PresenceSnapshot[] = [];
+	const published: PresenceSummary[] = [];
+	let now = 1_000;
+	const decider = {
+		can: async (_v: Viewer, _p: string, q: { action: string }) =>
+			q.action === "tasks:read" ? (opts.read ?? true) : (opts.write ?? true),
+	} as unknown as AccessDecider;
+	const hub = new PresenceHub({
+		decider,
+		entityCheck: opts.entityCheck ?? (async () => true),
+		replica: opts.replica ?? "a",
+		bus: { publish: (s) => published.push(s) },
+		transport: { emit: (_r, s) => emitted.push(s) },
+		now: () => now,
+	});
+	return {
+		hub,
+		emitted,
+		published,
+		advance: (ms: number) => {
+			now += ms;
+		},
+	};
+}
+
+describe("parseLiveRef", () => {
+	it("accepts a task ref and rejects junk", () => {
+		expect(parseLiveRef(ref)).toEqual(ref);
+		expect(parseLiveRef({ ...ref, id: "x" })).toBeUndefined();
+		expect(parseLiveRef({ ...ref, kind: "wiki" })).toBeUndefined();
+		expect(parseLiveRef(null)).toBeUndefined();
+	});
+});
+
+describe("PresenceHub", () => {
+	it("refuses a join without read access", async () => {
+		const { hub } = setup({ read: false });
+		expect(await hub.join("s1", v("u1"), ref)).toEqual({
+			ok: false,
+			reason: "forbidden",
+		});
+	});
+
+	it("lists viewers once per account across sockets", async () => {
+		const { hub } = setup();
+		await hub.join("s1", v("u1"), ref);
+		const r = await hub.join("s2", v("u1"), ref);
+		const r2 = await hub.join("s3", v("u2"), ref);
+		expect(r.ok && r.snapshot.viewers).toEqual(["u1"]);
+		expect(r2.ok && r2.snapshot.viewers).toEqual(["u1", "u2"]);
+		hub.leave("s1", ref);
+		hub.leave("s3", ref);
+		const r3 = await hub.join("s4", v("u3"), ref);
+		expect(r3.ok && r3.snapshot.viewers).toEqual(["u1", "u3"]);
+	});
+
+	it("emits typing, expires it and clears on stop", async () => {
+		const { hub, emitted, advance } = setup();
+		await hub.join("s1", v("u1"), ref);
+		hub.typing("s1", "task", T, true);
+		expect(emitted.at(-1)?.typing).toEqual(["u1"]);
+		advance(TYPING_TTL_MS + 1);
+		(hub as unknown as { tick(): void }).tick();
+		expect(emitted.at(-1)?.typing).toEqual([]);
+		hub.typing("s1", "task", T, true);
+		hub.typing("s1", "task", T, false);
+		expect(emitted.at(-1)?.typing).toEqual([]);
+	});
+
+	it("ignores typing from a read-only viewer or a non-member", async () => {
+		const { hub, emitted } = setup({ write: false });
+		await hub.join("s1", v("u1"), ref);
+		const n = emitted.length;
+		hub.typing("s1", "task", T, true);
+		hub.typing("nobody", "task", T, true);
+		expect(emitted.length).toBe(n);
+	});
+
+	it("drops typing when the account's last socket leaves", async () => {
+		const { hub, emitted } = setup();
+		await hub.join("s1", v("u1"), ref);
+		await hub.join("s2", v("u2"), ref);
+		hub.typing("s1", "task", T, true);
+		hub.leaveAll("s1");
+		expect(emitted.at(-1)).toMatchObject({ viewers: ["u2"], typing: [] });
+	});
+
+	it("merges another replica's summary and answers a hello", async () => {
+		const { hub, emitted, published } = setup();
+		await hub.join("s1", v("u1"), ref);
+		expect(published.at(-1)?.hello).toBe(true);
+		hub.hear({
+			replica: "b",
+			room: `live:task:${T}`,
+			viewers: ["u9"],
+			typing: ["u9"],
+			hello: true,
+		});
+		expect(emitted.at(-1)).toMatchObject({
+			viewers: ["u1", "u9"],
+			typing: ["u9"],
+		});
+		// replied to the hello with its own summary
+		expect(published.at(-1)).toMatchObject({ replica: "a", viewers: ["u1"] });
+		// own echoes are ignored
+		const n = emitted.length;
+		hub.hear({
+			replica: "a",
+			room: `live:task:${T}`,
+			viewers: ["zz"],
+			typing: [],
+		});
+		expect(emitted.length).toBe(n);
+	});
+
+	it("ages out a silent replica", async () => {
+		const { hub, emitted, advance } = setup();
+		await hub.join("s1", v("u1"), ref);
+		hub.hear({
+			replica: "b",
+			room: `live:task:${T}`,
+			viewers: ["u9"],
+			typing: [],
+		});
+		advance(30_000);
+		(hub as unknown as { tick(): void }).tick();
+		expect(emitted.at(-1)?.viewers).toEqual(["u1"]);
+	});
+
+	it("recheck evicts a socket that lost read access", async () => {
+		const s = setup();
+		await s.hub.join("s1", v("u1"), ref);
+		(s.hub as unknown as { opts: { decider: unknown } }).opts.decider = {
+			can: async () => false,
+		};
+		const revoked: string[] = [];
+		await s.hub.recheck((id) => revoked.push(id));
+		expect(revoked).toEqual(["s1"]);
+	});
+
+	it("does not add a viewer whose join was withdrawn by a leave", async () => {
+		let release!: () => void;
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		const hub = new PresenceHub({
+			decider: {
+				can: async () => {
+					await gate;
+					return true;
+				},
+			} as unknown as AccessDecider,
+			entityCheck: async () => true,
+			replica: "a",
+			transport: { emit: () => {} },
+		});
+		const joining = hub.join("s1", v("u1"), ref);
+		hub.leave("s1", ref);
+		release();
+		expect(await joining).toEqual({ ok: false, reason: "superseded" });
+		const again = await setup().hub.join("s2", v("u2"), ref);
+		expect(again.ok).toBe(true);
+		// the hub that saw the leave holds no room for s1
+		const probe = await hub.join("s3", v("u3"), ref);
+		expect(probe.ok && probe.snapshot.viewers).toEqual(["u3"]);
+	});
+
+	it("stops a socket typing once it loses write access", async () => {
+		let write = true;
+		const emitted: PresenceSnapshot[] = [];
+		const hub = new PresenceHub({
+			decider: {
+				can: async (_v: Viewer, _p: string, q: { action: string }) =>
+					q.action === "tasks:read" ? true : write,
+			} as unknown as AccessDecider,
+			entityCheck: async () => true,
+			replica: "a",
+			transport: { emit: (_r, s) => emitted.push(s) },
+		});
+		await hub.join("s1", v("u1"), ref);
+		hub.typing("s1", "task", T, true);
+		expect(emitted.at(-1)?.typing).toEqual(["u1"]);
+		write = false;
+		await hub.recheck(() => {});
+		expect(emitted.at(-1)?.typing).toEqual([]);
+		hub.typing("s1", "task", T, true);
+		expect(emitted.at(-1)?.typing).toEqual([]);
+	});
+});
+
+describe("PresenceHub across replicas", () => {
+	it("publishes a lapsed typing lease at once, not on the next heartbeat", async () => {
+		const { hub, published, advance } = setup();
+		await hub.join("s1", v("u1"), ref);
+		hub.typing("s1", "task", T, true);
+		expect(published.at(-1)?.typing).toEqual(["u1"]);
+		// Past the lease but well inside the 10 s heartbeat.
+		advance(TYPING_TTL_MS + 1);
+		(hub as unknown as { tick(): void }).tick();
+		expect(published.at(-1)?.typing).toEqual([]);
+	});
+});
+
+describe("PresenceHub kinds", () => {
+	function recording() {
+		const asked: Array<{ project: string; action: string; resource: string }> =
+			[];
+		const emitted: PresenceSnapshot[] = [];
+		const decider = {
+			can: async (
+				_v: Viewer,
+				project: string,
+				q: { action: string; resource: string },
+			) => {
+				asked.push({ project, ...q });
+				return true;
+			},
+		} as unknown as AccessDecider;
+		const hub = new PresenceHub({
+			decider,
+			entityCheck: async () => true,
+			replica: "a",
+			transport: { emit: (_r, s) => emitted.push(s) },
+		});
+		return { hub, asked, emitted };
+	}
+
+	it("parses docs, project channels and project-less direct messages", () => {
+		expect(parseLiveRef({ kind: "doc", projectId: P, id: T })).toEqual({
+			kind: "doc",
+			projectId: P,
+			id: T,
+		});
+		expect(parseLiveRef({ kind: "channel", projectId: P, id: T })).toBeTruthy();
+		expect(parseLiveRef({ kind: "channel", projectId: "", id: T })).toEqual({
+			kind: "channel",
+			projectId: "",
+			id: T,
+		});
+		expect(parseLiveRef({ kind: "channel", id: T })?.projectId).toBe("");
+		// Only a channel may omit its project.
+		expect(parseLiveRef({ kind: "doc", projectId: "", id: T })).toBeUndefined();
+		expect(parseLiveRef({ kind: "wiki", projectId: P, id: T })).toBeUndefined();
+	});
+
+	it("checks the right action and resource for each kind", async () => {
+		const { hub, asked } = recording();
+		await hub.join("s1", v("u1"), { kind: "doc", projectId: P, id: T });
+		await hub.join("s1", v("u1"), { kind: "channel", projectId: P, id: T });
+		await hub.join("s1", v("u1"), { kind: "channel", projectId: "", id: T });
+		const seen = asked.map((a) => `${a.action} ${a.resource}`);
+		expect(seen).toContain(`docs:read project/${P}/doc/${T}`);
+		expect(seen).toContain(`docs:write project/${P}/doc/${T}`);
+		expect(seen).toContain(`channels:read project/${P}/channel/${T}`);
+		expect(seen).toContain(`messages:write project/${P}/channel/${T}`);
+		// A direct message has no project.
+		expect(seen).toContain(`channels:read channel/${T}`);
+		expect(asked.at(-1)?.project).toBe("");
+	});
+
+	it("lets a doc or channel typist be heard, with usernames as a fallback", async () => {
+		const { hub, emitted } = recording();
+		const typist = { userId: "u1", rawToken: "t", username: "mina" } as Viewer;
+		for (const kind of ["doc", "channel"] as const) {
+			emitted.length = 0;
+			await hub.join("s1", typist, { kind, projectId: P, id: T });
+			await hub.join("s2", v("u2"), { kind, projectId: P, id: T });
+			hub.typing("s1", kind, T, true);
+			expect(emitted.at(-1)).toMatchObject({
+				kind,
+				typing: ["u1"],
+				names: { u1: "mina" },
+			});
+			hub.leaveAll("s1");
+			hub.leaveAll("s2");
+		}
+	});
+});
+
+describe("PresenceHub project scoping", () => {
+	it("refuses a room whose entity is not in the claimed project", async () => {
+		const asked: string[] = [];
+		const { hub } = setup({
+			entityCheck: async (
+				_v: Viewer,
+				r: { kind: string; projectId: string; id: string },
+			) => {
+				asked.push(`${r.kind}:${r.projectId}:${r.id}`);
+				return false; // the project-scoped lookup does not find it
+			},
+		});
+		// The IAM checks pass (a grant on project/<p>/*), but the entity is
+		// elsewhere: no room, no viewers, no typing.
+		expect(await hub.join("s1", v("u1"), ref)).toEqual({
+			ok: false,
+			reason: "forbidden",
+		});
+		expect(asked).toEqual([`task:${P}:${T}`]);
+		hub.typing("s1", "task", T, true);
+	});
+});

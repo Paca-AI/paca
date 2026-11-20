@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import {
 	type CSSProperties,
+	Fragment,
 	type ReactNode,
 	useEffect,
 	useLayoutEffect,
@@ -46,6 +47,7 @@ import {
 import { ContentDiffDialog } from "@/components/shared/content-diff";
 import { EntityAvatar } from "@/components/shared/entity-avatar";
 import { LoadMoreSentinel } from "@/components/shared/load-more-sentinel";
+import { TypingIndicator } from "@/components/shared/typing-indicator";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -103,6 +105,18 @@ export interface ActivityPaneConfig<T extends ActivityEntry> {
 	getCommentBlocks: (content: T["content"]) => unknown[] | null;
 	nameMaps?: Record<string, Record<string, string>>;
 	currentUserId?: string;
+	/** Typing in this thread's composer, reported to the realtime presence
+	 *  layer (see lib/live-presence.ts). Called with false when the composer
+	 *  is cleared or the comment sent. */
+	onTyping?: (typing: boolean) => void;
+	/** Who else is typing, shown above the composer area. */
+	typingNames?: string[];
+	/** When the viewer last looked at this thread before now: entries from
+	 *  other people after it get an "unread since" divider. Null/undefined
+	 *  (first visit, or unknown) draws none. */
+	unreadSince?: string | null;
+	/** An entry to scroll to and highlight briefly (a mention deep link). */
+	focusEntryId?: string | null;
 }
 
 type ActivityFilter = "comments" | "all";
@@ -132,6 +146,10 @@ export function ActivityPane<T extends ActivityEntry>({
 	describeActivityDetail,
 	getCommentBlocks,
 	currentUserId,
+	onTyping,
+	typingNames,
+	unreadSince,
+	focusEntryId,
 }: ActivityPaneConfig<T>) {
 	const { t } = useTranslation("shared");
 	const editorRef = useRef<CommentEditorHandle>(null);
@@ -229,6 +247,53 @@ export function ActivityPane<T extends ActivityEntry>({
 		if (filter === "all" || !hasNonCommentActivity) return sorted;
 		return sorted.filter((entry) => entry.activity_type === "comment");
 	}, [sorted, filter, hasNonCommentActivity]);
+
+	// The first entry from somebody else after the viewer's previous visit.
+	const dividerBeforeId = useMemo(() => {
+		if (!unreadSince) return undefined;
+		const since = new Date(unreadSince).getTime();
+		return visible.find(
+			(e) =>
+				new Date(e.created_at).getTime() > since &&
+				(!currentUserId || String(e.actor_id) !== String(currentUserId)),
+		)?.id;
+	}, [visible, unreadSince, currentUserId]);
+
+	// A deep link to one entry scrolls it into view and flashes it once.
+	const [highlightId, setHighlightId] = useState<string | null>(null);
+	const focusedRef = useRef<string | null>(null);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: re-run when entries load, so a deep link finds its comment
+	useEffect(() => {
+		if (!focusEntryId || focusedRef.current === focusEntryId) return;
+		const el = scrollAreaRef.current?.querySelector<HTMLElement>(
+			`[data-entry-id="${CSS.escape(focusEntryId)}"]`,
+		);
+		if (!el) {
+			// The comment may sit on an older page: keep paging until it is
+			// loaded, the feed ends, or a page fails (a deleted comment ends it).
+			const loaded = sorted.some((e) => e.id === focusEntryId);
+			if (
+				!loaded &&
+				hasNextPage &&
+				!isFetchingNextPage &&
+				!isFetchNextPageError
+			) {
+				void fetchNextPage();
+			}
+			return;
+		}
+		focusedRef.current = focusEntryId;
+		el.scrollIntoView({ block: "center" });
+		setHighlightId(focusEntryId);
+		const timer = setTimeout(() => setHighlightId(null), 2500);
+		return () => clearTimeout(timer);
+	}, [
+		focusEntryId,
+		visible.length,
+		sorted.length,
+		hasNextPage,
+		isFetchingNextPage,
+	]);
 
 	const handleFilterChange = (next: ActivityFilter) => {
 		setFilter(next);
@@ -479,31 +544,46 @@ export function ActivityPane<T extends ActivityEntry>({
 						</div>
 					)}
 					{visible.map((entry) => (
-						<ActivityItemInner
-							projectId={projectId}
-							key={entry.id}
-							entry={entry}
-							describeActivity={describeActivity}
-							describeActivityDetail={describeActivityDetail}
-							getCommentBlocks={getCommentBlocks}
-							updateComment={updateComment}
-							deleteComment={deleteComment}
-							onRevert={onRevert}
-							getDiffContent={getDiffContent}
-							isRevertable={isRevertable}
-							queryKey={queryKey}
-							currentUserId={currentUserId}
-							editingCommentId={editingCommentId}
-							askAnswered={answeredAskIds.has(entry.id)}
-							onAnswerAsk={addComment ? answerAsk : undefined}
-							onStartEdit={(commentId) => {
-								setEditingCommentId(commentId);
-								editorRef.current?.focus();
-							}}
-						/>
+						<Fragment key={entry.id}>
+							{entry.id === dividerBeforeId && (
+								<div
+									aria-hidden="true"
+									data-testid="unread-divider"
+									className="flex items-center gap-2 py-1 text-xs font-medium text-primary"
+								>
+									<span className="h-px flex-1 bg-primary/30" />
+									{t("activityPane.newSince")}
+									<span className="h-px flex-1 bg-primary/30" />
+								</div>
+							)}
+							<ActivityItemInner
+								projectId={projectId}
+								highlighted={highlightId === entry.id}
+								entry={entry}
+								describeActivity={describeActivity}
+								describeActivityDetail={describeActivityDetail}
+								getCommentBlocks={getCommentBlocks}
+								updateComment={updateComment}
+								deleteComment={deleteComment}
+								onRevert={onRevert}
+								getDiffContent={getDiffContent}
+								isRevertable={isRevertable}
+								queryKey={queryKey}
+								currentUserId={currentUserId}
+								editingCommentId={editingCommentId}
+								askAnswered={answeredAskIds.has(entry.id)}
+								onAnswerAsk={addComment ? answerAsk : undefined}
+								onStartEdit={(commentId) => {
+									setEditingCommentId(commentId);
+									editorRef.current?.focus();
+								}}
+							/>
+						</Fragment>
 					))}
 				</div>
 			</ScrollArea>
+
+			{addComment && <TypingIndicator names={typingNames} />}
 
 			{addComment && (
 				<div className="shrink-0 border-t border-border/50 p-3 space-y-1 bg-background/50">
@@ -542,6 +622,11 @@ export function ActivityPane<T extends ActivityEntry>({
 							ref={editorRef}
 							initialBlocks={editingCommentBlocks}
 							onSubmit={handleSend}
+							onChange={
+								onTyping
+									? (blocks) => onTyping(blocksToText(blocks).trim().length > 0)
+									: undefined
+							}
 							projectId={projectId}
 						/>
 					</fieldset>
@@ -570,8 +655,26 @@ export function ActivityPane<T extends ActivityEntry>({
 	);
 }
 
+/** One timeline entry, wrapped so a deep link can find and flash it. */
+function ActivityItemInner<T extends ActivityEntry>(
+	props: ActivityItemInnerProps<T>,
+) {
+	return (
+		<div
+			data-entry-id={props.entry.id}
+			className={cn(
+				"rounded-xl transition-colors duration-700",
+				props.highlighted && "bg-primary/10 ring-2 ring-primary/30",
+			)}
+		>
+			<ActivityItemBody {...props} />
+		</div>
+	);
+}
+
 interface ActivityItemInnerProps<T extends ActivityEntry> {
 	projectId: string;
+	highlighted?: boolean;
 	entry: T;
 	describeActivity: (entry: T) => ReactNode;
 	describeActivityDetail?: (entry: T) => ReactNode;
@@ -591,7 +694,7 @@ interface ActivityItemInnerProps<T extends ActivityEntry> {
 	onAnswerAsk?: (entry: T, answer: string) => Promise<void>;
 }
 
-function ActivityItemInner<T extends ActivityEntry>({
+function ActivityItemBody<T extends ActivityEntry>({
 	projectId,
 	entry,
 	describeActivity,

@@ -1709,7 +1709,8 @@
 				"description": "\"{{title}}\" 및 모든 관련 데이터를 영구적으로 삭제합니다. 이 작업은 되돌릴 수 없습니다.",
 				"cancel": "취소",
 				"delete": "삭제"
-			}
+			},
+			"viewingNow": "지금 보는 중: {{names}}"
 		},
 		"properties": {
 			"title": "속성",
@@ -2170,7 +2171,9 @@
 			"loadMore": "하위 작업 더 불러오기",
 			"add": "하위 작업 추가",
 			"addPlaceholder": "하위 작업 제목"
-		}
+		},
+		"mentionBadge": "읽지 않은 멘션이 {{n}}건 있습니다",
+		"sprintMentionBadge": "이 스프린트의 작업 {{n}}개에서 회원님을 멘션했습니다"
 	},
 	"conversationsPage": {
 		"back": "뒤로",

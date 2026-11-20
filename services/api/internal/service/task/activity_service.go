@@ -201,6 +201,8 @@ func (s *ActivitySvc) handleMentions(ctx context.Context, in taskdom.AddCommentI
 			ActorMemberID:   member.ID,
 			ActorID:         in.ActorID,
 			MentionedUserID: mentionedUserID,
+			CommentID:       commentID,
+			Excerpt:         readableText(in.Content),
 		})
 	}
 
@@ -325,4 +327,46 @@ func extractTextFromBlocks(raw json.RawMessage) string {
 		return legacy.Text
 	}
 	return ""
+}
+
+// readableText flattens a BlockNote comment to text for a notification
+// excerpt: plain text as written, team mentions as "@name", task and document
+// references by title. Blocks are separated by a space.
+func readableText(raw json.RawMessage) string {
+	var blocks []struct {
+		Content []struct {
+			Type  string         `json:"type"`
+			Text  string         `json:"text"`
+			Props map[string]any `json:"props"`
+		} `json:"content"`
+	}
+	if json.Unmarshal(raw, &blocks) != nil {
+		return extractTextFromBlocks(raw)
+	}
+	prop := func(p map[string]any, k string) string {
+		v, _ := p[k].(string)
+		return v
+	}
+	var parts []string
+	for _, b := range blocks {
+		var line strings.Builder
+		for _, c := range b.Content {
+			switch c.Type {
+			case "text":
+				line.WriteString(c.Text)
+			case "teamMention":
+				if n := prop(c.Props, "name"); n != "" {
+					line.WriteString("@" + n)
+				}
+			case "taskReference", "docReference":
+				line.WriteString(prop(c.Props, "title"))
+			default:
+				line.WriteString(c.Text)
+			}
+		}
+		if t := strings.TrimSpace(line.String()); t != "" {
+			parts = append(parts, t)
+		}
+	}
+	return strings.Join(parts, " ")
 }

@@ -36,6 +36,12 @@ export class ChatHub {
 		private readonly io: Server,
 		private readonly decider: AccessDecider,
 		private readonly logger: Logger,
+		// entityCheck opens one entity through its REST route with the socket's
+		// token (see entityReadable); tests pass a fake.
+		private readonly entityCheck: (
+			token: string,
+			path: string,
+		) => Promise<boolean>,
 	) {}
 
 	// A direct message has no project: its resource is channel/<id>.
@@ -66,11 +72,23 @@ export class ChatHub {
 			return { ok: false, reason: "limit" };
 		}
 		try {
-			const allowed = await this.decider.can(socket.data, project, {
-				action: CHANNEL_ACTION,
-				resource: this.resource(project, channelId),
-			});
-			if (!allowed) return { ok: false, reason: "forbidden" };
+			// The IAM probe only matches the resource string it is given, so on its
+			// own it would admit any channel id under a project the account can
+			// read. The project-scoped lookup behind the REST route proves the
+			// channel is in the project the client named.
+			const [allowed, inProject] = await Promise.all([
+				this.decider.can(socket.data, project, {
+					action: CHANNEL_ACTION,
+					resource: this.resource(project, channelId),
+				}),
+				this.entityCheck(
+					socket.data.rawToken,
+					project
+						? `/projects/${project}/channels/${channelId}`
+						: `/chat/dms/${channelId}`,
+				),
+			]);
+			if (!allowed || !inProject) return { ok: false, reason: "forbidden" };
 		} catch (err) {
 			this.logger.warn(
 				{ userId: socket.data.userId, channelId, err },

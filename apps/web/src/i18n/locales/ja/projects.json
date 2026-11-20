@@ -1709,7 +1709,8 @@
 				"description": "「{{title}}」とそのすべてのデータが完全に削除されます。この操作は取り消せません。",
 				"cancel": "キャンセル",
 				"delete": "削除"
-			}
+			},
+			"viewingNow": "閲覧中: {{names}}"
 		},
 		"properties": {
 			"title": "プロパティ",
@@ -2170,7 +2171,9 @@
 			"loadMore": "さらにサブタスクを読み込む",
 			"add": "サブタスクを追加",
 			"addPlaceholder": "サブタスクのタイトル"
-		}
+		},
+		"mentionBadge": "未読のメンションが {{n}} 件あります",
+		"sprintMentionBadge": "このスプリントの {{n}} 件のタスクであなたがメンションされています"
 	},
 	"conversationsPage": {
 		"back": "戻る",

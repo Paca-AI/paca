@@ -360,6 +360,11 @@ func (s *Svc) NotifyMentioned(ctx context.Context, in notificationdom.NotifyMent
 	// Resolved once (not per-mentioned-user) — the task is the same for every
 	// notification created below.
 	taskTitle := s.taskTitle(ctx, in.TaskID)
+	excerptText := in.Excerpt
+	if excerptText == "" {
+		excerptText = in.CommentText
+	}
+	excerpt := notificationdom.Excerpt(excerptText)
 	seen := make(map[uuid.UUID]bool) // avoid duplicate notifications
 	for _, mentionedUserID := range mentionedUserIDs {
 		// Skip self-mention.
@@ -386,7 +391,13 @@ func (s *Svc) NotifyMentioned(ctx context.Context, in notificationdom.NotifyMent
 			Type:               notificationdom.NotificationTypeMentioned,
 			TaskID:             &taskID,
 			ProjectID:          in.ProjectID,
+			MentionSource:      notificationdom.MentionSourceComment,
+			Excerpt:            excerpt,
 			CreatedAt:          time.Now(),
+		}
+		if in.CommentID != uuid.Nil {
+			commentID := in.CommentID
+			n.CommentID = &commentID
 		}
 		if err := s.repo.Create(ctx, n); err != nil {
 			continue // best-effort; don't abort for one failure
@@ -418,7 +429,13 @@ func (s *Svc) NotifyDocCommentMentioned(ctx context.Context, in notificationdom.
 		Type:               notificationdom.NotificationTypeMentioned,
 		DocumentID:         &docID,
 		ProjectID:          in.ProjectID,
+		MentionSource:      notificationdom.MentionSourceDocComment,
+		Excerpt:            notificationdom.Excerpt(in.Excerpt),
 		CreatedAt:          time.Now(),
+	}
+	if in.CommentID != uuid.Nil {
+		commentID := in.CommentID
+		n.CommentID = &commentID
 	}
 	if err := s.repo.Create(ctx, n); err != nil {
 		return err
@@ -428,14 +445,9 @@ func (s *Svc) NotifyDocCommentMentioned(ctx context.Context, in notificationdom.
 	return nil
 }
 
-// NotifyDocMentioned publishes a notification.doc_mentioned plugin event for
-// a user newly @mentioned in a document's content. Unlike
-// NotifyAssigned/NotifyMentioned, this does not create an in-app
-// Notification row — the notifications table's task_id is a non-null FK, so
-// it cannot yet represent a doc-scoped target (see
-// docsvc.ActivitySvc.AddComment's doc-comment mention handling, which hits
-// the same constraint), so the plugin event stream is the only way this
-// reaches a subscribing plugin today. The caller is expected to have
+// NotifyDocMentioned creates an in-app notification and publishes a
+// notification.doc_mentioned plugin event for a user newly @mentioned in a
+// document's content. The caller is expected to have
 // already diffed old vs. new content so this is only called for genuinely
 // new mentions. mentionedUserID comes straight from client-supplied
 // BlockNote content (mentionpkg.ExtractTeamMentionsFromBlocks reads it
@@ -454,15 +466,16 @@ func (s *Svc) NotifyDocMentioned(ctx context.Context, mentionedUserID, actorID u
 		return // mentioned user isn't a member of this project; nothing to notify
 	}
 	actorName := s.resolveUserName(ctx, actorID)
+	s.createContentMention(ctx, mentionedUserID, actorID, projectID, nil, &docID, notificationdom.MentionSourceDocument)
 	s.publishNotificationEvent(ctx, events.TopicNotificationDocMentioned, mentionedUserID, actorName, s.docURL(projectID, docID), s.docTitle(ctx, docID))
 }
 
-// NotifyTaskDescriptionMentioned publishes a
-// notification.task_description_mentioned plugin event for a user newly
+// NotifyTaskDescriptionMentioned creates an in-app notification and publishes
+// a notification.task_description_mentioned plugin event for a user newly
 // @mentioned in a task's description field (as opposed to a comment, which
 // NotifyMentioned already handles). See NotifyDocMentioned's doc comment for
-// why this doesn't create an in-app row and why project membership must be
-// re-verified against the client-supplied mention ID.
+// why project membership must be re-verified against the client-supplied
+// mention ID.
 func (s *Svc) NotifyTaskDescriptionMentioned(ctx context.Context, mentionedUserID, actorID uuid.UUID, projectID, taskID uuid.UUID) {
 	if mentionedUserID == actorID {
 		return
@@ -471,13 +484,67 @@ func (s *Svc) NotifyTaskDescriptionMentioned(ctx context.Context, mentionedUserI
 		return // mentioned user isn't a member of this project; nothing to notify
 	}
 	actorName := s.resolveUserName(ctx, actorID)
+	s.createContentMention(ctx, mentionedUserID, actorID, projectID, &taskID, nil, notificationdom.MentionSourceDescription)
 	s.publishNotificationEvent(ctx, events.TopicNotificationTaskDescriptionMentioned, mentionedUserID, actorName, s.taskURL(projectID, taskID), s.taskTitle(ctx, taskID))
+}
+
+// createContentMention writes the in-app row for a mention in a task
+// description or a document body. Best-effort, like the plugin event beside
+// it. There is no excerpt: the card names the task or document instead.
+func (s *Svc) createContentMention(ctx context.Context, recipient, actorID, projectID uuid.UUID, taskID, docID *uuid.UUID, source notificationdom.MentionSource) {
+	n := &notificationdom.Notification{
+		ID:                 uuid.New(),
+		RecipientAccountID: recipient,
+		Type:               notificationdom.NotificationTypeMentioned,
+		TaskID:             taskID,
+		DocumentID:         docID,
+		ProjectID:          projectID,
+		MentionSource:      source,
+		CreatedAt:          time.Now(),
+	}
+	if actorMember, err := s.memberRepo.FindMember(ctx, projectID, actorID); err == nil {
+		id := actorMember.ID
+		n.ActorMemberID = &id
+	}
+	if err := s.repo.Create(ctx, n); err != nil {
+		return
+	}
+	s.publishCreated(ctx, n, recipient)
 }
 
 // ListNotifications returns up to limit notifications for the user, newest
 // first, keyset-paginated via cursorAfter.
-func (s *Svc) ListNotifications(ctx context.Context, userID uuid.UUID, limit int, cursorAfter *string) ([]*notificationdom.Notification, bool, error) {
-	return s.repo.ListForUser(ctx, userID, limit, cursorAfter)
+func (s *Svc) ListNotifications(ctx context.Context, userID uuid.UUID, limit int, cursorAfter *string, filter notificationdom.ListFilter) ([]*notificationdom.Notification, bool, error) {
+	return s.repo.ListForUser(ctx, userID, limit, cursorAfter, filter)
+}
+
+// TaskLastSeen returns when the user last viewed the task, nil if never.
+func (s *Svc) TaskLastSeen(ctx context.Context, userID, taskID uuid.UUID) (*time.Time, error) {
+	return s.repo.TaskLastSeen(ctx, userID, taskID)
+}
+
+// OpenTask records a view of the task and reads the user's mentions on it. The
+// returned time is the previous view, so the activity pane can mark what is
+// new since then.
+func (s *Svc) OpenTask(ctx context.Context, userID, projectID, taskID uuid.UUID) (*time.Time, error) {
+	prev, err := s.repo.TouchTaskRead(ctx, userID, projectID, taskID, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.repo.MarkTaskMentionsRead(ctx, userID, taskID); err != nil {
+		return prev, err
+	}
+	return prev, nil
+}
+
+// UnreadMentionsByTask returns the user's unread mentions per task.
+func (s *Svc) UnreadMentionsByTask(ctx context.Context, userID uuid.UUID, projectID *uuid.UUID) ([]notificationdom.UnreadMentions, error) {
+	return s.repo.UnreadMentionsByTask(ctx, userID, projectID)
+}
+
+// MarkTaskMentionsRead marks the user's unread mentions on one task as read.
+func (s *Svc) MarkTaskMentionsRead(ctx context.Context, userID, taskID uuid.UUID) error {
+	return s.repo.MarkTaskMentionsRead(ctx, userID, taskID)
 }
 
 // UnreadCount returns the count of unread notifications for the user.
@@ -523,6 +590,9 @@ func (s *Svc) publishCreated(ctx context.Context, n *notificationdom.Notificatio
 		"task_id":              n.TaskID,
 		"conversation_id":      n.ConversationID,
 		"document_id":          n.DocumentID,
+		"comment_id":           n.CommentID,
+		"mention_source":       string(n.MentionSource),
+		"excerpt":              n.Excerpt,
 		"project_id":           n.ProjectID,
 		"created_at":           n.CreatedAt,
 	}
