@@ -1,0 +1,210 @@
+{
+	"title": "チャット",
+	"channels": {
+		"heading": "チャンネル",
+		"new": "新しいチャンネル",
+		"empty": "チャンネルはまだありません",
+		"select": "チャンネルを選んで会話を始めましょう",
+		"unreadBadge": "未読メッセージ",
+		"private": "プライベートチャンネル",
+		"public": "公開チャンネル",
+		"voice": "ボイスチャンネル",
+		"mentionBadge": "メンション"
+	},
+	"header": {
+		"noTopic": "トピックは未設定です",
+		"join": "参加",
+		"leave": "退出",
+		"following": "フォロー中",
+		"archive": "チャンネルをアーカイブ",
+		"archiveConfirmTitle": "このチャンネルをアーカイブしますか？",
+		"archiveConfirmBody": "チャンネルは読み取り専用になります。これまでの会話は引き続き読めます。",
+		"archived": "アーカイブ済み"
+	},
+	"create": {
+		"title": "新しいチャンネル",
+		"description": "チャンネルは、ひとつの話題の会話をまとめます。",
+		"name": "名前",
+		"namePlaceholder": "例：release",
+		"topic": "トピック（任意）",
+		"topicPlaceholder": "このチャンネルは何のためのものですか？",
+		"visibility": "公開範囲",
+		"public": "公開",
+		"publicHint": "プロジェクトにアクセスできる人は誰でも読んで参加できます。",
+		"private": "プライベート",
+		"privateHint": "あなたが追加した人だけが読めます。",
+		"submit": "チャンネルを作成",
+		"cancel": "キャンセル"
+	},
+	"composer": {
+		"placeholder": "#{{channel}} にメッセージ",
+		"replyPlaceholder": "スレッドで返信",
+		"send": "送信",
+		"hint": "Enter で送信、Shift+Enter で改行",
+		"readOnly": "このチャンネルは閲覧のみで、投稿はできません。",
+		"archived": "このチャンネルはアーカイブされています。",
+		"tooLong": "メッセージが長すぎます。",
+		"mentionList": "メンションする相手"
+	},
+	"message": {
+		"edited": "（編集済み）",
+		"deleted": "このメッセージは削除されました",
+		"edit": "編集",
+		"delete": "削除",
+		"moderatorDelete": "メッセージを削除",
+		"reply": "スレッドで返信",
+		"react": "リアクションを追加",
+		"save": "保存",
+		"cancel": "キャンセル",
+		"viewThread": "スレッドを表示（{{count}}）",
+		"bookmark": "メッセージを保存",
+		"unbookmark": "保存から外す",
+		"viewRun": "実行を表示"
+	},
+	"thread": {
+		"title": "スレッド",
+		"close": "スレッドを閉じる",
+		"empty": "まだ返信はありません",
+		"follow": "フォロー",
+		"unfollow": "フォロー解除"
+	},
+	"list": {
+		"loadOlder": "以前のメッセージを読み込む",
+		"empty": "まだメッセージがありません。あいさつしてみましょう！",
+		"newMessages": "新着メッセージ",
+		"loadFailed": "メッセージを読み込めませんでした。",
+		"retry": "再試行",
+		"today": "今日",
+		"yesterday": "昨日",
+		"newDivider": "新着"
+	},
+	"errors": {
+		"generic": "問題が発生しました。もう一度お試しください。",
+		"forbidden": "この操作を行う権限がありません。",
+		"channelNotFound": "このチャンネルは存在しません。",
+		"nameInvalid": "チャンネル名は80文字以内で入力してください。",
+		"nameTaken": "同じ名前のチャンネルがすでにあります。",
+		"kindInvalid": "有効なチャンネルの種類を選んでください。",
+		"archived": "このチャンネルはアーカイブされています。",
+		"protected": "general チャンネルは名前の変更やアーカイブができません。",
+		"topicTooLong": "トピックが長すぎます。",
+		"messageNotFound": "そのメッセージは存在しません。",
+		"messageEmpty": "先に内容を入力してください。",
+		"messageInvalid": "そのメッセージは送信できませんでした。",
+		"messageTooLong": "メッセージが長すぎます。",
+		"threadInvalid": "そのメッセージには返信できません。",
+		"emojiInvalid": "そのリアクションには対応していません。",
+		"notMember": "あなたはこのチャンネルのメンバーではありません。",
+		"notProjectMember": "その人はこのプロジェクトのメンバーではありません。",
+		"seqInvalid": "リクエストが正しくありません。",
+		"dmSelf": "自分自身にはメッセージを送れません。",
+		"dmPeerNotFound": "そのアカウントは存在しません。",
+		"dmNotSupported": "ダイレクトメッセージでは利用できません。"
+	},
+	"noPermission": {
+		"title": "このプロジェクトでチャットを使う権限がありません",
+		"description": "プロジェクト管理者にチャンネルへのアクセス権を依頼してください。"
+	},
+	"inbox": {
+		"title": "受信トレイ",
+		"subtitle": "すべてのプロジェクトでフォロー中のチャンネル",
+		"projectFilter": "プロジェクト",
+		"allProjects": "すべてのプロジェクト",
+		"markAllRead": "すべて既読にする",
+		"markRead": "既読にする",
+		"tabs": {
+			"all": "すべて",
+			"unread": "未読",
+			"mentions": "メンション",
+			"threads": "スレッド",
+			"saved": "保存済み"
+		},
+		"loadFailed": "受信トレイを読み込めませんでした。",
+		"emptyTitle": "フォローするものはまだありません",
+		"emptyBody": "チャンネルに参加すると、会話がここに表示されます。",
+		"caughtUpTitle": "すべて読みました",
+		"caughtUpBody": "すべてのプロジェクトの未読メッセージがここに集まります。",
+		"noMessages": "まだメッセージはありません",
+		"replies": "返信：{{n}}",
+		"unreadReplies": "未読の返信：{{n}}",
+		"unreadMention": "未読のメンション",
+		"tabUnread": "未読：{{n}}",
+		"empty": {
+			"mentionsTitle": "メンションはありません",
+			"mentionsBody": "誰かが @ であなたをメンションすると、ここに表示されます。",
+			"threadsTitle": "フォロー中のスレッドはありません",
+			"threadsBody": "スレッドに返信する、メンションされる、またはフォローを選ぶと、そのスレッドをフォローします。",
+			"savedTitle": "保存したものはありません",
+			"savedBody": "メッセージのツールバーから保存すると、ここで見つかります。"
+		}
+	},
+	"browse": {
+		"title": "チャンネルを探す",
+		"subtitle": "このプロジェクトで読めるすべてのチャンネル",
+		"search": "チャンネルを検索",
+		"noMatch": "その名前に一致するチャンネルはありません。"
+	},
+	"sidebar": {
+		"collapse": "折りたたむ",
+		"expand": "展開",
+		"starred": "スター付き",
+		"star": "スターを付ける",
+		"unstar": "スターを外す",
+		"showMore": "さらに {{n}} 件表示",
+		"showLess": "表示を減らす"
+	},
+	"dm": {
+		"heading": "ダイレクトメッセージ",
+		"new": "新規メッセージ",
+		"empty": "ダイレクトメッセージはまだありません",
+		"inboxChip": "ダイレクトメッセージ",
+		"dialog": {
+			"title": "新規メッセージ",
+			"description": "同じプロジェクトにいる人との会話を始めましょう。",
+			"search": "名前で検索",
+			"noMatch": "その名前に一致する人はいません。",
+			"empty": "メッセージを送れる相手がまだいません。"
+		},
+		"kinds": {
+			"user": "メンバー",
+			"agent": "エージェント",
+			"service_account": "サービスアカウント"
+		},
+		"badge": {
+			"agent": "エージェント",
+			"service_account": "サービス"
+		},
+		"hints": {
+			"agent": "エージェントはここで送った内容を読みます。ダイレクトメッセージでの返信はまだ利用できません。",
+			"service_account": "サービスアカウントは API 経由でメッセージを読みます。自分から返信することはありません。"
+		},
+		"composerPlaceholder": "{{name}} にメッセージ",
+		"kindLabel": {
+			"user": "メンバー",
+			"agent": "エージェント",
+			"service_account": "サービスアカウント"
+		}
+	},
+	"agent": {
+		"working": "{{name}}が作業中…",
+		"runs": "実行（{{count}}）",
+		"runsTitle": "実行",
+		"search": "実行を検索",
+		"empty": "まだ実行はありません。{{name}}にメッセージを送ると始まります。",
+		"noMatch": "一致する実行はありません。",
+		"noReplies": "{{name}}はプロジェクトに属しており、ダイレクトメッセージには返信できません。ここに書いた内容は保存されるだけです。",
+		"open": "実行を開く",
+		"untitled": "無題の実行",
+		"all": "すべて",
+		"failedHint": "{{name}}の直近の実行は失敗しました。メッセージを送って再試行してください。",
+		"status": {
+			"queued": "待機中",
+			"running": "作業中",
+			"paused": "待機",
+			"finished": "完了",
+			"failed": "失敗",
+			"stopped": "停止"
+		},
+		"isWorking": "が作業中…"
+	}
+}

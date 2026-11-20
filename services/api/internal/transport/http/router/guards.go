@@ -82,6 +82,14 @@ const (
 	// conversation itself.
 	resConversationByID = "project/{its project}/conversation/{conversationId}, or agent/{its agent} for a global chat"
 	resAnnotation       = "project/{projectId}/annotation/{annotationId}"
+	resChannel          = "project/{projectId}/channel/{channelId}"
+	// resDM is a direct message: a workspace-scope channel, judged on the
+	// platform root rather than inside a project.
+	resDM      = "channel/{channelId}"
+	resDMAttrs = "request attributes of a direct message start (kind dm, caller and peer as members)"
+	// resChannelAttrs: a channel create is authorized as the channel it will
+	// be (its kind and its members).
+	resChannelAttrs = "request attributes of a channel create (kind and members from the body)"
 
 	// Request-attribute gates (see TaskCreate/TaskChange/DocCreate/DocChange):
 	// they authorize the attribute values a request body sets.
@@ -158,6 +166,35 @@ func (g guards) ProjectOrWorkspace(actions ...iam.Action) func(http.Handler) htt
 // express. resource is the template reported to the coverage test.
 func (g guards) ProjectEntity(kind, idParam, resource string, actions ...iam.Action) func(http.Handler) http.Handler {
 	return markGate(resource, g.actions(httpmw.ProjectChildResource("projectId", kind, idParam), actions))
+}
+
+// ChannelEntity requires the actions on one channel:
+// project/{projectId}/channel/{channelId}. Whether a private channel is
+// readable by a non-member is decided by the policy (channel.member_ids), not
+// here.
+func (g guards) ChannelEntity(actions ...iam.Action) func(http.Handler) http.Handler {
+	return markGate(resChannel, g.actions(httpmw.ProjectChildResource("projectId", "channel", "channelId"), actions))
+}
+
+// DirectChannel requires the actions on one direct message: channel/{channelId}.
+// Whether the caller may read it is the DirectMessages statement of their role
+// (channel.member_ids contains the caller), not code.
+func (g guards) DirectChannel(actions ...iam.Action) func(http.Handler) http.Handler {
+	return markGate(resDM, g.actions(httpmw.PlatformChildResource("channel", "channelId"), actions))
+}
+
+// DMStart authorizes starting the direct message the body describes. Declare it
+// after the route's action gate.
+func (g guards) DMStart() func(http.Handler) http.Handler {
+	return markGate(resDMAttrs, httpmw.RequireRequestAttrsFromRequest(g.iam, iam.ActionChannelsWrite,
+		httpmw.StaticResource("channel/*"), httpmw.DMAttrs, true))
+}
+
+// ChannelCreate authorizes creating the channel the body describes. Declare
+// it after the route's action gate.
+func (g guards) ChannelCreate() func(http.Handler) http.Handler {
+	return markGate(resChannelAttrs, httpmw.RequireRequestAttrsFromRequest(g.iam, iam.ActionChannelsWrite,
+		httpmw.ProjectChildCollection("projectId", "channel"), httpmw.ChannelAttrs, true))
 }
 
 // TaskCreate authorizes creating a task with the sprint, status, type and

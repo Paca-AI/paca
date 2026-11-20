@@ -4,16 +4,56 @@
     {
       "sid": "ReadUsers",
       "effect": "Allow",
-      "actions": ["users:read"],
+      "actions": [
+        "users:read"
+      ],
       "resources": [
-        "user", "user/*",
-        "role", "role/*",
-        "plugin", "plugin/*",
+        "user",
+        "user/*",
+        "role",
+        "role/*",
+        "plugin",
+        "plugin/*",
         "settings",
         "sso",
-        "agent", "agent/*",
+        "agent",
+        "agent/*",
         "project"
       ]
+    },
+    {
+      "sid": "ChatCollection",
+      "effect": "Allow",
+      "actions": [
+        "channels:read",
+        "channels:write",
+        "messages:write"
+      ],
+      "resources": [
+        "channel"
+      ]
+    },
+    {
+      "sid": "DirectMessages",
+      "effect": "Allow",
+      "actions": [
+        "channels:read",
+        "channels:write",
+        "messages:write"
+      ],
+      "resources": [
+        "channel/*"
+      ],
+      "conditions": {
+        "StringEquals": {
+          "channel.kind": [
+            "dm"
+          ],
+          "channel.member_ids": [
+            "${principal.id}"
+          ]
+        }
+      }
     }
   ]
 }

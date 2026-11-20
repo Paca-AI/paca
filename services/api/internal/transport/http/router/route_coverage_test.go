@@ -86,6 +86,7 @@ func coverageDeps(iamAuth *iam.Authorizer) Deps {
 		Git:                 handler.NewGitHandler(nil),
 		ProjectExport:       handler.NewProjectExportHandler(nil),
 		Annotation:          handler.NewAnnotationHandler(nil),
+		Chat:                handler.NewChatHandler(nil),
 		Conversation:        handler.NewConversationHandler(nil),
 		Automation:          handler.NewAutomationHandler(nil),
 		Settings:            handler.NewSettingsHandler(nil),
@@ -302,6 +303,10 @@ func entityRouteResource(pattern string) (string, bool) {
 		// (The routes nested under a port forward are authorized on the
 		// annotation as well as the environment: see annotationRoutesAreEntityGated.)
 		return resAnnotation, true
+	case strings.Contains(pattern, "/chat/dms/{channelId}"):
+		return resDM, true
+	case strings.Contains(pattern, "/projects/{projectId}/channels/{channelId}"):
+		return resChannel, true
 	case strings.Contains(pattern, "/docs/{docId}"):
 		return resDoc, true
 	case strings.Contains(pattern, "/sprints/{sprintId}"):
@@ -393,7 +398,7 @@ func (noRoleAttachments) MemberRoleIDs(context.Context, uuid.UUID, uuid.UUID) ([
 // sits after the route's action gate and authorizes the body's attributes.
 func isAttrsGate(resource string) bool {
 	return resource == resTaskAttrs || resource == resDocAttrs || resource == resTaskPositionItems ||
-		resource == resViewAttrs || resource == resViewReorderItems
+		resource == resViewAttrs || resource == resViewReorderItems || resource == resChannelAttrs || resource == resDMAttrs
 }
 
 func isAssignGate(resource string) bool {

@@ -27,6 +27,8 @@ func TestNewAttributeSchemaBuiltins(t *testing.T) {
 		"environment.type":            {"environment", false},
 		"conversation.environment_id": {"conversation", false},
 		"conversation.agent_id":       {"conversation", false},
+		"channel.kind":                {"channel", false},
+		"channel.member_ids":          {"channel", true},
 	}
 	if got := len(s.Defs()); got != len(want) {
 		t.Errorf("Defs len=%d want %d", got, len(want))

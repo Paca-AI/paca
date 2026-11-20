@@ -2,7 +2,7 @@
 
 Design and delivery plan for built-in team chat (a Slack alternative) and voice/video meetings (a Discord alternative) in Paca v1.0.0.
 
-> **Status:** proposal; Phase 1b (presence and task-comment UX) is built, see [Phase 1b status](#phase-1b-status). The other phases are tracked by the delivery plan below. The Phase 0 spikes ran on 2026-11-17 and all five came back go; see [Phase 0 results](#phase-0-results). The roadmap entry is in [ROADMAP.md](../../ROADMAP.md) under *Beyond v1.0 — Exploring*.
+> **Status:** proposal; Phase 1b (presence and task-comment UX) is built, see [Phase 1b status](#phase-1b-status). Phase 1 is partly built (project channels, direct messages, replies from global agents in direct messages, messages, threads, reactions, mentions, followed threads, saved messages, read state, the sidebar and Inbox, IAM variable and realtime channel rooms, uncommitted). Everything else here is not implemented. The Phase 0 spikes ran on 2026-11-17 and all five came back go; see [Phase 0 results](#phase-0-results). The roadmap entry is in [ROADMAP.md](../../ROADMAP.md) under *Beyond v1.0 — Exploring*.
 
 ## Goals
 
@@ -30,7 +30,7 @@ Federation, end-to-end encryption, Slack/Discord import, incoming chat webhooks 
 
 ### Data model
 
-Migration `000093+`. Scopes are `workspace` and `project`; every project gets a `#general` channel. Channel kinds: `public`, `private`, `dm`, `group_dm`, `voice`.
+Migration `000094`. Scopes are `workspace` and `project`; every project gets a `#general` channel. Channel kinds: `public`, `private`, `dm`, `group_dm`, `voice`.
 
 | Table | Holds |
 |---|---|
@@ -147,6 +147,15 @@ An agent DM is a DM channel with an agent account, plus a **conversation list**,
 - **Project binding:** a project agent's conversations belong to its project. A global agent shows a **Working in** selector (default: the project you are in, or none from the workspace context); the list groups by project chip.
 - **Storage:** conversation events stay in `agent_conversation_events` and are rendered by the agent `Thread`. They are not copied into `messages`. `agent_conversations` gains a nullable `channel_id` (the DM or channel it belongs to) and an optional `source_message_id` for channel-triggered runs. When an agent is mentioned in a channel, its final answer is also posted there as a message with a "View full run" link.
 - **Attention:** an agent question or a finished run raises an unread mark on that conversation row and an entry in the Inbox ("Needs your answer"), building on the existing question notification.
+
+### Built so far (first slice)
+
+A DM with a **global agent** is answered by it. This is a simpler shape than the two-pane layout above, and the rest of this section still describes where it is going.
+
+- **One thread.** The DM is a normal channel; the agent's replies are messages of its own account. Each carries `run_id` and a "View run" link to the full conversation page, where reasoning and tool calls stay.
+- **Bridge.** `chat_agent_dms` links the channel to the agent's global chat session. Posting in the DM hands the person's unsent messages to `SendGlobalChatMessage` (or `StartGlobalChatSession` for the first). The API's `ChatAgentConsumer` reads the agent event stream; on a `turn_end` it joins the turn's `agent_message_chunk` text into one message from the agent. A message written while the agent is working waits and goes out when the turn ends. A repeated `turn_end` does nothing (`bridged_index`). No new authorization: any signed-in person may already chat with any global agent.
+- **Runs panel.** `GET /chat/dms/{id}/agent` lists the session's runs (status, title) and whether the agent is working. The DM header shows "working…", a "Runs (N)" popover offers search and status filters, and each run opens in the conversation page.
+- **Not built:** project agents (their DM only keeps what you write, and says so), the `channel_id` column on `agent_conversations`, `@agent` triggers in channels, rename/pin/archive of runs, `/new`, working or needs-you marks in the sidebar and Inbox, streaming the answer into the thread, and removing the Conversations page. Markdown in an agent reply is shown as plain paragraphs.
 
 ## Task comments and mentions
 
@@ -455,9 +464,9 @@ Phases 1 and 3 can run mostly in parallel once the `channels` table and IAM reso
 
 Built (uncommitted at the time of writing; unit-tested, not yet run through the Playwright suite):
 
-- **Presence layer** in `services/realtime/src/presence.ts` (live rooms, access checked at join, typing leases, cross-replica merge over Valkey); protocol and limits are in [services/realtime/README.md](../../services/realtime/README.md#presence-viewers-and-typing).
+- **Presence layer** (names in the viewer list and typing indicator are resolved from the project's member list, so they need `project.members:read`; without it the browser has ids it cannot name) in `services/realtime/src/presence.ts` (live rooms, access checked at join, typing leases, cross-replica merge over Valkey); protocol and limits are in [services/realtime/README.md](../../services/realtime/README.md#presence-viewers-and-typing).
 - **Task UI:** "X is typing…" under the comment composer, viewer avatars in the task header, and a per-browser switch to stop sending typing (Account → Profile).
-- **Mention notifications that say where:** migration `000094` adds `comment_id`, `mention_source` and a stored `excerpt` to `notifications`. The list response gains `comment_id`, `mention_source`, `excerpt`, `task_status_name/color`, `sprint_id` and `sprint_name`; status and sprint are joined at read time so they stay right after the task moves. Cards show project, sprint (or *Backlog*), task, status and the excerpt with the mention highlighted; runs of mentions on one task collapse to "3 mentions in #142". Clicking opens the task with `?comment=<id>`, scrolled to and briefly highlighting that comment (only when it is on the newest loaded page of the activity feed).
+- **Mention notifications that say where:** migration `000095` adds `comment_id`, `mention_source` and a stored `excerpt` to `notifications`. The list response gains `comment_id`, `mention_source`, `excerpt`, `task_status_name/color`, `sprint_id` and `sprint_name`; status and sprint are joined at read time so they stay right after the task moves. Cards show project, sprint (or *Backlog*), task, status and the excerpt with the mention highlighted; runs of mentions on one task collapse to "3 mentions in #142". Clicking opens the task with `?comment=<id>`, scrolled to and briefly highlighting that comment (only when it is on the newest loaded page of the activity feed).
 - **`/notifications` page** with All / Mentions / Assigned / Agents tabs and a project filter (`GET /users/me/notifications?type=&project_id=&actor=agent`), and a toast when a mention arrives while you are online.
 - **Unread cues:** `GET /users/me/notifications/unread-mentions` feeds a badge on task rows and a count on sprint headers. `task_reads` plus `PUT /projects/{id}/tasks/{taskId}/read` (gated on `tasks:read`) record the visit, read the caller's mentions on the task, and return the previous visit time for the *New since your last visit* divider in the activity pane.
 - **Description and document mentions** now create in-app rows (`mention_source` `description` / `document`) as well as the plugin event.

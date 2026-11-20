@@ -85,7 +85,14 @@ test.describe("Task presence", () => {
 				projectId,
 				username,
 				roleName: uniqueName("ROLE"),
-				permissions: { "tasks:read": true, "tasks:write": true },
+				// project.members:read lets the member's browser resolve the
+				// admin's name; without it the viewer list and the typing
+				// indicator have ids they cannot turn into names.
+				permissions: {
+					"tasks:read": true,
+					"tasks:write": true,
+					"project.members:read": true,
+				},
 			},
 		);
 		editor = { userId, username };
@@ -156,8 +163,9 @@ test.describe("Task presence", () => {
 			await expect(typing(other.page)).toHaveText("");
 
 			// Clearing the composer stops it at once, not after the lease.
-			await other.page.keyboard.press("ControlOrMeta+A");
-			await other.page.keyboard.press("Backspace");
+			// Delete everything (select-all does not reach past the trailing
+			// empty block of the composer), one key at a time.
+			for (let i = 0; i < 30; i++) await other.page.keyboard.press("Backspace");
 			await expect(typing(page)).toHaveText("", { timeout: 4_000 });
 			await other.context.close();
 		});

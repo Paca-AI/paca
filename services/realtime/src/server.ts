@@ -64,6 +64,7 @@ import {
 } from "./api-client.ts";
 import { extractTokenFromCookieHeader } from "./auth.ts";
 import type { ChangeLogReader } from "./change-log.ts";
+import { ChatHub } from "./chat.ts";
 import {
 	CollabHub,
 	type CollabJoinRequest,
@@ -81,7 +82,7 @@ import {
 	type LeaseStore,
 } from "./collab-cluster.ts";
 import type { Config } from "./config.ts";
-import { agentChatRoomName } from "./permissions.ts";
+import { agentChatRoomName, userChatRoomName } from "./permissions.ts";
 import {
 	liveRoomName,
 	type PresenceBus,
@@ -109,6 +110,9 @@ declare module "socket.io" {
 		// syncProjects are the projects whose changes this socket receives
 		// through the sync protocol (see sync.ts) instead of legacy events.
 		syncProjects: Set<string>;
+		// chatChannels maps each chat channel this socket watches to its
+		// project (see chat.ts).
+		chatChannels: Map<string, string>;
 	}
 }
 
@@ -121,6 +125,7 @@ export interface SocketServer {
 	// sync is undefined when the protocol is off (no change log reader, or
 	// SYNC_ENABLED=false).
 	sync?: SyncHub;
+	chat: ChatHub;
 	// presence holds who views and who types (see presence.ts).
 	presence: PresenceHub;
 }
@@ -218,6 +223,7 @@ export function createSocketServer(
 			socket.data.expiresAt = authResult.expiresAt;
 			socket.data.projects = new Set();
 			socket.data.syncProjects = new Set();
+			socket.data.chatChannels = new Map();
 
 			next();
 		} catch (err) {
@@ -307,6 +313,8 @@ export function createSocketServer(
 			: undefined;
 	sync?.start();
 
+	const chat = new ChatHub(io, decider, logger);
+
 	// Presence: viewers and typing in a task (see presence.ts).
 	const presence = new PresenceHub({
 		decider,
@@ -349,6 +357,26 @@ export function createSocketServer(
 			{ userId, room: agentChatRoomName(userId) },
 			"joined user agent-chat room",
 		);
+
+		// Unread nudges for every project the account reads (see chat.ts).
+		socket.join(userChatRoomName(userId));
+
+		// Watch one chat channel: the API confirms the account may read it, then
+		// the socket receives its message announcements. The ack says whether
+		// it worked and, if not, why (the client may retry "unavailable").
+		socket.on(
+			"chat:join",
+			async (
+				data: { projectId?: unknown; channelId?: unknown },
+				ack?: (res: unknown) => void,
+			) => {
+				const res = await chat.join(socket, data?.projectId, data?.channelId);
+				if (typeof ack === "function") ack(res);
+			},
+		);
+		socket.on("chat:leave", (data: { channelId?: unknown }) => {
+			chat.leave(socket, data?.channelId);
+		});
 
 		// Join namespace-scoped rooms for a project. Fetches the account's
 		// effective project actions once and joins the rooms whose read action
@@ -565,5 +593,5 @@ export function createSocketServer(
 	resyncer.start();
 	expiry.start();
 
-	return { httpServer, io, resyncer, expiry, collab, sync, presence };
+	return { httpServer, io, resyncer, expiry, collab, sync, chat, presence };
 }

@@ -61,7 +61,7 @@ const presenceBus = config.collabCluster
 		)
 	: undefined;
 
-const { httpServer, io, resyncer, expiry, collab, sync, presence } =
+const { httpServer, io, resyncer, expiry, collab, sync, chat, presence } =
 	createSocketServer(
 		config,
 		logger,
@@ -83,6 +83,7 @@ if (collab instanceof CollabCluster) {
 function onIamChanged(): void {
 	resyncer.onIamChanged();
 	void collab.recheck();
+	void chat.recheck();
 	void presence.recheck((id, ref) => {
 		io.in(id).socketsLeave(liveRoomName(ref.kind, ref.id));
 		io.to(id).emit("live:revoked", { kind: ref.kind, id: ref.id });
@@ -113,12 +114,16 @@ const subscriber = createSubscriber(
 	},
 	(type, payload, meta) => void collab.handleContentEvent(type, payload, meta),
 	(projectId) => sync?.notify(projectId),
+	chat,
 );
 
 // A missed iam.changed announcement must cost at most one interval, as it does
 // for project rooms (see resync.ts): re-check collab editors periodically too.
 // The decider caches answers for 30 s, so each pass sees fresh decisions.
-const collabRecheck = setInterval(() => void collab.recheck(), 60_000);
+const collabRecheck = setInterval(() => {
+	void collab.recheck();
+	void chat.recheck();
+}, 60_000);
 collabRecheck.unref();
 
 httpServer.listen(config.port, () => {

@@ -22,6 +22,7 @@ import { Route as AuthenticatedAccountRouteRouteImport } from './routes/_authent
 import { Route as AuthenticatedHomeIndexRouteImport } from './routes/_authenticated/home/index'
 import { Route as AuthenticatedFilesIndexRouteImport } from './routes/_authenticated/files/index'
 import { Route as AuthenticatedConversationsIndexRouteImport } from './routes/_authenticated/conversations/index'
+import { Route as AuthenticatedChatIndexRouteImport } from './routes/_authenticated/chat/index'
 import { Route as AuthenticatedAccountIndexRouteImport } from './routes/_authenticated/account/index'
 import { Route as AuthenticatedProjectsProjectIdRouteImport } from './routes/_authenticated/projects/$projectId'
 import { Route as AuthenticatedFilesTrashRouteImport } from './routes/_authenticated/files/trash'
@@ -40,14 +41,17 @@ import { Route as AuthenticatedAdminGlobalRolesIndexRouteImport } from './routes
 import { Route as AuthenticatedAdminChangelogIndexRouteImport } from './routes/_authenticated/admin/changelog/index'
 import { Route as AuthenticatedAdminAgentsIndexRouteImport } from './routes/_authenticated/admin/agents/index'
 import { Route as AuthenticatedProjectsProjectIdConversationsRouteImport } from './routes/_authenticated/projects/$projectId/conversations'
+import { Route as AuthenticatedProjectsProjectIdChatRouteImport } from './routes/_authenticated/projects/$projectId/chat'
 import { Route as AuthenticatedPluginPagesPluginIdSlugRouteImport } from './routes/_authenticated/plugin-pages/$pluginId/$slug'
 import { Route as AuthenticatedGitSetupCallbackRouteImport } from './routes/_authenticated/git/setup/callback'
+import { Route as AuthenticatedChatDmChannelIdRouteImport } from './routes/_authenticated/chat/dm/$channelId'
 import { Route as AuthenticatedProjectsProjectIdTeamIndexRouteImport } from './routes/_authenticated/projects/$projectId/team/index'
 import { Route as AuthenticatedProjectsProjectIdSettingsIndexRouteImport } from './routes/_authenticated/projects/$projectId/settings/index'
 import { Route as AuthenticatedProjectsProjectIdFilesIndexRouteImport } from './routes/_authenticated/projects/$projectId/files/index'
 import { Route as AuthenticatedProjectsProjectIdEnvironmentsIndexRouteImport } from './routes/_authenticated/projects/$projectId/environments/index'
 import { Route as AuthenticatedProjectsProjectIdDocsIndexRouteImport } from './routes/_authenticated/projects/$projectId/docs/index'
 import { Route as AuthenticatedProjectsProjectIdConversationsIndexRouteImport } from './routes/_authenticated/projects/$projectId/conversations/index'
+import { Route as AuthenticatedProjectsProjectIdChatIndexRouteImport } from './routes/_authenticated/projects/$projectId/chat/index'
 import { Route as AuthenticatedProjectsProjectIdAutomationIndexRouteImport } from './routes/_authenticated/projects/$projectId/automation/index'
 import { Route as AuthenticatedProjectsProjectIdAgentsIndexRouteImport } from './routes/_authenticated/projects/$projectId/agents/index'
 import { Route as AuthenticatedProjectsProjectIdActivityIndexRouteImport } from './routes/_authenticated/projects/$projectId/activity/index'
@@ -60,7 +64,9 @@ import { Route as AuthenticatedProjectsProjectIdFilesTrashRouteImport } from './
 import { Route as AuthenticatedProjectsProjectIdFilesStarredRouteImport } from './routes/_authenticated/projects/$projectId/files/starred'
 import { Route as AuthenticatedProjectsProjectIdFilesRecentRouteImport } from './routes/_authenticated/projects/$projectId/files/recent'
 import { Route as AuthenticatedProjectsProjectIdDocsDocIdRouteImport } from './routes/_authenticated/projects/$projectId/docs/$docId'
+import { Route as AuthenticatedProjectsProjectIdDmChannelIdRouteImport } from './routes/_authenticated/projects/$projectId/dm.$channelId'
 import { Route as AuthenticatedProjectsProjectIdConversationsConversationIdRouteImport } from './routes/_authenticated/projects/$projectId/conversations/$conversationId'
+import { Route as AuthenticatedProjectsProjectIdChatChannelIdRouteImport } from './routes/_authenticated/projects/$projectId/chat/$channelId'
 import { Route as AuthenticatedProjectsProjectIdAutomationAutomationIdRouteImport } from './routes/_authenticated/projects/$projectId/automation/$automationId'
 import { Route as AuthenticatedAdminPluginsPluginIdSlugRouteImport } from './routes/_authenticated/admin/plugins/$pluginId/$slug'
 import { Route as AuthenticatedProjectsProjectIdEnvironmentsEnvironmentIdIndexRouteImport } from './routes/_authenticated/projects/$projectId/environments/$environmentId/index'
@@ -140,6 +146,11 @@ const AuthenticatedConversationsIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedConversationsRoute,
   } as any)
+const AuthenticatedChatIndexRoute = AuthenticatedChatIndexRouteImport.update({
+  id: '/chat/',
+  path: '/chat/',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedAccountIndexRoute =
   AuthenticatedAccountIndexRouteImport.update({
     id: '/',
@@ -247,6 +258,12 @@ const AuthenticatedProjectsProjectIdConversationsRoute =
     path: '/conversations',
     getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
   } as any)
+const AuthenticatedProjectsProjectIdChatRoute =
+  AuthenticatedProjectsProjectIdChatRouteImport.update({
+    id: '/chat',
+    path: '/chat',
+    getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
+  } as any)
 const AuthenticatedPluginPagesPluginIdSlugRoute =
   AuthenticatedPluginPagesPluginIdSlugRouteImport.update({
     id: '/plugin-pages/$pluginId/$slug',
@@ -257,6 +274,12 @@ const AuthenticatedGitSetupCallbackRoute =
   AuthenticatedGitSetupCallbackRouteImport.update({
     id: '/git/setup/callback',
     path: '/git/setup/callback',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedChatDmChannelIdRoute =
+  AuthenticatedChatDmChannelIdRouteImport.update({
+    id: '/chat/dm/$channelId',
+    path: '/chat/dm/$channelId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedProjectsProjectIdTeamIndexRoute =
@@ -294,6 +317,12 @@ const AuthenticatedProjectsProjectIdConversationsIndexRoute =
     id: '/',
     path: '/',
     getParentRoute: () => AuthenticatedProjectsProjectIdConversationsRoute,
+  } as any)
+const AuthenticatedProjectsProjectIdChatIndexRoute =
+  AuthenticatedProjectsProjectIdChatIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedProjectsProjectIdChatRoute,
   } as any)
 const AuthenticatedProjectsProjectIdAutomationIndexRoute =
   AuthenticatedProjectsProjectIdAutomationIndexRouteImport.update({
@@ -367,11 +396,23 @@ const AuthenticatedProjectsProjectIdDocsDocIdRoute =
     path: '/docs/$docId',
     getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
   } as any)
+const AuthenticatedProjectsProjectIdDmChannelIdRoute =
+  AuthenticatedProjectsProjectIdDmChannelIdRouteImport.update({
+    id: '/dm/$channelId',
+    path: '/dm/$channelId',
+    getParentRoute: () => AuthenticatedProjectsProjectIdRoute,
+  } as any)
 const AuthenticatedProjectsProjectIdConversationsConversationIdRoute =
   AuthenticatedProjectsProjectIdConversationsConversationIdRouteImport.update({
     id: '/$conversationId',
     path: '/$conversationId',
     getParentRoute: () => AuthenticatedProjectsProjectIdConversationsRoute,
+  } as any)
+const AuthenticatedProjectsProjectIdChatChannelIdRoute =
+  AuthenticatedProjectsProjectIdChatChannelIdRouteImport.update({
+    id: '/$channelId',
+    path: '/$channelId',
+    getParentRoute: () => AuthenticatedProjectsProjectIdChatRoute,
   } as any)
 const AuthenticatedProjectsProjectIdAutomationAutomationIdRoute =
   AuthenticatedProjectsProjectIdAutomationAutomationIdRouteImport.update({
@@ -463,11 +504,14 @@ export interface FileRoutesByFullPath {
   '/files/trash': typeof AuthenticatedFilesTrashRoute
   '/projects/$projectId': typeof AuthenticatedProjectsProjectIdRouteWithChildren
   '/account/': typeof AuthenticatedAccountIndexRoute
+  '/chat/': typeof AuthenticatedChatIndexRoute
   '/conversations/': typeof AuthenticatedConversationsIndexRoute
   '/files/': typeof AuthenticatedFilesIndexRoute
   '/home/': typeof AuthenticatedHomeIndexRoute
+  '/chat/dm/$channelId': typeof AuthenticatedChatDmChannelIdRoute
   '/git/setup/callback': typeof AuthenticatedGitSetupCallbackRoute
   '/plugin-pages/$pluginId/$slug': typeof AuthenticatedPluginPagesPluginIdSlugRoute
+  '/projects/$projectId/chat': typeof AuthenticatedProjectsProjectIdChatRouteWithChildren
   '/projects/$projectId/conversations': typeof AuthenticatedProjectsProjectIdConversationsRouteWithChildren
   '/admin/agents/': typeof AuthenticatedAdminAgentsIndexRoute
   '/admin/changelog/': typeof AuthenticatedAdminChangelogIndexRoute
@@ -479,7 +523,9 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/': typeof AuthenticatedProjectsProjectIdIndexRoute
   '/admin/plugins/$pluginId/$slug': typeof AuthenticatedAdminPluginsPluginIdSlugRoute
   '/projects/$projectId/automation/$automationId': typeof AuthenticatedProjectsProjectIdAutomationAutomationIdRoute
+  '/projects/$projectId/chat/$channelId': typeof AuthenticatedProjectsProjectIdChatChannelIdRoute
   '/projects/$projectId/conversations/$conversationId': typeof AuthenticatedProjectsProjectIdConversationsConversationIdRoute
+  '/projects/$projectId/dm/$channelId': typeof AuthenticatedProjectsProjectIdDmChannelIdRoute
   '/projects/$projectId/docs/$docId': typeof AuthenticatedProjectsProjectIdDocsDocIdRoute
   '/projects/$projectId/files/recent': typeof AuthenticatedProjectsProjectIdFilesRecentRoute
   '/projects/$projectId/files/starred': typeof AuthenticatedProjectsProjectIdFilesStarredRoute
@@ -492,6 +538,7 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/activity/': typeof AuthenticatedProjectsProjectIdActivityIndexRoute
   '/projects/$projectId/agents/': typeof AuthenticatedProjectsProjectIdAgentsIndexRoute
   '/projects/$projectId/automation/': typeof AuthenticatedProjectsProjectIdAutomationIndexRoute
+  '/projects/$projectId/chat/': typeof AuthenticatedProjectsProjectIdChatIndexRoute
   '/projects/$projectId/conversations/': typeof AuthenticatedProjectsProjectIdConversationsIndexRoute
   '/projects/$projectId/docs/': typeof AuthenticatedProjectsProjectIdDocsIndexRoute
   '/projects/$projectId/environments/': typeof AuthenticatedProjectsProjectIdEnvironmentsIndexRoute
@@ -523,9 +570,11 @@ export interface FileRoutesByTo {
   '/files/starred': typeof AuthenticatedFilesStarredRoute
   '/files/trash': typeof AuthenticatedFilesTrashRoute
   '/account': typeof AuthenticatedAccountIndexRoute
+  '/chat': typeof AuthenticatedChatIndexRoute
   '/conversations': typeof AuthenticatedConversationsIndexRoute
   '/files': typeof AuthenticatedFilesIndexRoute
   '/home': typeof AuthenticatedHomeIndexRoute
+  '/chat/dm/$channelId': typeof AuthenticatedChatDmChannelIdRoute
   '/git/setup/callback': typeof AuthenticatedGitSetupCallbackRoute
   '/plugin-pages/$pluginId/$slug': typeof AuthenticatedPluginPagesPluginIdSlugRoute
   '/admin/agents': typeof AuthenticatedAdminAgentsIndexRoute
@@ -538,7 +587,9 @@ export interface FileRoutesByTo {
   '/projects/$projectId': typeof AuthenticatedProjectsProjectIdIndexRoute
   '/admin/plugins/$pluginId/$slug': typeof AuthenticatedAdminPluginsPluginIdSlugRoute
   '/projects/$projectId/automation/$automationId': typeof AuthenticatedProjectsProjectIdAutomationAutomationIdRoute
+  '/projects/$projectId/chat/$channelId': typeof AuthenticatedProjectsProjectIdChatChannelIdRoute
   '/projects/$projectId/conversations/$conversationId': typeof AuthenticatedProjectsProjectIdConversationsConversationIdRoute
+  '/projects/$projectId/dm/$channelId': typeof AuthenticatedProjectsProjectIdDmChannelIdRoute
   '/projects/$projectId/docs/$docId': typeof AuthenticatedProjectsProjectIdDocsDocIdRoute
   '/projects/$projectId/files/recent': typeof AuthenticatedProjectsProjectIdFilesRecentRoute
   '/projects/$projectId/files/starred': typeof AuthenticatedProjectsProjectIdFilesStarredRoute
@@ -551,6 +602,7 @@ export interface FileRoutesByTo {
   '/projects/$projectId/activity': typeof AuthenticatedProjectsProjectIdActivityIndexRoute
   '/projects/$projectId/agents': typeof AuthenticatedProjectsProjectIdAgentsIndexRoute
   '/projects/$projectId/automation': typeof AuthenticatedProjectsProjectIdAutomationIndexRoute
+  '/projects/$projectId/chat': typeof AuthenticatedProjectsProjectIdChatIndexRoute
   '/projects/$projectId/conversations': typeof AuthenticatedProjectsProjectIdConversationsIndexRoute
   '/projects/$projectId/docs': typeof AuthenticatedProjectsProjectIdDocsIndexRoute
   '/projects/$projectId/environments': typeof AuthenticatedProjectsProjectIdEnvironmentsIndexRoute
@@ -587,11 +639,14 @@ export interface FileRoutesById {
   '/_authenticated/files/trash': typeof AuthenticatedFilesTrashRoute
   '/_authenticated/projects/$projectId': typeof AuthenticatedProjectsProjectIdRouteWithChildren
   '/_authenticated/account/': typeof AuthenticatedAccountIndexRoute
+  '/_authenticated/chat/': typeof AuthenticatedChatIndexRoute
   '/_authenticated/conversations/': typeof AuthenticatedConversationsIndexRoute
   '/_authenticated/files/': typeof AuthenticatedFilesIndexRoute
   '/_authenticated/home/': typeof AuthenticatedHomeIndexRoute
+  '/_authenticated/chat/dm/$channelId': typeof AuthenticatedChatDmChannelIdRoute
   '/_authenticated/git/setup/callback': typeof AuthenticatedGitSetupCallbackRoute
   '/_authenticated/plugin-pages/$pluginId/$slug': typeof AuthenticatedPluginPagesPluginIdSlugRoute
+  '/_authenticated/projects/$projectId/chat': typeof AuthenticatedProjectsProjectIdChatRouteWithChildren
   '/_authenticated/projects/$projectId/conversations': typeof AuthenticatedProjectsProjectIdConversationsRouteWithChildren
   '/_authenticated/admin/agents/': typeof AuthenticatedAdminAgentsIndexRoute
   '/_authenticated/admin/changelog/': typeof AuthenticatedAdminChangelogIndexRoute
@@ -603,7 +658,9 @@ export interface FileRoutesById {
   '/_authenticated/projects/$projectId/': typeof AuthenticatedProjectsProjectIdIndexRoute
   '/_authenticated/admin/plugins/$pluginId/$slug': typeof AuthenticatedAdminPluginsPluginIdSlugRoute
   '/_authenticated/projects/$projectId/automation/$automationId': typeof AuthenticatedProjectsProjectIdAutomationAutomationIdRoute
+  '/_authenticated/projects/$projectId/chat/$channelId': typeof AuthenticatedProjectsProjectIdChatChannelIdRoute
   '/_authenticated/projects/$projectId/conversations/$conversationId': typeof AuthenticatedProjectsProjectIdConversationsConversationIdRoute
+  '/_authenticated/projects/$projectId/dm/$channelId': typeof AuthenticatedProjectsProjectIdDmChannelIdRoute
   '/_authenticated/projects/$projectId/docs/$docId': typeof AuthenticatedProjectsProjectIdDocsDocIdRoute
   '/_authenticated/projects/$projectId/files/recent': typeof AuthenticatedProjectsProjectIdFilesRecentRoute
   '/_authenticated/projects/$projectId/files/starred': typeof AuthenticatedProjectsProjectIdFilesStarredRoute
@@ -616,6 +673,7 @@ export interface FileRoutesById {
   '/_authenticated/projects/$projectId/activity/': typeof AuthenticatedProjectsProjectIdActivityIndexRoute
   '/_authenticated/projects/$projectId/agents/': typeof AuthenticatedProjectsProjectIdAgentsIndexRoute
   '/_authenticated/projects/$projectId/automation/': typeof AuthenticatedProjectsProjectIdAutomationIndexRoute
+  '/_authenticated/projects/$projectId/chat/': typeof AuthenticatedProjectsProjectIdChatIndexRoute
   '/_authenticated/projects/$projectId/conversations/': typeof AuthenticatedProjectsProjectIdConversationsIndexRoute
   '/_authenticated/projects/$projectId/docs/': typeof AuthenticatedProjectsProjectIdDocsIndexRoute
   '/_authenticated/projects/$projectId/environments/': typeof AuthenticatedProjectsProjectIdEnvironmentsIndexRoute
@@ -652,11 +710,14 @@ export interface FileRouteTypes {
     | '/files/trash'
     | '/projects/$projectId'
     | '/account/'
+    | '/chat/'
     | '/conversations/'
     | '/files/'
     | '/home/'
+    | '/chat/dm/$channelId'
     | '/git/setup/callback'
     | '/plugin-pages/$pluginId/$slug'
+    | '/projects/$projectId/chat'
     | '/projects/$projectId/conversations'
     | '/admin/agents/'
     | '/admin/changelog/'
@@ -668,7 +729,9 @@ export interface FileRouteTypes {
     | '/projects/$projectId/'
     | '/admin/plugins/$pluginId/$slug'
     | '/projects/$projectId/automation/$automationId'
+    | '/projects/$projectId/chat/$channelId'
     | '/projects/$projectId/conversations/$conversationId'
+    | '/projects/$projectId/dm/$channelId'
     | '/projects/$projectId/docs/$docId'
     | '/projects/$projectId/files/recent'
     | '/projects/$projectId/files/starred'
@@ -681,6 +744,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/activity/'
     | '/projects/$projectId/agents/'
     | '/projects/$projectId/automation/'
+    | '/projects/$projectId/chat/'
     | '/projects/$projectId/conversations/'
     | '/projects/$projectId/docs/'
     | '/projects/$projectId/environments/'
@@ -712,9 +776,11 @@ export interface FileRouteTypes {
     | '/files/starred'
     | '/files/trash'
     | '/account'
+    | '/chat'
     | '/conversations'
     | '/files'
     | '/home'
+    | '/chat/dm/$channelId'
     | '/git/setup/callback'
     | '/plugin-pages/$pluginId/$slug'
     | '/admin/agents'
@@ -727,7 +793,9 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/admin/plugins/$pluginId/$slug'
     | '/projects/$projectId/automation/$automationId'
+    | '/projects/$projectId/chat/$channelId'
     | '/projects/$projectId/conversations/$conversationId'
+    | '/projects/$projectId/dm/$channelId'
     | '/projects/$projectId/docs/$docId'
     | '/projects/$projectId/files/recent'
     | '/projects/$projectId/files/starred'
@@ -740,6 +808,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/activity'
     | '/projects/$projectId/agents'
     | '/projects/$projectId/automation'
+    | '/projects/$projectId/chat'
     | '/projects/$projectId/conversations'
     | '/projects/$projectId/docs'
     | '/projects/$projectId/environments'
@@ -775,11 +844,14 @@ export interface FileRouteTypes {
     | '/_authenticated/files/trash'
     | '/_authenticated/projects/$projectId'
     | '/_authenticated/account/'
+    | '/_authenticated/chat/'
     | '/_authenticated/conversations/'
     | '/_authenticated/files/'
     | '/_authenticated/home/'
+    | '/_authenticated/chat/dm/$channelId'
     | '/_authenticated/git/setup/callback'
     | '/_authenticated/plugin-pages/$pluginId/$slug'
+    | '/_authenticated/projects/$projectId/chat'
     | '/_authenticated/projects/$projectId/conversations'
     | '/_authenticated/admin/agents/'
     | '/_authenticated/admin/changelog/'
@@ -791,7 +863,9 @@ export interface FileRouteTypes {
     | '/_authenticated/projects/$projectId/'
     | '/_authenticated/admin/plugins/$pluginId/$slug'
     | '/_authenticated/projects/$projectId/automation/$automationId'
+    | '/_authenticated/projects/$projectId/chat/$channelId'
     | '/_authenticated/projects/$projectId/conversations/$conversationId'
+    | '/_authenticated/projects/$projectId/dm/$channelId'
     | '/_authenticated/projects/$projectId/docs/$docId'
     | '/_authenticated/projects/$projectId/files/recent'
     | '/_authenticated/projects/$projectId/files/starred'
@@ -804,6 +878,7 @@ export interface FileRouteTypes {
     | '/_authenticated/projects/$projectId/activity/'
     | '/_authenticated/projects/$projectId/agents/'
     | '/_authenticated/projects/$projectId/automation/'
+    | '/_authenticated/projects/$projectId/chat/'
     | '/_authenticated/projects/$projectId/conversations/'
     | '/_authenticated/projects/$projectId/docs/'
     | '/_authenticated/projects/$projectId/environments/'
@@ -921,6 +996,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/conversations/'
       preLoaderRoute: typeof AuthenticatedConversationsIndexRouteImport
       parentRoute: typeof AuthenticatedConversationsRoute
+    }
+    '/_authenticated/chat/': {
+      id: '/_authenticated/chat/'
+      path: '/chat'
+      fullPath: '/chat/'
+      preLoaderRoute: typeof AuthenticatedChatIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/account/': {
       id: '/_authenticated/account/'
@@ -1048,6 +1130,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjectsProjectIdConversationsRouteImport
       parentRoute: typeof AuthenticatedProjectsProjectIdRoute
     }
+    '/_authenticated/projects/$projectId/chat': {
+      id: '/_authenticated/projects/$projectId/chat'
+      path: '/chat'
+      fullPath: '/projects/$projectId/chat'
+      preLoaderRoute: typeof AuthenticatedProjectsProjectIdChatRouteImport
+      parentRoute: typeof AuthenticatedProjectsProjectIdRoute
+    }
     '/_authenticated/plugin-pages/$pluginId/$slug': {
       id: '/_authenticated/plugin-pages/$pluginId/$slug'
       path: '/plugin-pages/$pluginId/$slug'
@@ -1060,6 +1149,13 @@ declare module '@tanstack/react-router' {
       path: '/git/setup/callback'
       fullPath: '/git/setup/callback'
       preLoaderRoute: typeof AuthenticatedGitSetupCallbackRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/chat/dm/$channelId': {
+      id: '/_authenticated/chat/dm/$channelId'
+      path: '/chat/dm/$channelId'
+      fullPath: '/chat/dm/$channelId'
+      preLoaderRoute: typeof AuthenticatedChatDmChannelIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/projects/$projectId/team/': {
@@ -1103,6 +1199,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/projects/$projectId/conversations/'
       preLoaderRoute: typeof AuthenticatedProjectsProjectIdConversationsIndexRouteImport
       parentRoute: typeof AuthenticatedProjectsProjectIdConversationsRoute
+    }
+    '/_authenticated/projects/$projectId/chat/': {
+      id: '/_authenticated/projects/$projectId/chat/'
+      path: '/'
+      fullPath: '/projects/$projectId/chat/'
+      preLoaderRoute: typeof AuthenticatedProjectsProjectIdChatIndexRouteImport
+      parentRoute: typeof AuthenticatedProjectsProjectIdChatRoute
     }
     '/_authenticated/projects/$projectId/automation/': {
       id: '/_authenticated/projects/$projectId/automation/'
@@ -1188,12 +1291,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjectsProjectIdDocsDocIdRouteImport
       parentRoute: typeof AuthenticatedProjectsProjectIdRoute
     }
+    '/_authenticated/projects/$projectId/dm/$channelId': {
+      id: '/_authenticated/projects/$projectId/dm/$channelId'
+      path: '/dm/$channelId'
+      fullPath: '/projects/$projectId/dm/$channelId'
+      preLoaderRoute: typeof AuthenticatedProjectsProjectIdDmChannelIdRouteImport
+      parentRoute: typeof AuthenticatedProjectsProjectIdRoute
+    }
     '/_authenticated/projects/$projectId/conversations/$conversationId': {
       id: '/_authenticated/projects/$projectId/conversations/$conversationId'
       path: '/$conversationId'
       fullPath: '/projects/$projectId/conversations/$conversationId'
       preLoaderRoute: typeof AuthenticatedProjectsProjectIdConversationsConversationIdRouteImport
       parentRoute: typeof AuthenticatedProjectsProjectIdConversationsRoute
+    }
+    '/_authenticated/projects/$projectId/chat/$channelId': {
+      id: '/_authenticated/projects/$projectId/chat/$channelId'
+      path: '/$channelId'
+      fullPath: '/projects/$projectId/chat/$channelId'
+      preLoaderRoute: typeof AuthenticatedProjectsProjectIdChatChannelIdRouteImport
+      parentRoute: typeof AuthenticatedProjectsProjectIdChatRoute
     }
     '/_authenticated/projects/$projectId/automation/$automationId': {
       id: '/_authenticated/projects/$projectId/automation/$automationId'
@@ -1305,6 +1422,24 @@ const AuthenticatedConversationsRouteWithChildren =
     AuthenticatedConversationsRouteChildren,
   )
 
+interface AuthenticatedProjectsProjectIdChatRouteChildren {
+  AuthenticatedProjectsProjectIdChatChannelIdRoute: typeof AuthenticatedProjectsProjectIdChatChannelIdRoute
+  AuthenticatedProjectsProjectIdChatIndexRoute: typeof AuthenticatedProjectsProjectIdChatIndexRoute
+}
+
+const AuthenticatedProjectsProjectIdChatRouteChildren: AuthenticatedProjectsProjectIdChatRouteChildren =
+  {
+    AuthenticatedProjectsProjectIdChatChannelIdRoute:
+      AuthenticatedProjectsProjectIdChatChannelIdRoute,
+    AuthenticatedProjectsProjectIdChatIndexRoute:
+      AuthenticatedProjectsProjectIdChatIndexRoute,
+  }
+
+const AuthenticatedProjectsProjectIdChatRouteWithChildren =
+  AuthenticatedProjectsProjectIdChatRoute._addFileChildren(
+    AuthenticatedProjectsProjectIdChatRouteChildren,
+  )
+
 interface AuthenticatedProjectsProjectIdConversationsRouteChildren {
   AuthenticatedProjectsProjectIdConversationsConversationIdRoute: typeof AuthenticatedProjectsProjectIdConversationsConversationIdRoute
   AuthenticatedProjectsProjectIdConversationsIndexRoute: typeof AuthenticatedProjectsProjectIdConversationsIndexRoute
@@ -1324,9 +1459,11 @@ const AuthenticatedProjectsProjectIdConversationsRouteWithChildren =
   )
 
 interface AuthenticatedProjectsProjectIdRouteChildren {
+  AuthenticatedProjectsProjectIdChatRoute: typeof AuthenticatedProjectsProjectIdChatRouteWithChildren
   AuthenticatedProjectsProjectIdConversationsRoute: typeof AuthenticatedProjectsProjectIdConversationsRouteWithChildren
   AuthenticatedProjectsProjectIdIndexRoute: typeof AuthenticatedProjectsProjectIdIndexRoute
   AuthenticatedProjectsProjectIdAutomationAutomationIdRoute: typeof AuthenticatedProjectsProjectIdAutomationAutomationIdRoute
+  AuthenticatedProjectsProjectIdDmChannelIdRoute: typeof AuthenticatedProjectsProjectIdDmChannelIdRoute
   AuthenticatedProjectsProjectIdDocsDocIdRoute: typeof AuthenticatedProjectsProjectIdDocsDocIdRoute
   AuthenticatedProjectsProjectIdFilesRecentRoute: typeof AuthenticatedProjectsProjectIdFilesRecentRoute
   AuthenticatedProjectsProjectIdFilesStarredRoute: typeof AuthenticatedProjectsProjectIdFilesStarredRoute
@@ -1354,12 +1491,16 @@ interface AuthenticatedProjectsProjectIdRouteChildren {
 
 const AuthenticatedProjectsProjectIdRouteChildren: AuthenticatedProjectsProjectIdRouteChildren =
   {
+    AuthenticatedProjectsProjectIdChatRoute:
+      AuthenticatedProjectsProjectIdChatRouteWithChildren,
     AuthenticatedProjectsProjectIdConversationsRoute:
       AuthenticatedProjectsProjectIdConversationsRouteWithChildren,
     AuthenticatedProjectsProjectIdIndexRoute:
       AuthenticatedProjectsProjectIdIndexRoute,
     AuthenticatedProjectsProjectIdAutomationAutomationIdRoute:
       AuthenticatedProjectsProjectIdAutomationAutomationIdRoute,
+    AuthenticatedProjectsProjectIdDmChannelIdRoute:
+      AuthenticatedProjectsProjectIdDmChannelIdRoute,
     AuthenticatedProjectsProjectIdDocsDocIdRoute:
       AuthenticatedProjectsProjectIdDocsDocIdRoute,
     AuthenticatedProjectsProjectIdFilesRecentRoute:
@@ -1422,8 +1563,10 @@ interface AuthenticatedRouteChildren {
   AuthenticatedFilesStarredRoute: typeof AuthenticatedFilesStarredRoute
   AuthenticatedFilesTrashRoute: typeof AuthenticatedFilesTrashRoute
   AuthenticatedProjectsProjectIdRoute: typeof AuthenticatedProjectsProjectIdRouteWithChildren
+  AuthenticatedChatIndexRoute: typeof AuthenticatedChatIndexRoute
   AuthenticatedFilesIndexRoute: typeof AuthenticatedFilesIndexRoute
   AuthenticatedHomeIndexRoute: typeof AuthenticatedHomeIndexRoute
+  AuthenticatedChatDmChannelIdRoute: typeof AuthenticatedChatDmChannelIdRoute
   AuthenticatedGitSetupCallbackRoute: typeof AuthenticatedGitSetupCallbackRoute
   AuthenticatedPluginPagesPluginIdSlugRoute: typeof AuthenticatedPluginPagesPluginIdSlugRoute
   AuthenticatedAdminAgentsIndexRoute: typeof AuthenticatedAdminAgentsIndexRoute
@@ -1448,8 +1591,10 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedFilesTrashRoute: AuthenticatedFilesTrashRoute,
   AuthenticatedProjectsProjectIdRoute:
     AuthenticatedProjectsProjectIdRouteWithChildren,
+  AuthenticatedChatIndexRoute: AuthenticatedChatIndexRoute,
   AuthenticatedFilesIndexRoute: AuthenticatedFilesIndexRoute,
   AuthenticatedHomeIndexRoute: AuthenticatedHomeIndexRoute,
+  AuthenticatedChatDmChannelIdRoute: AuthenticatedChatDmChannelIdRoute,
   AuthenticatedGitSetupCallbackRoute: AuthenticatedGitSetupCallbackRoute,
   AuthenticatedPluginPagesPluginIdSlugRoute:
     AuthenticatedPluginPagesPluginIdSlugRoute,

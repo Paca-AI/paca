@@ -210,6 +210,73 @@ func CompileScope(grants []Grant, p Principal, action, projectID, kind string, s
 	return And(Or(allows...), Not(Or(denies...)))
 }
 
+// CompileRootScope is CompileScope for resources of kind that live directly
+// under a platform root, "<kind>/<id>" (workspace channels and direct
+// messages), rather than inside a project. Only platform-wide grants apply:
+// a project-scoped attachment never reaches a root resource. It holds exactly
+// when Evaluate would allow action on "<kind>/<id>".
+func CompileRootScope(grants []Grant, p Principal, action, kind string, schema *AttributeSchema) *Node {
+	principalAttrs := map[string][]string{
+		"principal.id":   {p.ID},
+		"principal.type": {p.Type},
+	}
+	var allows, denies []*Node
+	for _, g := range grants {
+		if g.Policy == nil || g.ProjectID != "" {
+			continue
+		}
+		for _, st := range g.Policy.Statements {
+			if !anyMatch(st.Actions, action, MatchAction) {
+				continue
+			}
+			ids := rootStatementIDs(st.Resources, kind)
+			if ids.Kind == NodeFalse {
+				continue
+			}
+			cond, known := compileConditions(st.Conditions, principalAttrs, kind, schema)
+			if !known {
+				if st.Effect == EffectDeny {
+					denies = append(denies, ids)
+				}
+				continue
+			}
+			node := And(ids, cond)
+			switch st.Effect {
+			case EffectDeny:
+				denies = append(denies, node)
+			case EffectAllow:
+				allows = append(allows, node)
+			}
+		}
+	}
+	return And(Or(allows...), Not(Or(denies...)))
+}
+
+// rootStatementIDs is statementIDs for "<kind>/<id>" resources: "*" and
+// "<kind>/*" cover every id, "<kind>/<id>" one. The bare "<kind>" names the
+// collection (a list or create check), which no single id matches.
+func rootStatementIDs(patterns []string, kind string) *Node {
+	var literal []string
+	for _, pat := range patterns {
+		segs := strings.Split(pat, "/")
+		switch {
+		case pat == "*":
+			return nodeTrue
+		case segs[0] != kind && segs[0] != "*":
+		case len(segs) == 1:
+			// "<kind>" names the collection itself, not any of its members.
+		case len(segs) == 2 && segs[1] == "*":
+			return nodeTrue
+		case len(segs) == 2:
+			literal = append(literal, segs[1])
+		}
+	}
+	if len(literal) == 0 {
+		return nodeFalse
+	}
+	return &Node{Kind: NodeCond, Key: "resource.id", Op: "In", Values: literal}
+}
+
 // statementIDs returns the predicate over resource.id that the statement's
 // resource patterns impose on "project/<projectID>/<kind>/<id>".
 func statementIDs(patterns []string, projectID, kind string) *Node {
@@ -272,7 +339,7 @@ func compileConditions(c Conditions, principalAttrs map[string][]string, kind st
 	for op, kv := range c {
 		for key, want := range kv {
 			if vals, ok := principalAttrs[key]; ok {
-				if ok, _ := evalOp(op, vals, want); !ok {
+				if ok, _ := evalOp(op, vals, ExpandVars(want, principalAttrs)); !ok {
 					return nodeFalse, true
 				}
 				continue
@@ -281,13 +348,13 @@ func compileConditions(c Conditions, principalAttrs map[string][]string, kind st
 				def, ok := schema.Lookup(key)
 				if !ok || def.ResourceKind != kind {
 					// Another kind's attribute is absent here.
-					if ok, _ := evalOp(op, nil, want); !ok {
+					if ok, _ := evalOp(op, nil, ExpandVars(want, principalAttrs)); !ok {
 						return nodeFalse, true
 					}
 					continue
 				}
 			}
-			parts = append(parts, &Node{Kind: NodeCond, Key: key, Op: op, Values: want})
+			parts = append(parts, &Node{Kind: NodeCond, Key: key, Op: op, Values: ExpandVars(want, principalAttrs)})
 		}
 	}
 	return And(parts...), true

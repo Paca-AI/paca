@@ -64,6 +64,7 @@ import { useManagedCopyLabel } from "@/components/projects/docs/managed-copy-ban
 import { EntityAvatar } from "@/components/shared/entity-avatar";
 import { LoadMoreSentinel } from "@/components/shared/load-more-sentinel";
 import { PaneResizeHandle } from "@/components/shared/pane-resize-handle";
+import { ChatSidebarSection } from "@/components/team-chat/chat-sidebar-section";
 import { Badge } from "@/components/ui/badge";
 import {
 	DropdownMenu,
@@ -2294,6 +2295,7 @@ export function AppSidebar() {
 				{isProjectContext ? (
 					<>
 						{user && <ProjectNav />}
+						{user && <ChatSidebarSection projectId={projectId} />}
 						<ProjectInteractionsSection projectId={projectId} />
 						{canReadDocs && <DocsSidebarSection projectId={projectId} />}
 						<FilesSidebarSection projectId={projectId} />
@@ -2320,6 +2322,7 @@ export function AppSidebar() {
 								</SidebarGroupContent>
 							</SidebarGroup>
 						)}
+						{user && <ChatSidebarSection />}
 
 						<FilesSidebarSection />
 

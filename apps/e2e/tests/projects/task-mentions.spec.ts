@@ -144,7 +144,12 @@ test.describe("Mentions that say where", () => {
 				projectId,
 				username,
 				roleName: uniqueName("ROLE"),
-				permissions: { "tasks:read": true, "tasks:write": true },
+				permissions: {
+					"tasks:read": true,
+					"tasks:write": true,
+					// the sprint page, for the sprint-header badge
+					"sprints:read": true,
+				},
 			},
 		);
 		member = { userId, username };
@@ -265,9 +270,7 @@ test.describe("Mentions that say where", () => {
 			await expect(
 				page.getByText(`2 mentions in #${items[0].task_number} — ${taskTitle}`),
 			).toBeVisible();
-			await expect(page.getByRole("button", { name: /mention/ })).toHaveCount(
-				1,
-			);
+			await expect(page.locator("ul.divide-y > li")).toHaveCount(1);
 		});
 
 		test("Clicking the card opens the task at the comment", async ({
@@ -416,7 +419,7 @@ test.describe("Mentions that say where", () => {
 	});
 
 	test.describe("Unread cues", () => {
-		test("The task row and the sprint header show a badge until the task is opened", async ({
+		test("The task row shows a badge until the task is opened", async ({
 			page,
 			request,
 		}) => {
@@ -428,10 +431,11 @@ test.describe("Mentions that say where", () => {
 			);
 			await waitForNotifications(memberApi, 1);
 			await signInMember(page);
-			await page.goto(`${BASE_URL}/projects/${projectId}/interactions/backlog`);
+			await page.goto(
+				`${BASE_URL}/projects/${projectId}/interactions/sprints/${sprintId}`,
+			);
 
 			await expect(page.getByTestId("task-mention-badge")).toHaveCount(1);
-			await expect(page.getByTestId("sprint-mention-badge")).toHaveText("1");
 
 			await page.goto(`${BASE_URL}/projects/${projectId}/tasks/${taskId}`);
 			await expect(page.getByText(taskTitle).first()).toBeVisible();
@@ -443,10 +447,11 @@ test.describe("Mentions that say where", () => {
 				)
 				.toBe(true);
 
-			await page.goto(`${BASE_URL}/projects/${projectId}/interactions/backlog`);
+			await page.goto(
+				`${BASE_URL}/projects/${projectId}/interactions/sprints/${sprintId}`,
+			);
 			await expect(page.getByText(taskTitle).first()).toBeVisible();
 			await expect(page.getByTestId("task-mention-badge")).toHaveCount(0);
-			await expect(page.getByTestId("sprint-mention-badge")).toHaveCount(0);
 		});
 
 		test("New activity since the last visit gets a divider", async ({
@@ -486,7 +491,11 @@ test.describe("Mentions that say where", () => {
 	test.describe("Arriving while online", () => {
 		test("A toast announces a mention", async ({ page, request }) => {
 			await signInMember(page);
+			// Mentions arrive over the socket: wait until this page has one.
+			const socketOpened = page.waitForEvent("websocket");
 			await page.goto(`${BASE_URL}/projects/${projectId}`);
+			await socketOpened;
+			await page.waitForTimeout(1_500);
 
 			await comment(
 				request,

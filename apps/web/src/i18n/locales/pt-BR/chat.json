@@ -1,0 +1,210 @@
+{
+	"title": "Chat",
+	"channels": {
+		"heading": "Canais",
+		"new": "Novo canal",
+		"empty": "Ainda não há canais",
+		"select": "Escolha um canal para começar a conversar",
+		"unreadBadge": "Mensagens não lidas",
+		"private": "Canal privado",
+		"public": "Canal público",
+		"voice": "Canal de voz",
+		"mentionBadge": "Menções"
+	},
+	"header": {
+		"noTopic": "Nenhum tópico definido",
+		"join": "Entrar",
+		"leave": "Sair",
+		"following": "Seguindo",
+		"archive": "Arquivar canal",
+		"archiveConfirmTitle": "Arquivar este canal?",
+		"archiveConfirmBody": "Ele passará a ser somente leitura. Todos ainda poderão ler o que foi dito.",
+		"archived": "Arquivado"
+	},
+	"create": {
+		"title": "Novo canal",
+		"description": "Canais reúnem as conversas sobre um mesmo assunto.",
+		"name": "Nome",
+		"namePlaceholder": "ex.: lançamento",
+		"topic": "Tópico (opcional)",
+		"topicPlaceholder": "Para que serve este canal?",
+		"visibility": "Visibilidade",
+		"public": "Público",
+		"publicHint": "Qualquer pessoa com acesso ao projeto pode ler e entrar.",
+		"private": "Privado",
+		"privateHint": "Somente as pessoas que você adicionar podem ler.",
+		"submit": "Criar canal",
+		"cancel": "Cancelar"
+	},
+	"composer": {
+		"placeholder": "Mensagem para #{{channel}}",
+		"replyPlaceholder": "Responder na conversa",
+		"send": "Enviar",
+		"hint": "Enter para enviar, Shift+Enter para nova linha",
+		"readOnly": "Você pode ler este canal, mas não pode publicar nele.",
+		"archived": "Este canal está arquivado.",
+		"tooLong": "A mensagem é longa demais.",
+		"mentionList": "Pessoas para mencionar"
+	},
+	"message": {
+		"edited": "(editada)",
+		"deleted": "Esta mensagem foi excluída",
+		"edit": "Editar",
+		"delete": "Excluir",
+		"moderatorDelete": "Remover mensagem",
+		"reply": "Responder na conversa",
+		"react": "Adicionar reação",
+		"save": "Salvar",
+		"cancel": "Cancelar",
+		"viewThread": "Ver conversa ({{count}})",
+		"bookmark": "Salvar mensagem",
+		"unbookmark": "Remover dos salvos",
+		"viewRun": "Ver execução"
+	},
+	"thread": {
+		"title": "Conversa",
+		"close": "Fechar conversa",
+		"empty": "Ainda não há respostas",
+		"follow": "Seguir",
+		"unfollow": "Deixar de seguir"
+	},
+	"list": {
+		"loadOlder": "Carregar mensagens anteriores",
+		"empty": "Ainda não há mensagens. Diga olá!",
+		"newMessages": "Novas mensagens",
+		"loadFailed": "Não foi possível carregar as mensagens.",
+		"retry": "Tentar novamente",
+		"today": "Hoje",
+		"yesterday": "Ontem",
+		"newDivider": "Novas"
+	},
+	"errors": {
+		"generic": "Algo deu errado. Tente novamente.",
+		"forbidden": "Você não tem permissão para fazer isso.",
+		"channelNotFound": "Este canal não existe mais.",
+		"nameInvalid": "Dê ao canal um nome de até 80 caracteres.",
+		"nameTaken": "Já existe um canal com este nome.",
+		"kindInvalid": "Escolha um tipo de canal válido.",
+		"archived": "Este canal está arquivado.",
+		"protected": "O canal geral não pode ser renomeado nem arquivado.",
+		"topicTooLong": "O tópico é longo demais.",
+		"messageNotFound": "Essa mensagem não existe mais.",
+		"messageEmpty": "Escreva algo primeiro.",
+		"messageInvalid": "Não foi possível enviar essa mensagem.",
+		"messageTooLong": "A mensagem é longa demais.",
+		"threadInvalid": "Você não pode responder a essa mensagem.",
+		"emojiInvalid": "Essa reação não é compatível.",
+		"notMember": "Você não está neste canal.",
+		"notProjectMember": "Essa pessoa não é membro deste projeto.",
+		"seqInvalid": "A solicitação não era válida.",
+		"dmSelf": "Você não pode enviar mensagem para si mesmo.",
+		"dmPeerNotFound": "Essa conta não existe mais.",
+		"dmNotSupported": "Isso não está disponível em mensagens diretas."
+	},
+	"noPermission": {
+		"title": "Você não tem permissão para usar o chat neste projeto",
+		"description": "Peça a um administrador do projeto que lhe dê acesso aos canais."
+	},
+	"inbox": {
+		"title": "Caixa de entrada",
+		"subtitle": "Os canais que você segue, em todos os seus projetos",
+		"projectFilter": "Projeto",
+		"allProjects": "Todos os projetos",
+		"markAllRead": "Marcar tudo como lido",
+		"markRead": "Marcar como lido",
+		"tabs": {
+			"all": "Tudo",
+			"unread": "Não lidas",
+			"mentions": "Menções",
+			"threads": "Conversas",
+			"saved": "Salvas"
+		},
+		"loadFailed": "Não foi possível carregar sua caixa de entrada.",
+		"emptyTitle": "Nada para acompanhar ainda",
+		"emptyBody": "Entre em um canal e as conversas aparecerão aqui.",
+		"caughtUpTitle": "Você está em dia",
+		"caughtUpBody": "As mensagens não lidas de todos os projetos chegam aqui.",
+		"noMessages": "Ainda não há mensagens",
+		"replies": "Respostas: {{n}}",
+		"unreadReplies": "Respostas não lidas: {{n}}",
+		"unreadMention": "Menção não lida",
+		"tabUnread": "Não lidas: {{n}}",
+		"empty": {
+			"mentionsTitle": "Nenhuma menção",
+			"mentionsBody": "Quando alguém mencionar você com @, aparecerá aqui.",
+			"threadsTitle": "Nenhuma conversa seguida",
+			"threadsBody": "Você segue uma conversa quando responde nela, é mencionado nela ou escolhe Seguir.",
+			"savedTitle": "Nada salvo",
+			"savedBody": "Salve uma mensagem pela barra de ferramentas dela para encontrá-la aqui."
+		}
+	},
+	"browse": {
+		"title": "Explorar canais",
+		"subtitle": "Todos os canais deste projeto que você pode ler",
+		"search": "Pesquisar canais",
+		"noMatch": "Nenhum canal corresponde a esse nome."
+	},
+	"sidebar": {
+		"collapse": "Recolher",
+		"expand": "Expandir",
+		"starred": "Com estrela",
+		"star": "Marcar com estrela",
+		"unstar": "Remover estrela",
+		"showMore": "Mostrar mais {{n}}",
+		"showLess": "Mostrar menos"
+	},
+	"dm": {
+		"heading": "Mensagens diretas",
+		"new": "Nova mensagem",
+		"empty": "Ainda não há mensagens diretas",
+		"inboxChip": "Mensagem direta",
+		"dialog": {
+			"title": "Nova mensagem",
+			"description": "Comece uma conversa com alguém com quem você compartilha um projeto.",
+			"search": "Pesquisar por nome",
+			"noMatch": "Ninguém corresponde a esse nome.",
+			"empty": "Ainda não há ninguém para enviar mensagem."
+		},
+		"kinds": {
+			"user": "Pessoas",
+			"agent": "Agentes",
+			"service_account": "Contas de serviço"
+		},
+		"badge": {
+			"agent": "agente",
+			"service_account": "serviço"
+		},
+		"hints": {
+			"agent": "Um agente lê o que você envia aqui. Respostas em mensagens diretas ainda não estão disponíveis.",
+			"service_account": "Contas de serviço leem as mensagens pela API. Elas não respondem sozinhas."
+		},
+		"composerPlaceholder": "Mensagem para {{name}}",
+		"kindLabel": {
+			"user": "Pessoa",
+			"agent": "Agente",
+			"service_account": "Conta de serviço"
+		}
+	},
+	"agent": {
+		"working": "{{name}} está trabalhando…",
+		"runs": "Execuções ({{count}})",
+		"runsTitle": "Execuções",
+		"search": "Buscar execuções",
+		"empty": "Ainda não há execuções. Envie uma mensagem para {{name}} para iniciar uma.",
+		"noMatch": "Nenhuma execução corresponde.",
+		"noReplies": "{{name}} pertence a um projeto e não pode responder em mensagens diretas. O que você escrever aqui só é guardado.",
+		"open": "Abrir execução",
+		"untitled": "Execução sem título",
+		"all": "Todas",
+		"failedHint": "A última execução de {{name}} falhou. Envie uma mensagem para tentar de novo.",
+		"status": {
+			"queued": "Na fila",
+			"running": "Trabalhando",
+			"paused": "Aguardando",
+			"finished": "Concluída",
+			"failed": "Falhou",
+			"stopped": "Parada"
+		},
+		"isWorking": "está trabalhando…"
+	}
+}

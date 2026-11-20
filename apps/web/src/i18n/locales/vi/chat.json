@@ -1,0 +1,210 @@
+{
+	"title": "Trò chuyện",
+	"channels": {
+		"heading": "Kênh",
+		"new": "Kênh mới",
+		"empty": "Chưa có kênh nào",
+		"select": "Chọn một kênh để bắt đầu trò chuyện",
+		"unreadBadge": "Tin nhắn chưa đọc",
+		"private": "Kênh riêng tư",
+		"public": "Kênh công khai",
+		"voice": "Kênh thoại",
+		"mentionBadge": "Lượt nhắc"
+	},
+	"header": {
+		"noTopic": "Chưa đặt chủ đề",
+		"join": "Tham gia",
+		"leave": "Rời kênh",
+		"following": "Đang theo dõi",
+		"archive": "Lưu trữ kênh",
+		"archiveConfirmTitle": "Lưu trữ kênh này?",
+		"archiveConfirmBody": "Kênh sẽ chuyển sang chế độ chỉ đọc. Mọi người vẫn đọc được nội dung đã trao đổi.",
+		"archived": "Đã lưu trữ"
+	},
+	"create": {
+		"title": "Kênh mới",
+		"description": "Kênh giúp gom các cuộc trò chuyện về cùng một chủ đề.",
+		"name": "Tên",
+		"namePlaceholder": "ví dụ: phát-hành",
+		"topic": "Chủ đề (không bắt buộc)",
+		"topicPlaceholder": "Kênh này dùng để làm gì?",
+		"visibility": "Quyền xem",
+		"public": "Công khai",
+		"publicHint": "Ai có quyền truy cập dự án đều có thể đọc và tham gia.",
+		"private": "Riêng tư",
+		"privateHint": "Chỉ những người bạn thêm mới đọc được.",
+		"submit": "Tạo kênh",
+		"cancel": "Hủy"
+	},
+	"composer": {
+		"placeholder": "Nhắn tới #{{channel}}",
+		"replyPlaceholder": "Trả lời trong luồng",
+		"send": "Gửi",
+		"hint": "Nhấn Enter để gửi, Shift+Enter để xuống dòng",
+		"readOnly": "Bạn có thể đọc kênh này nhưng không thể đăng tin.",
+		"archived": "Kênh này đã được lưu trữ.",
+		"tooLong": "Tin nhắn quá dài.",
+		"mentionList": "Người để nhắc đến"
+	},
+	"message": {
+		"edited": "(đã chỉnh sửa)",
+		"deleted": "Tin nhắn này đã bị xóa",
+		"edit": "Sửa",
+		"delete": "Xóa",
+		"moderatorDelete": "Gỡ tin nhắn",
+		"reply": "Trả lời trong luồng",
+		"react": "Thêm biểu cảm",
+		"save": "Lưu",
+		"cancel": "Hủy",
+		"viewThread": "Xem luồng ({{count}})",
+		"bookmark": "Lưu tin nhắn",
+		"unbookmark": "Bỏ khỏi mục đã lưu",
+		"viewRun": "Xem lượt chạy"
+	},
+	"thread": {
+		"title": "Luồng",
+		"close": "Đóng luồng",
+		"empty": "Chưa có phản hồi",
+		"follow": "Theo dõi",
+		"unfollow": "Bỏ theo dõi"
+	},
+	"list": {
+		"loadOlder": "Tải tin nhắn cũ hơn",
+		"empty": "Chưa có tin nhắn nào. Hãy chào mọi người!",
+		"newMessages": "Tin nhắn mới",
+		"loadFailed": "Không thể tải tin nhắn.",
+		"retry": "Thử lại",
+		"today": "Hôm nay",
+		"yesterday": "Hôm qua",
+		"newDivider": "Mới"
+	},
+	"errors": {
+		"generic": "Đã xảy ra lỗi. Vui lòng thử lại.",
+		"forbidden": "Bạn không có quyền thực hiện thao tác này.",
+		"channelNotFound": "Kênh này không còn tồn tại.",
+		"nameInvalid": "Hãy đặt tên kênh tối đa 80 ký tự.",
+		"nameTaken": "Đã có kênh trùng tên.",
+		"kindInvalid": "Hãy chọn loại kênh hợp lệ.",
+		"archived": "Kênh này đã được lưu trữ.",
+		"protected": "Không thể đổi tên hoặc lưu trữ kênh chung.",
+		"topicTooLong": "Chủ đề quá dài.",
+		"messageNotFound": "Tin nhắn này không còn tồn tại.",
+		"messageEmpty": "Hãy viết gì đó trước.",
+		"messageInvalid": "Không thể gửi tin nhắn này.",
+		"messageTooLong": "Tin nhắn quá dài.",
+		"threadInvalid": "Bạn không thể trả lời tin nhắn này.",
+		"emojiInvalid": "Biểu cảm này không được hỗ trợ.",
+		"notMember": "Bạn không ở trong kênh này.",
+		"notProjectMember": "Người này không phải thành viên của dự án.",
+		"seqInvalid": "Yêu cầu không hợp lệ.",
+		"dmSelf": "Bạn không thể tự nhắn tin cho mình.",
+		"dmPeerNotFound": "Tài khoản này không còn tồn tại.",
+		"dmNotSupported": "Tin nhắn trực tiếp không hỗ trợ thao tác này."
+	},
+	"noPermission": {
+		"title": "Bạn không có quyền dùng trò chuyện trong dự án này",
+		"description": "Hãy nhờ quản trị viên dự án cấp quyền truy cập các kênh."
+	},
+	"inbox": {
+		"title": "Hộp thư",
+		"subtitle": "Các kênh bạn theo dõi, trong mọi dự án",
+		"projectFilter": "Dự án",
+		"allProjects": "Tất cả dự án",
+		"markAllRead": "Đánh dấu đã đọc hết",
+		"markRead": "Đánh dấu đã đọc",
+		"tabs": {
+			"all": "Tất cả",
+			"unread": "Chưa đọc",
+			"mentions": "Lượt nhắc",
+			"threads": "Luồng",
+			"saved": "Đã lưu"
+		},
+		"loadFailed": "Không thể tải hộp thư.",
+		"emptyTitle": "Chưa có gì để theo dõi",
+		"emptyBody": "Tham gia một kênh và các cuộc trò chuyện sẽ hiện ở đây.",
+		"caughtUpTitle": "Bạn đã đọc hết",
+		"caughtUpBody": "Tin nhắn chưa đọc từ mọi dự án sẽ xuất hiện ở đây.",
+		"noMessages": "Chưa có tin nhắn",
+		"replies": "Phản hồi: {{n}}",
+		"unreadReplies": "Phản hồi chưa đọc: {{n}}",
+		"unreadMention": "Lượt nhắc chưa đọc",
+		"tabUnread": "Chưa đọc: {{n}}",
+		"empty": {
+			"mentionsTitle": "Chưa có lượt nhắc",
+			"mentionsBody": "Khi ai đó nhắc đến bạn bằng @, nó sẽ hiện ở đây.",
+			"threadsTitle": "Chưa theo dõi luồng nào",
+			"threadsBody": "Bạn theo dõi một luồng khi trả lời trong đó, được nhắc đến trong đó hoặc chọn Theo dõi.",
+			"savedTitle": "Chưa lưu gì",
+			"savedBody": "Lưu một tin nhắn từ thanh công cụ của nó để tìm lại ở đây."
+		}
+	},
+	"browse": {
+		"title": "Duyệt kênh",
+		"subtitle": "Mọi kênh trong dự án này mà bạn đọc được",
+		"search": "Tìm kênh",
+		"noMatch": "Không có kênh nào khớp tên đó."
+	},
+	"sidebar": {
+		"collapse": "Thu gọn",
+		"expand": "Mở rộng",
+		"starred": "Gắn sao",
+		"star": "Gắn sao",
+		"unstar": "Bỏ gắn sao",
+		"showMore": "Hiện thêm {{n}}",
+		"showLess": "Thu gọn bớt"
+	},
+	"dm": {
+		"heading": "Tin nhắn trực tiếp",
+		"new": "Tin nhắn mới",
+		"empty": "Chưa có tin nhắn trực tiếp",
+		"inboxChip": "Tin nhắn trực tiếp",
+		"dialog": {
+			"title": "Tin nhắn mới",
+			"description": "Bắt đầu trò chuyện với người cùng tham gia một dự án với bạn.",
+			"search": "Tìm theo tên",
+			"noMatch": "Không ai khớp với tên đó.",
+			"empty": "Chưa có ai để nhắn tin."
+		},
+		"kinds": {
+			"user": "Mọi người",
+			"agent": "Tác nhân",
+			"service_account": "Tài khoản dịch vụ"
+		},
+		"badge": {
+			"agent": "tác nhân",
+			"service_account": "dịch vụ"
+		},
+		"hints": {
+			"agent": "Tác nhân đọc những gì bạn gửi ở đây. Chưa hỗ trợ phản hồi trong tin nhắn trực tiếp.",
+			"service_account": "Tài khoản dịch vụ đọc tin nhắn qua API. Chúng không tự trả lời."
+		},
+		"composerPlaceholder": "Nhắn tới {{name}}",
+		"kindLabel": {
+			"user": "Người",
+			"agent": "Tác nhân",
+			"service_account": "Tài khoản dịch vụ"
+		}
+	},
+	"agent": {
+		"working": "{{name}} đang làm việc…",
+		"runs": "Lượt chạy ({{count}})",
+		"runsTitle": "Lượt chạy",
+		"search": "Tìm lượt chạy",
+		"empty": "Chưa có lượt chạy nào. Nhắn cho {{name}} để bắt đầu.",
+		"noMatch": "Không có lượt chạy phù hợp.",
+		"noReplies": "{{name}} thuộc một dự án và không thể trả lời trong tin nhắn trực tiếp. Những gì bạn viết ở đây chỉ được lưu lại.",
+		"open": "Mở lượt chạy",
+		"untitled": "Lượt chạy chưa đặt tên",
+		"all": "Tất cả",
+		"failedHint": "Lượt chạy gần nhất của {{name}} bị lỗi. Gửi tin nhắn để thử lại.",
+		"status": {
+			"queued": "Đang chờ",
+			"running": "Đang làm",
+			"paused": "Tạm nghỉ",
+			"finished": "Xong",
+			"failed": "Lỗi",
+			"stopped": "Đã dừng"
+		},
+		"isWorking": "đang làm việc…"
+	}
+}

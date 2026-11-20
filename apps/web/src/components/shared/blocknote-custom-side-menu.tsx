@@ -68,15 +68,16 @@ function AddBlockButton() {
 		// collaboration binding has seen the new character, so the menu loses its
 		// anchor and closes.
 		const view = editor.prosemirrorView;
-		const typed =
-			!!view &&
-			(view.focus(),
-			view.someProp("handleTextInput", (handle) => {
+		let typed = false;
+		if (view) {
+			view.focus();
+			typed = !!view.someProp("handleTextInput", (handle) => {
 				const { from, to } = view.state.selection;
 				return handle(view, from, to, "/", () =>
 					view.state.tr.insertText("/", from, to),
 				);
-			}));
+			});
+		}
 		if (!typed) {
 			suggestionMenu.openSuggestionMenu("/", { deleteTriggerCharacter: true });
 		}

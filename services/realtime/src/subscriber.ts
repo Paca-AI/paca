@@ -39,6 +39,7 @@ import Redis from "ioredis";
 import type { Logger } from "pino";
 import type { Server } from "socket.io";
 import { type AccessDecider, deliverToReaders, KeyedQueue } from "./access.ts";
+import type { ChatHub } from "./chat.ts";
 import type { ContentChangeMeta } from "./collab.ts";
 import {
 	agentChatRoomName,
@@ -90,6 +91,8 @@ interface Routing {
 	// A change with this project was appended to the change log (it carries a
 	// seq): nudge the sync hub.
 	onLogged?: (projectId: string) => void;
+	// Delivers chat announcements (see chat.ts).
+	chat?: ChatHub;
 }
 
 // createSubscriber connects a dedicated ioredis client in subscriber mode,
@@ -107,6 +110,7 @@ export function createSubscriber(
 		meta: ContentChangeMeta,
 	) => void,
 	onLogged?: (projectId: string) => void,
+	chat?: ChatHub,
 ): Redis {
 	const routing: Routing = {
 		decider,
@@ -114,6 +118,7 @@ export function createSubscriber(
 		onIamChanged,
 		onContentChange,
 		onLogged,
+		chat,
 		warnedNoAuthz: new Set(),
 	};
 	// A separate client is required because ioredis clients in subscriber mode
@@ -192,6 +197,15 @@ export function routeEvent(
 				? { collabSocket: msg.collab_socket }
 				: {};
 		routing.onContentChange?.(type, payload, meta);
+	}
+
+	// Chat announcements go to channel rooms and members' own rooms, except
+	// channel lifecycle events, which carry an authz descriptor and take the
+	// per-socket path below.
+	if (type.startsWith("chat.") && !msg.authz) {
+		const recipients = (msg as { recipient_ids?: unknown }).recipient_ids;
+		routing.chat?.route(type, payload, recipients);
+		return;
 	}
 
 	// notification.* events are routed to a user-specific room.

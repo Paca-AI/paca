@@ -1,0 +1,210 @@
+{
+	"title": "Discussion",
+	"channels": {
+		"heading": "Canaux",
+		"new": "Nouveau canal",
+		"empty": "Aucun canal pour le moment",
+		"select": "Choisissez un canal pour commencer à discuter",
+		"unreadBadge": "Messages non lus",
+		"private": "Canal privé",
+		"public": "Canal public",
+		"voice": "Canal vocal",
+		"mentionBadge": "Mentions"
+	},
+	"header": {
+		"noTopic": "Aucun sujet défini",
+		"join": "Rejoindre",
+		"leave": "Quitter",
+		"following": "Suivi",
+		"archive": "Archiver le canal",
+		"archiveConfirmTitle": "Archiver ce canal ?",
+		"archiveConfirmBody": "Il passera en lecture seule. Chacun pourra encore lire ce qui a été dit.",
+		"archived": "Archivé"
+	},
+	"create": {
+		"title": "Nouveau canal",
+		"description": "Les canaux regroupent les échanges sur un même sujet.",
+		"name": "Nom",
+		"namePlaceholder": "ex. publication",
+		"topic": "Sujet (facultatif)",
+		"topicPlaceholder": "À quoi sert ce canal ?",
+		"visibility": "Visibilité",
+		"public": "Public",
+		"publicHint": "Toute personne ayant accès au projet peut le lire et le rejoindre.",
+		"private": "Privé",
+		"privateHint": "Seules les personnes que vous ajoutez peuvent le lire.",
+		"submit": "Créer le canal",
+		"cancel": "Annuler"
+	},
+	"composer": {
+		"placeholder": "Message dans #{{channel}}",
+		"replyPlaceholder": "Répondre dans le fil",
+		"send": "Envoyer",
+		"hint": "Entrée pour envoyer, Maj+Entrée pour un retour à la ligne",
+		"readOnly": "Vous pouvez lire ce canal mais pas y écrire.",
+		"archived": "Ce canal est archivé.",
+		"tooLong": "Ce message est trop long.",
+		"mentionList": "Personnes à mentionner"
+	},
+	"message": {
+		"edited": "(modifié)",
+		"deleted": "Ce message a été supprimé",
+		"edit": "Modifier",
+		"delete": "Supprimer",
+		"moderatorDelete": "Retirer le message",
+		"reply": "Répondre dans le fil",
+		"react": "Ajouter une réaction",
+		"save": "Enregistrer",
+		"cancel": "Annuler",
+		"viewThread": "Voir le fil ({{count}})",
+		"bookmark": "Enregistrer le message",
+		"unbookmark": "Retirer des enregistrés",
+		"viewRun": "Voir l'exécution"
+	},
+	"thread": {
+		"title": "Fil",
+		"close": "Fermer le fil",
+		"empty": "Aucune réponse pour le moment",
+		"follow": "Suivre",
+		"unfollow": "Ne plus suivre"
+	},
+	"list": {
+		"loadOlder": "Charger les messages précédents",
+		"empty": "Aucun message pour le moment. Dites bonjour !",
+		"newMessages": "Nouveaux messages",
+		"loadFailed": "Impossible de charger les messages.",
+		"retry": "Réessayer",
+		"today": "Aujourd'hui",
+		"yesterday": "Hier",
+		"newDivider": "Nouveaux"
+	},
+	"errors": {
+		"generic": "Une erreur s'est produite. Réessayez.",
+		"forbidden": "Vous n'avez pas l'autorisation de faire cela.",
+		"channelNotFound": "Ce canal n'existe plus.",
+		"nameInvalid": "Donnez au canal un nom de 80 caractères maximum.",
+		"nameTaken": "Un canal portant ce nom existe déjà.",
+		"kindInvalid": "Choisissez un type de canal valide.",
+		"archived": "Ce canal est archivé.",
+		"protected": "Le canal général ne peut être ni renommé ni archivé.",
+		"topicTooLong": "Le sujet est trop long.",
+		"messageNotFound": "Ce message n'existe plus.",
+		"messageEmpty": "Écrivez d'abord quelque chose.",
+		"messageInvalid": "Ce message n'a pas pu être envoyé.",
+		"messageTooLong": "Ce message est trop long.",
+		"threadInvalid": "Vous ne pouvez pas répondre à ce message.",
+		"emojiInvalid": "Cette réaction n'est pas prise en charge.",
+		"notMember": "Vous n'êtes pas dans ce canal.",
+		"notProjectMember": "Cette personne n'est pas membre de ce projet.",
+		"seqInvalid": "Cette requête n'était pas valide.",
+		"dmSelf": "Vous ne pouvez pas vous écrire à vous-même.",
+		"dmPeerNotFound": "Ce compte n'existe plus.",
+		"dmNotSupported": "Cette action n'est pas disponible dans les messages privés."
+	},
+	"noPermission": {
+		"title": "Vous n'avez pas l'autorisation d'utiliser la discussion dans ce projet",
+		"description": "Demandez à un administrateur du projet de vous donner accès à ses canaux."
+	},
+	"inbox": {
+		"title": "Boîte de réception",
+		"subtitle": "Les canaux que vous suivez, dans tous vos projets",
+		"projectFilter": "Projet",
+		"allProjects": "Tous les projets",
+		"markAllRead": "Tout marquer comme lu",
+		"markRead": "Marquer comme lu",
+		"tabs": {
+			"all": "Tout",
+			"unread": "Non lus",
+			"mentions": "Mentions",
+			"threads": "Fils",
+			"saved": "Enregistrés"
+		},
+		"loadFailed": "Votre boîte de réception n'a pas pu être chargée.",
+		"emptyTitle": "Rien à suivre pour le moment",
+		"emptyBody": "Rejoignez un canal et ses conversations apparaîtront ici.",
+		"caughtUpTitle": "Vous êtes à jour",
+		"caughtUpBody": "Les messages non lus de tous les projets arrivent ici.",
+		"noMessages": "Aucun message pour le moment",
+		"replies": "Réponses : {{n}}",
+		"unreadReplies": "Réponses non lues : {{n}}",
+		"unreadMention": "Mention non lue",
+		"tabUnread": "Non lus : {{n}}",
+		"empty": {
+			"mentionsTitle": "Aucune mention",
+			"mentionsBody": "Quand quelqu'un vous mentionne avec @, cela apparaît ici.",
+			"threadsTitle": "Aucun fil suivi",
+			"threadsBody": "Vous suivez un fil lorsque vous y répondez, y êtes mentionné ou choisissez Suivre.",
+			"savedTitle": "Rien d'enregistré",
+			"savedBody": "Enregistrez un message depuis sa barre d'outils pour le retrouver ici."
+		}
+	},
+	"browse": {
+		"title": "Parcourir les canaux",
+		"subtitle": "Tous les canaux de ce projet que vous pouvez lire",
+		"search": "Rechercher un canal",
+		"noMatch": "Aucun canal ne correspond à ce nom."
+	},
+	"sidebar": {
+		"collapse": "Réduire",
+		"expand": "Développer",
+		"starred": "Favoris",
+		"star": "Ajouter aux favoris",
+		"unstar": "Retirer des favoris",
+		"showMore": "Afficher {{n}} de plus",
+		"showLess": "Afficher moins"
+	},
+	"dm": {
+		"heading": "Messages privés",
+		"new": "Nouveau message",
+		"empty": "Aucun message privé pour le moment",
+		"inboxChip": "Message privé",
+		"dialog": {
+			"title": "Nouveau message",
+			"description": "Démarrez une conversation avec une personne qui partage un projet avec vous.",
+			"search": "Rechercher par nom",
+			"noMatch": "Personne ne correspond à ce nom.",
+			"empty": "Personne à qui écrire pour le moment."
+		},
+		"kinds": {
+			"user": "Personnes",
+			"agent": "Agents",
+			"service_account": "Comptes de service"
+		},
+		"badge": {
+			"agent": "agent",
+			"service_account": "service"
+		},
+		"hints": {
+			"agent": "Un agent lit ce que vous envoyez ici. Les réponses dans les messages privés ne sont pas encore disponibles.",
+			"service_account": "Les comptes de service lisent les messages via l'API. Ils ne répondent pas d'eux-mêmes."
+		},
+		"composerPlaceholder": "Message à {{name}}",
+		"kindLabel": {
+			"user": "Personne",
+			"agent": "Agent",
+			"service_account": "Compte de service"
+		}
+	},
+	"agent": {
+		"working": "{{name}} travaille…",
+		"runs": "Exécutions ({{count}})",
+		"runsTitle": "Exécutions",
+		"search": "Rechercher des exécutions",
+		"empty": "Aucune exécution pour l'instant. Écrivez à {{name}} pour en lancer une.",
+		"noMatch": "Aucune exécution ne correspond.",
+		"noReplies": "{{name}} appartient à un projet et ne peut pas répondre en message direct. Ce que vous écrivez ici est seulement conservé.",
+		"open": "Ouvrir l'exécution",
+		"untitled": "Exécution sans titre",
+		"all": "Toutes",
+		"failedHint": "La dernière exécution de {{name}} a échoué. Envoyez un message pour réessayer.",
+		"status": {
+			"queued": "En attente",
+			"running": "Au travail",
+			"paused": "En pause",
+			"finished": "Terminée",
+			"failed": "Échouée",
+			"stopped": "Arrêtée"
+		},
+		"isWorking": "travaille…"
+	}
+}

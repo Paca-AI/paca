@@ -32,7 +32,8 @@ export type EventNamespace =
 	| "environments"
 	| "project"
 	| "members"
-	| "agents";
+	| "agents"
+	| "chat";
 
 // NAMESPACE_PERMISSIONS maps each namespace to the project permission required
 // to receive events in that namespace.
@@ -47,6 +48,9 @@ export const NAMESPACE_PERMISSIONS: Record<EventNamespace, string> = {
 	project: "projects:read",
 	members: "project.members:read",
 	agents: "agents:read",
+	// Chat channel lifecycle events (a channel created, renamed, archived).
+	// Message traffic never uses this room: see chat.ts.
+	chat: "channels:read",
 };
 
 // projectRoomName returns the Socket.IO room name for a project + namespace pair.
@@ -77,6 +81,19 @@ export function namespaceForAction(action: string): EventNamespace | undefined {
 // caller's own identity.
 export function agentChatRoomName(userId: string): string {
 	return `user:${userId}:agent-chat`;
+}
+
+// channelRoomName is the room of one chat channel. A socket is placed in it
+// by "chat:join" after the API confirmed channels:read on the channel, and
+// re-checked when IAM or the channel's membership changes (see chat.ts).
+export function channelRoomName(channelId: string): string {
+	return `channel:${channelId}`;
+}
+
+// userChatRoomName is the per-user room of unread deltas across every project,
+// auto-joined at connect like the notifications room.
+export function userChatRoomName(userId: string): string {
+	return `user:${userId}:chat`;
 }
 
 // eventNamespace infers the namespace from the event type prefix. It is the
@@ -136,6 +153,7 @@ export function eventNamespace(type: string): EventNamespace | undefined {
 	// project_agent.* is an agent's own configuration; agent.* (above) is
 	// conversation content.
 	if (type.startsWith("project_agent.")) return "agents";
+	if (type.startsWith("chat.channel.")) return "chat";
 	return undefined;
 }
 

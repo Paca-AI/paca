@@ -53,6 +53,9 @@ Form `domain:verb`. Wildcards: `*` (every action) and `domain:*` (every action o
 - project task schema: `project.settings.task_types:write` `project.settings.task_statuses:write` `project.settings.custom_fields:write`
 - planning and content: `sprints:read` `sprints:write` `views:read` `views:write` `docs:read` `docs:write` `files:read` `files:write` `workflows:read` `workflows:write`
 - annotations: `annotations:read` `annotations:write` `annotations:resolve`
+- chat: `channels:read` `channels:write` `messages:write` `messages:moderate`
+- calls: `calls:join` `calls:record` `calls:moderate` `calls:invite_agent`
+- proposals: `proposals:write` `proposals:resolve`
 - agents: `agents:read` `agents:write` `conversations:read` `conversations:write`
 - environments: `environments:read` `environments:write` `environments:connect` (connect = interactive shell / SSH key, separate from configuring)
 - git: `git:read` `git:write` `git:approve` `git:merge` (linked repositories; read = list, read changes/issues/CI and read-only credentials; write = link/unlink, comment, review, open change requests and credentials that can push; approve and merge are separate so a role can review without satisfying a required review or landing code), `git.connections:manage` (project-level: create/delete the Git connections — GitHub Apps, access tokens — that only this project can use), `git.identities:manage` (workspace-level: create/delete the connections every project can use)

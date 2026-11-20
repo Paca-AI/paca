@@ -288,6 +288,7 @@ test.describe("Joining a project", () => {
 		);
 		expect([...(await probe.join(projectId))].sort()).toEqual([
 			"agents",
+			"chat",
 			"conversations",
 			"docs",
 			"environments",
