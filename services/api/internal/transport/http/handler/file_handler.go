@@ -184,7 +184,12 @@ func (h *FileHandler) Relations(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rel, err := h.svc.Relations(r.Context(), fr.scope, fr.actor, fr.node)
+	ctx, err := h.docScoped(r, fr)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	rel, err := h.svc.Relations(ctx, fr.scope, fr.actor, fr.node)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

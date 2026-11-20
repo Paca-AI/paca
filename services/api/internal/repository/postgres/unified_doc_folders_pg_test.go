@@ -244,10 +244,11 @@ func TestUnifiedDocFolders_ListsFollowTheDocumentScope(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	a, b := uuid.New(), uuid.New()
-	pgExec(t, f.db, `INSERT INTO documents (id, project_id, folder_id, title) VALUES ($1, $3, $4, 'Plan visible'), ($2, $3, $5, 'Plan hidden')`, a, b, f.p, allowed.ID, hidden.ID)
+	a, b, planFile := uuid.New(), uuid.New(), uuid.New()
+	mention := `[{"type":"file","props":{"url":"files://` + f.p.String() + `/` + planFile.String() + `"}}]`
+	pgExec(t, f.db, `INSERT INTO documents (id, project_id, folder_id, title, content) VALUES ($1, $3, $4, 'Plan visible', $6::jsonb), ($2, $3, $5, 'Plan hidden', $6::jsonb)`, a, b, f.p, allowed.ID, hidden.ID, mention)
 	pgExec(t, f.db, `INSERT INTO files (id, storage_key, bucket, file_name, upload_status, project_id, folder_id)
-		VALUES ($1, $2, 'b', 'plan.docx', 'uploaded', $3, $4)`, uuid.New(), "files/"+f.p.String()+"/x/plan.docx", f.p, allowed.ID)
+		VALUES ($1, $2, 'b', 'plan.docx', 'uploaded', $3, $4)`, planFile, "files/"+f.p.String()+"/x/plan.docx", f.p, allowed.ID)
 	for _, id := range []uuid.UUID{a, b} {
 		if err := repo.SetStarred(ctx, f.u, id, true); err != nil {
 			t.Fatal(err)
@@ -299,6 +300,35 @@ func TestUnifiedDocFolders_ListsFollowTheDocumentScope(t *testing.T) {
 	}
 	if got := join(recent(scoped)); got != "Plan visible.md" {
 		t.Fatalf("scoped recent = %q", got)
+	}
+
+	// Browsing a folder follows the scope too: the hidden document's folder lists
+	// no document, and the other lists its own.
+	browse := func(c context.Context, parent uuid.UUID) string {
+		t.Helper()
+		got, _, err := repo.List(c, filedom.ListParams{Scope: scope, UserID: f.u, ParentID: &parent})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return join(sorted(namesOf(got)))
+	}
+	if got := browse(scoped, allowed.ID); got != "Plan visible.md|plan.docx" {
+		t.Fatalf("scoped browse of the allowed folder = %q", got)
+	}
+	if got := browse(scoped, hidden.ID); got != "" {
+		t.Fatalf("scoped browse of the hidden folder = %q, want no document", got)
+	}
+	// Without a scope (an internal caller) nothing is filtered.
+	if got := browse(ctx, hidden.ID); got != "Plan hidden.md" {
+		t.Fatalf("unscoped browse = %q", got)
+	}
+	// The documents that reference a file are limited the same way.
+	rel, err := repo.Relations(scoped, f.p, planFile)
+	if err != nil || len(rel.Documents) != 1 || rel.Documents[0].ID != a {
+		t.Fatalf("scoped relations = %+v, %v; want only the visible document", rel, err)
+	}
+	if rel, err = repo.Relations(ctx, f.p, planFile); err != nil || len(rel.Documents) != 2 {
+		t.Fatalf("unscoped relations = %+v, %v; want both documents", rel, err)
 	}
 
 	// An unrestricted scope sees both.

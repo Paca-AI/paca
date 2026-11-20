@@ -101,6 +101,28 @@ func docsAreaClause(ctx context.Context, sink argSink) (string, error) {
 	return `(n.area = '' OR n.kind <> 'doc' OR (` + clause + `))`, nil
 }
 
+// docRowsClause restricts the document rows of a listing to the caller's
+// document scope (a Deny on one document, a role limited to some folders);
+// folders and files are not affected, they follow the project-wide access. No
+// scope attached, or an unrestricted one, adds nothing.
+func docRowsClause(ctx context.Context, sink argSink) (string, error) {
+	node, ok := scopeFromContext(ctx, "doc")
+	if !ok || node.Unrestricted() {
+		return "", nil
+	}
+	if node.DeniesAll() {
+		return `n.kind <> 'doc'`, nil
+	}
+	clause, none, err := scopeSQL(ctx, "doc", fileDocScopeColumns, sink)
+	if err != nil {
+		return "", err
+	}
+	if none {
+		return `n.kind <> 'doc'`, nil
+	}
+	return `(n.kind <> 'doc' OR (` + clause + `))`, nil
+}
+
 // nodeSelect lists the item columns with the owner, parent and star joined in.
 // $1 is always the caller's id (uuid.Nil when there is none).
 const nodeSelect = `
@@ -198,6 +220,16 @@ func (r *FileRepository) List(ctx context.Context, p filedom.ListParams) ([]*fil
 		where = append(where, `n.parent_id IS NULL`)
 	default:
 		where = append(where, `n.parent_id = `+sink.addArg(*p.ParentID))
+	}
+	if p.Query == "" {
+		// Browsing a folder lists the documents the caller's scope allows.
+		docs, err := docRowsClause(ctx, sink)
+		if err != nil {
+			return nil, 0, err
+		}
+		if docs != "" {
+			where = append(where, docs)
+		}
 	}
 	if p.Type != "" {
 		tc, err := typeClause(p.Type)
@@ -733,14 +765,26 @@ func (r *FileRepository) Relations(ctx context.Context, projectID, fileID uuid.U
 		ID    uuid.UUID `db:"id"`
 		Title string    `db:"title"`
 	}
+	// Only the documents the caller's document scope allows (see docsScopeSQL).
+	sink := &argList{args: []any{projectID, fileID}}
+	scope, none, err := scopeSQL(ctx, "doc", docScopeColumns, sink)
+	if err != nil {
+		return nil, err
+	}
+	if none {
+		return out, nil
+	}
+	if scope != "" {
+		scope = " AND (" + scope + ")"
+	}
 	if err := r.db.SelectContext(ctx, &docs, `
-		SELECT d.id, d.title
-		  FROM documents d
-		 WHERE d.project_id = $1 AND d.deleted_at IS NULL AND d.view_id IS NULL
-		   AND ((d.content IS NOT NULL AND d.content::text LIKE '%' || $2::uuid::text || '%')
+		SELECT documents.id, documents.title
+		  FROM documents
+		 WHERE documents.project_id = $1 AND documents.deleted_at IS NULL AND documents.view_id IS NULL
+		   AND ((documents.content IS NOT NULL AND documents.content::text LIKE '%' || $2::uuid::text || '%')
 		     OR EXISTS (SELECT 1 FROM files fx WHERE fx.id = $2::uuid AND fx.source = 'doc'
-		                AND fx.storage_key LIKE 'docs/' || d.id::text || '/%'))
-		 ORDER BY lower(d.title), d.id`, projectID, fileID); err != nil {
+		                AND fx.storage_key LIKE 'docs/' || documents.id::text || '/%'))`+scope+`
+		 ORDER BY lower(documents.title), documents.id`, sink.args...); err != nil {
 		return nil, fmt.Errorf("file repo: relations documents: %w", err)
 	}
 	for _, d := range docs {
