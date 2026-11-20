@@ -564,6 +564,8 @@ export function ActivityPane<T extends ActivityEntry>({
 				</div>
 			</ScrollArea>
 
+			{addComment && <TypingIndicator names={typingNames} />}
+
 			{addComment && (
 				<div className="shrink-0 border-t border-border/50 p-3 space-y-1 bg-background/50">
 					{editingCommentId && (
@@ -609,7 +611,6 @@ export function ActivityPane<T extends ActivityEntry>({
 							projectId={projectId}
 						/>
 					</fieldset>
-					<TypingIndicator names={typingNames} />
 					<div className="flex items-center justify-between">
 						{editorFocused && (
 							<p className="text-xs text-muted-foreground/90 pl-1">

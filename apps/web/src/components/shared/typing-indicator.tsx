@@ -21,7 +21,7 @@ export function TypingIndicator({ names }: { names?: string[] }) {
 			role="status"
 			aria-live="polite"
 			data-testid="typing-indicator"
-			className="h-4 truncate px-1 text-xs text-muted-foreground/90"
+			className="h-5 shrink-0 truncate px-4 text-xs leading-5 text-muted-foreground/90"
 		>
 			{text}
 		</p>
