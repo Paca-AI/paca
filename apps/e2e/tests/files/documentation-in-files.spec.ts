@@ -337,6 +337,8 @@ test.describe("Documentation in Files", () => {
 
 		await signIn(page);
 		await page.goto(`${BASE_URL}/projects/${projectId}/docs/${docId}`);
+		// The file is named after the title: wait until the document has loaded.
+		await expect(breadcrumb(page).getByText("Plan")).toBeVisible();
 		const [download] = await Promise.all([
 			page.waitForEvent("download"),
 			page.getByRole("button", { name: "Download as Markdown" }).click(),

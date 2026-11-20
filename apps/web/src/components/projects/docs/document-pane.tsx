@@ -328,6 +328,9 @@ export function DocumentPane({
 				className="size-7 text-muted-foreground/90 hover:text-foreground hover:bg-muted/60 transition-all duration-150"
 				title={t("docs.editorPage.downloadMarkdown")}
 				aria-label={t("docs.editorPage.downloadMarkdown")}
+				// The file is named after the title, which is not known until the
+				// document has loaded.
+				disabled={!doc}
 				onClick={() =>
 					void downloadDocMarkdown(
 						projectId,
