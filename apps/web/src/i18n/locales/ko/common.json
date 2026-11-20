@@ -37,6 +37,7 @@
 				"userSecurity": "사용자 보안 설정",
 				"userMfa": "사용자 2단계 인증",
 				"document": "문서",
+				"note": "노트",
 				"folder": "폴더",
 				"pluginPreferences": "플러그인 환경설정",
 				"agent": "에이전트",

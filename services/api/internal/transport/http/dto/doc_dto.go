@@ -59,9 +59,12 @@ func DocFolderFromEntity(f *docdom.DocFolder) DocFolderResponse {
 
 // CreateDocumentRequest is the body for POST /projects/:projectId/docs.
 type CreateDocumentRequest struct {
-	Title    string          `json:"title"`
-	FolderID *uuid.UUID      `json:"folder_id"`
-	Content  json.RawMessage `json:"content"`
+	Title    string     `json:"title"`
+	FolderID *uuid.UUID `json:"folder_id"`
+	// ViewID creates a note of that note view instead of a document of the
+	// docs tree; folder_id must then be absent.
+	ViewID  *uuid.UUID      `json:"view_id"`
+	Content json.RawMessage `json:"content"`
 	WriteNote
 }
 
@@ -164,6 +167,7 @@ type DocumentResponse struct {
 	ID        uuid.UUID       `json:"id"`
 	ProjectID uuid.UUID       `json:"project_id"`
 	FolderID  *uuid.UUID      `json:"folder_id,omitempty"`
+	ViewID    *uuid.UUID      `json:"view_id,omitempty"`
 	Title     string          `json:"title"`
 	Content   json.RawMessage `json:"content"`
 	// ContentHash identifies the content version: the same blocks give the
@@ -201,6 +205,7 @@ type DocumentListItemResponse struct {
 	ID        uuid.UUID  `json:"id"`
 	ProjectID uuid.UUID  `json:"project_id"`
 	FolderID  *uuid.UUID `json:"folder_id,omitempty"`
+	ViewID    *uuid.UUID `json:"view_id,omitempty"`
 	Title     string     `json:"title"`
 	Position  int        `json:"position"`
 	CreatedBy *uuid.UUID `json:"created_by,omitempty"`
@@ -218,6 +223,7 @@ func DocumentFromEntity(d *docdom.Document) DocumentResponse {
 		ID:          d.ID,
 		ProjectID:   d.ProjectID,
 		FolderID:    d.FolderID,
+		ViewID:      d.ViewID,
 		Title:       d.Title,
 		Content:     d.Content,
 		ContentHash: d.Hash(),
@@ -238,6 +244,7 @@ func DocumentListItemFromEntity(d *docdom.Document) DocumentListItemResponse {
 		ID:        d.ID,
 		ProjectID: d.ProjectID,
 		FolderID:  d.FolderID,
+		ViewID:    d.ViewID,
 		Title:     d.Title,
 		Position:  d.Position,
 		CreatedBy: d.CreatedBy,

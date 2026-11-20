@@ -31,6 +31,13 @@ var (
 	// no source: only a managed copy can be locked.
 	ErrDocLockNeedsSource = errors.New("document: only a document with a source can be locked")
 
+	// ErrNoteViewInvalid means a note names a view that is not a note view of
+	// the document's project.
+	ErrNoteViewInvalid = errors.New("document: view_id must name a note view of this project")
+	// ErrNoteInFolder means a write would put a note (a document of a note
+	// view) in a folder: a note belongs to its view, not to the docs tree.
+	ErrNoteInFolder = errors.New("document: a note belongs to its view and cannot be put in a folder")
+
 	// ErrInvalidCursor is returned when a client-supplied tree-listing cursor
 	// cannot be decoded.
 	ErrInvalidCursor = errors.New("doc: invalid pagination cursor")

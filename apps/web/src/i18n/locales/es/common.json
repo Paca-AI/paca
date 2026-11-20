@@ -37,6 +37,7 @@
 				"userSecurity": "Ajustes de seguridad del usuario",
 				"userMfa": "Autenticación de dos factores del usuario",
 				"document": "Documento",
+				"note": "Nota",
 				"folder": "Carpeta",
 				"pluginPreferences": "Preferencias del plugin",
 				"agent": "Agente",

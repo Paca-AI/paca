@@ -34,6 +34,7 @@ type documentRecord struct {
 	ID        string           `db:"id"`
 	ProjectID string           `db:"project_id"`
 	FolderID  *string          `db:"folder_id"`
+	ViewID    *string          `db:"view_id"`
 	Title     string           `db:"title"`
 	Content   *json.RawMessage `db:"content"`
 	// ContentHash is NULL on rows written before migration 000087.
@@ -141,6 +142,10 @@ func documentFromRecord(r documentRecord) *docdom.Document {
 		id := uuid.MustParse(*r.FolderID)
 		d.FolderID = &id
 	}
+	if r.ViewID != nil {
+		id := uuid.MustParse(*r.ViewID)
+		d.ViewID = &id
+	}
 	if r.CreatedBy != nil {
 		id := uuid.MustParse(*r.CreatedBy)
 		d.CreatedBy = &id
@@ -171,6 +176,10 @@ func documentToRecord(d *docdom.Document) documentRecord {
 	if d.FolderID != nil {
 		s := d.FolderID.String()
 		r.FolderID = &s
+	}
+	if d.ViewID != nil {
+		s := d.ViewID.String()
+		r.ViewID = &s
 	}
 	if d.CreatedBy != nil {
 		s := d.CreatedBy.String()
@@ -452,15 +461,16 @@ func (r *DocumentRepository) DeleteFolder(ctx context.Context, id uuid.UUID) err
 // Document CRUD
 // =============================================================================
 
-const documentCols = `id, project_id, folder_id, title, content, content_hash, position, created_by, updated_by, created_at, updated_at, deleted_at, source, source_locked`
+const documentCols = `id, project_id, folder_id, view_id, title, content, content_hash, position, created_by, updated_by, created_at, updated_at, deleted_at, source, source_locked`
 
 // documentTreeCols is documentCols without the (potentially large) body.
-const documentTreeCols = `id, project_id, folder_id, title, content_hash, position, created_by, updated_by, created_at, updated_at, deleted_at, source, source_locked`
+const documentTreeCols = `id, project_id, folder_id, view_id, title, content_hash, position, created_by, updated_by, created_at, updated_at, deleted_at, source, source_locked`
 
 // ListDocuments returns one cursor-paginated page of a project's documents in
 // manual order (position, title, id), without their bodies. filter narrows by
-// folder and title. The caller's IAM scope narrows the query itself, ahead of
-// the cursor and LIMIT, so every page is a full page of allowed documents.
+// folder or note view, and by title; without a view it lists the docs tree,
+// which holds no notes. The caller's IAM scope narrows the query itself, ahead
+// of the cursor and LIMIT, so every page is a full page of allowed documents.
 func (r *DocumentRepository) ListDocuments(ctx context.Context, projectID uuid.UUID, filter docdom.DocumentFilter, cursorAfter *string, limit int) ([]*docdom.Document, bool, error) {
 	if limit <= 0 {
 		limit = 50
@@ -468,11 +478,16 @@ func (r *DocumentRepository) ListDocuments(ctx context.Context, projectID uuid.U
 	query := `SELECT ` + documentTreeCols + ` FROM documents WHERE project_id = $1 AND deleted_at IS NULL`
 	args := []any{projectID.String()}
 	switch {
+	case filter.ViewID != nil:
+		args = append(args, filter.ViewID.String())
+		query += fmt.Sprintf(` AND view_id = $%d`, len(args))
 	case filter.FolderID != nil:
 		args = append(args, filter.FolderID.String())
 		query += fmt.Sprintf(` AND folder_id = $%d`, len(args))
 	case filter.RootOnly:
-		query += ` AND folder_id IS NULL`
+		query += ` AND folder_id IS NULL AND view_id IS NULL`
+	default:
+		query += ` AND view_id IS NULL`
 	}
 	sink := &argList{args: args}
 	clause, none, err := scopeSQL(ctx, "doc", docScopeColumns, sink)
@@ -545,6 +560,9 @@ func (r *DocumentRepository) ListAllDocuments(ctx context.Context, projectID uui
 // before migration 000091 and not backfilled yet, or its content changed by
 // something that did not fill it) is matched the old way, against each
 // inline "text" node of the BlockNote JSON.
+//
+// Search covers the docs tree: a hit is reported by its path, which a note
+// (a document of a note view, migration 000094) does not have.
 func (r *DocumentRepository) SearchDocuments(ctx context.Context, projectID uuid.UUID, query string, limit int) ([]*docdom.Document, error) {
 	q, args, none, err := r.searchDocumentsQuery(ctx, projectID, query, limit)
 	if err != nil {
@@ -594,7 +612,7 @@ func (r *DocumentRepository) searchDocumentsQuery(ctx context.Context, projectID
 	}
 	limitP := sink.addArg(limit)
 	q := `SELECT ` + documentCols + ` FROM documents
-		WHERE project_id = $1 AND deleted_at IS NULL
+		WHERE project_id = $1 AND view_id IS NULL AND deleted_at IS NULL
 		  AND (title ILIKE $2
 		       OR content_text ILIKE $2
 		       OR (content_text IS NULL AND EXISTS (
@@ -633,9 +651,25 @@ func (r *DocumentRepository) FindDocumentTitleByID(_ context.Context, id uuid.UU
 	return title, nil
 }
 
-// CreateDocument persists a new document.
+// CreateDocument persists a new document. A note first takes its view's row
+// (FOR KEY SHARE, which the insert's foreign key check would take anyway), and
+// only then the change counter: deleting a view holds the view row when its
+// trigger takes the counter to delete the view's notes (migration 000094), so
+// the reverse order could deadlock with it. A view deleted before the lock is
+// ErrNoteViewInvalid.
 func (r *DocumentRepository) CreateDocument(ctx context.Context, d *docdom.Document) error {
 	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		if d.ViewID != nil {
+			var one int
+			err := tx.GetContext(ctx, &one, `SELECT 1 FROM sprint_views WHERE id = $1 AND project_id = $2 FOR KEY SHARE`,
+				d.ViewID.String(), d.ProjectID.String())
+			if errors.Is(err, sql.ErrNoRows) {
+				return docdom.ErrNoteViewInvalid
+			}
+			if err != nil {
+				return err
+			}
+		}
 		if err := lockDocSeq(ctx, tx, d.ProjectID.String()); err != nil {
 			return err
 		}
@@ -646,11 +680,11 @@ func (r *DocumentRepository) CreateDocument(ctx context.Context, d *docdom.Docum
 func insertDocument(ctx context.Context, ex sqlx.ExecerContext, d *docdom.Document) error {
 	rec := documentToRecord(d)
 	_, err := ex.ExecContext(ctx, `
-		INSERT INTO documents (id, project_id, folder_id, title, content, content_hash, position, created_by, updated_by, created_at, updated_at, deleted_at, source, source_locked, content_text)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+		INSERT INTO documents (id, project_id, folder_id, title, content, content_hash, position, created_by, updated_by, created_at, updated_at, deleted_at, source, source_locked, content_text, view_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
 		rec.ID, rec.ProjectID, rec.FolderID, rec.Title, rec.Content, rec.ContentHash,
 		rec.Position, rec.CreatedBy, rec.UpdatedBy, rec.CreatedAt, rec.UpdatedAt, rec.DeletedAt,
-		rec.Source, rec.SourceLocked, docdom.ContentText(d.Content),
+		rec.Source, rec.SourceLocked, docdom.ContentText(d.Content), rec.ViewID,
 	)
 	return err
 }

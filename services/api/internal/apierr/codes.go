@@ -172,6 +172,9 @@ const (
 	CodeViewReorderInvalid Code = "VIEW_REORDER_INVALID"
 	// CodeViewPluginConfigRequired indicates a view_type "plugin" was saved without a plugin_id/plugin_component pair.
 	CodeViewPluginConfigRequired Code = "VIEW_PLUGIN_CONFIG_REQUIRED"
+	// CodeViewNoteTypeChange indicates an update tried to turn a note view
+	// into another type, or another view into a note view.
+	CodeViewNoteTypeChange Code = "VIEW_NOTE_TYPE_CHANGE"
 
 	// CodeCustomFieldNotFound indicates the requested custom field definition does not exist.
 	CodeCustomFieldNotFound Code = "CUSTOM_FIELD_NOT_FOUND"
@@ -263,6 +266,12 @@ const (
 	// CodeDocLockNeedsSource indicates a lock was asked for on a document
 	// that is not a managed copy (it has no source).
 	CodeDocLockNeedsSource Code = "DOC_LOCK_NEEDS_SOURCE"
+	// CodeDocNoteViewInvalid indicates a note was created in a view that is
+	// not a note view of the project.
+	CodeDocNoteViewInvalid Code = "DOC_NOTE_VIEW_INVALID"
+	// CodeDocNoteInFolder indicates a write would put a note (a document of a
+	// note view) in a folder.
+	CodeDocNoteInFolder Code = "DOC_NOTE_IN_FOLDER"
 	// CodeDocPathInvalid indicates a document path with no title (empty, or
 	// only slashes and spaces) or one that is too long.
 	CodeDocPathInvalid Code = "DOC_PATH_INVALID"

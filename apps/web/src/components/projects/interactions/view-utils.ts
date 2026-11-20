@@ -456,7 +456,9 @@ export const FIELD_SUM_COUNT = {
  * subsequent "load more" fetches. A saved view's `initial_page_size` /
  * `page_size` always takes priority over these — they only apply when unset.
  * Plugin views render arbitrary content and don't paginate through this
- * mechanism, so they reuse the Table (list) defaults.
+ * mechanism, so they reuse the Table (list) defaults. Note views list notes,
+ * not tasks, and load no tasks at all; they carry the same defaults only to
+ * keep the record complete.
  */
 export const PAGE_SIZE_DEFAULTS: Record<
 	ViewLayout,
@@ -466,6 +468,7 @@ export const PAGE_SIZE_DEFAULTS: Record<
 	Board: { initial: 20, perPage: 20 },
 	Gantt: { initial: 100, perPage: 100 },
 	Plugin: { initial: 5, perPage: 20 },
+	Note: { initial: 5, perPage: 20 },
 };
 
 export function getDefaultInitialPageSize(

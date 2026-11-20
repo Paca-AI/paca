@@ -4,6 +4,7 @@ package docsvc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	"github.com/Paca-AI/api/internal/events"
 )
 
@@ -19,11 +21,24 @@ type memberLookup interface {
 	FindMember(ctx context.Context, projectID, accountID uuid.UUID) (*projectdom.ProjectMember, error)
 }
 
+// viewLookup finds the view a note is created in.
+type viewLookup interface {
+	FindViewByID(ctx context.Context, id uuid.UUID) (*sprintdom.SprintView, error)
+}
+
 // Service is the concrete implementation of docdom.Service.
 type Service struct {
 	repo       docdom.Repository
 	memberRepo memberLookup
 	realtime   realtimeSink
+	views      viewLookup
+}
+
+// WithViews sets where the view of a new note is looked up. Without it no
+// note can be created (ErrNoteViewInvalid).
+func (s *Service) WithViews(views viewLookup) *Service {
+	s.views = views
+	return s
 }
 
 // realtimeSink is where folder changes are announced to live clients.
@@ -248,6 +263,15 @@ func (s *Service) CreateDocument(ctx context.Context, in docdom.CreateDocumentIn
 		return nil, docdom.ErrDocTitleInvalid
 	}
 
+	if in.ViewID != nil {
+		if in.FolderID != nil {
+			return nil, docdom.ErrNoteInFolder
+		}
+		if err := s.checkNoteView(ctx, in.ProjectID, *in.ViewID); err != nil {
+			return nil, err
+		}
+	}
+
 	if in.FolderID != nil {
 		folder, err := s.repo.FindFolderByID(ctx, *in.FolderID)
 		if err != nil {
@@ -265,6 +289,7 @@ func (s *Service) CreateDocument(ctx context.Context, in docdom.CreateDocumentIn
 		ID:          uuid.New(),
 		ProjectID:   in.ProjectID,
 		FolderID:    in.FolderID,
+		ViewID:      in.ViewID,
 		Title:       title,
 		Content:     in.Content,
 		ContentHash: &hash,
@@ -371,6 +396,9 @@ func (u *docUpdate) decide(d *docdom.Document) error {
 		return docdom.ErrDocLocked
 	}
 	if in.FolderID != nil && !sameFolder(*in.FolderID, d.FolderID) {
+		if d.ViewID != nil {
+			return docdom.ErrNoteInFolder
+		}
 		d.FolderID = *in.FolderID
 		change.Folder = true
 	}
@@ -435,6 +463,25 @@ func (s *Service) snapshotOld(ctx context.Context, d *docdom.Document, u *docUpd
 		// rapid edits do not accumulate excessive history entries.
 		_ = s.repo.DeleteRecentSnapshotsExcept(ctx, d.ID, snap.ID, snapTime.Add(-3*time.Minute))
 	}
+}
+
+// checkNoteView returns nil when viewID is a note view of projectID, and
+// ErrNoteViewInvalid otherwise (including when the view does not exist).
+func (s *Service) checkNoteView(ctx context.Context, projectID, viewID uuid.UUID) error {
+	if s.views == nil {
+		return docdom.ErrNoteViewInvalid
+	}
+	v, err := s.views.FindViewByID(ctx, viewID)
+	if errors.Is(err, sprintdom.ErrViewNotFound) {
+		return docdom.ErrNoteViewInvalid
+	}
+	if err != nil {
+		return err
+	}
+	if v.ProjectID != projectID || v.ViewType != sprintdom.ViewTypeNote {
+		return docdom.ErrNoteViewInvalid
+	}
+	return nil
 }
 
 // storedNow is the current time at the precision Postgres keeps (microseconds),

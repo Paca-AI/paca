@@ -242,7 +242,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	activityLog := activitysvc.New(pgRepo.NewActivityRepository(db), projectRepo, activitysvc.NewRecorder(publisher))
 	activityService := tasksvc.NewActivityService(activityLog, taskRepo, projectRepo)
 	docRepo := pgRepo.NewDocumentRepository(db)
-	docService := docsvc.New(docRepo, projectRepo)
+	docService := docsvc.New(docRepo, projectRepo).WithViews(viewRepo)
 	docActivityService := docsvc.NewActivityService(activityLog, docRepo)
 	automationRepo := pgRepo.NewAutomationRepository(db)
 	automationService := automationsvc.New(automationRepo, taskRepo, projectRepo, publisher)

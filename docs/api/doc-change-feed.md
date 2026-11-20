@@ -14,6 +14,12 @@ Both need `docs:read` on the project and are narrowed to the documents the
 caller may read, exactly like the document list. Responses use the standard
 envelope; the shapes below are the `data` object.
 
+The feed mirrors the docs tree, so the notes of note views (documents with a
+`view_id`, which belong to a view instead of a folder) are not part of it. A
+note deleted with its view reads as a deleted tree document from then on, so
+a client may get a tombstone for a note it never had; there is nothing to
+remove for it.
+
 ---
 
 ## `GET /projects/{projectId}/docs/changes?since=<cursor>`

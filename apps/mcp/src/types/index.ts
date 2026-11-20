@@ -203,6 +203,8 @@ export interface Document {
 	id: string;
 	project_id?: string | null;
 	folder_id?: string | null;
+	/** The note view a note belongs to; absent on documents of the docs tree. */
+	view_id?: string | null;
 	title: string;
 	content: unknown[] | null;
 	position: number;
@@ -245,8 +247,14 @@ export interface CreateDocumentInput {
 	project_id: string;
 	title: string;
 	folder_id?: string | null;
+	/** Creates a note of this note view instead of a docs-tree document. */
+	view_id?: string;
 	content?: string;
 	position?: number;
+	/** Why the write was made, what made it and its task (see write_doc). */
+	note?: string;
+	client?: string;
+	task?: string;
 }
 
 export interface UpdateDocumentInput {
@@ -485,7 +493,7 @@ export interface UpdateTaskStatusInput {
 
 // ==================== Views ====================
 
-export type ViewType = "table" | "board" | "gantt" | "plugin";
+export type ViewType = "table" | "board" | "gantt" | "plugin" | "note";
 export type ViewLayout = "Board" | "Table" | "Gantt";
 export type ViewsContext = "sprint" | "backlog" | "timeline";
 

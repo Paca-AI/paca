@@ -88,6 +88,9 @@ const (
 	resTaskAttrs = "request attributes of a task create/update"
 	resDocAttrs  = "request attributes of a document create/update"
 	resViewAttrs = "request attributes of a view create (sprint from the query)"
+	// resDocView: a document listing or create may name a note view
+	// (view_id), whose notes then follow the view's own access.
+	resDocView = "project/{projectId}/view/{view_id of the query or body}"
 	// resViewReorderItems: a view reorder names its views in the body, and
 	// each one is authorized individually.
 	resViewReorderItems = "views named in view_ids of a view reorder"
@@ -199,6 +202,13 @@ func (g guards) ViewReorderItems() func(http.Handler) http.Handler {
 func (g guards) DocCreate() func(http.Handler) http.Handler {
 	return markGate(resDocAttrs, httpmw.RequireRequestAttrs(g.iam, iam.ActionDocsWrite,
 		httpmw.ProjectChildCollection("projectId", "doc"), httpmw.DocAttrs, true))
+}
+
+// DocView authorizes views:read on the note view a document listing or create
+// names in view_id: the notes of a view follow the view's access as well as
+// docs:read / docs:write. Declare it after the route's action gate.
+func (g guards) DocView() func(http.Handler) http.Handler {
+	return markGate(resDocView, httpmw.RequireDocView(g.iam, iam.ActionViewsRead, "projectId"))
 }
 
 // DocChange authorizes an update of one document: moving it to another folder

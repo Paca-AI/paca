@@ -1,4 +1,11 @@
-import { ChartGantt, KanbanSquare, List, Plus, Puzzle } from "lucide-react";
+import {
+	ChartGantt,
+	KanbanSquare,
+	List,
+	NotebookPen,
+	Plus,
+	Puzzle,
+} from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -25,11 +32,12 @@ type LayoutOption =
 	| { type: "builtin"; layout: ViewLayout }
 	| { type: "plugin"; registration: PluginRegistration };
 
-const builtinLayouts: ViewLayout[] = ["Board", "Table", "Gantt"];
+const builtinLayouts: ViewLayout[] = ["Board", "Table", "Gantt", "Note"];
 
 const layoutIcon = (l: ViewLayout) => {
 	if (l === "Board") return <KanbanSquare className="size-3.5" />;
 	if (l === "Gantt") return <ChartGantt className="size-3.5" />;
+	if (l === "Note") return <NotebookPen className="size-3.5" />;
 	return <List className="size-3.5" />;
 };
 
@@ -38,6 +46,7 @@ const LAYOUT_LABEL_KEYS = {
 	Table: "layout.newViewPopover.layouts.table",
 	Gantt: "layout.newViewPopover.layouts.gantt",
 	Plugin: "layout.newViewPopover.layouts.plugin",
+	Note: "layout.newViewPopover.layouts.note",
 } as const satisfies Record<ViewLayout, string>;
 
 export function NewViewPopover({

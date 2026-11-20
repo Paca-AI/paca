@@ -268,7 +268,7 @@ Table sprint_views {
   sprint_id uuid [null, ref: > sprints.id, note: 'null for project-level views (backlog, timeline); set for sprint views']
   project_id uuid [not null, ref: > projects.id]
   name varchar [not null]
-  view_type varchar [not null, note: 'Layout: table | board | gantt | plugin']
+  view_type varchar [not null, note: 'Layout: table | board | gantt | plugin | note. A note view holds documents (documents.view_id) instead of tasks, and keeps its type.']
   view_context varchar [not null, note: 'Interaction discriminator: sprint | backlog | timeline. sprint rows always have sprint_id set; backlog and timeline rows have sprint_id = null.']
   position double [not null, default: 0, note: 'Zero-based tab order within the interaction; lower = further left in the tab bar. Updated on drag-to-reorder.']
   config jsonb [note: '''
@@ -368,6 +368,7 @@ Table documents {
   id         uuid [primary key]
   project_id uuid [not null, ref: > projects.id]
   folder_id  uuid [null, ref: > doc_folders.id, note: 'null = root (no folder)']
+  view_id    uuid [null, ref: > sprint_views.id, note: 'Set on a note: the note view it belongs to. A note is never in a folder (CHECK view_id IS NULL OR folder_id IS NULL) and never part of the docs tree, path lookups, search or the change feed. Deleting the view soft-deletes its notes (trigger, migration 000094); the foreign key then sets view_id to NULL on them.']
   title      varchar [not null, default: 'Untitled']
   content    jsonb [null, note: 'BlockNote rich-text document stored as a JSON array of block objects. null means no content. Each block follows the BlockNote schema: { id, type, props, content, children }.']
   position   integer [not null, default: 0, note: 'Zero-based order within the same folder/root']

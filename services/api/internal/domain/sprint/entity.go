@@ -69,6 +69,9 @@ const (
 	ViewTypeBoard  ViewType = "board"
 	ViewTypeGantt  ViewType = "gantt"
 	ViewTypePlugin ViewType = "plugin"
+	// ViewTypeNote is a view of free-form documents (notes) instead of
+	// tasks. Its notes are documents whose view_id names it.
+	ViewTypeNote ViewType = "note"
 )
 
 // viewTypeRoadmap is the former name of ViewTypeGantt. It is still accepted
@@ -82,6 +85,7 @@ var ValidViewTypes = map[ViewType]bool{
 	ViewTypeBoard:  true,
 	ViewTypeGantt:  true,
 	ViewTypePlugin: true,
+	ViewTypeNote:   true,
 }
 
 // NormalizeViewType maps a deprecated alias to the view type it stands for

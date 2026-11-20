@@ -90,6 +90,7 @@ export const SUCCESS_SUBJECTS = [
 	"userSecurity",
 	"userMfa",
 	"document",
+	"note",
 	"folder",
 	"pluginPreferences",
 	"agent",

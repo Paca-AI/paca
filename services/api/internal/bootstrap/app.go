@@ -294,7 +294,7 @@ func New(cfg *config.Config) (*App, error) {
 		WithActivityRecorder(activityService)
 	activityConsumer := worker.NewActivityConsumer(redisClient, pgRepo.NewActivityRepository(db), projectRepo, log)
 	environmentConsumer := worker.NewEnvironmentCommandConsumer(redisClient, environmentService, log)
-	docService := docsvc.New(docRepo, projectRepo).WithRealtime(publisher)
+	docService := docsvc.New(docRepo, projectRepo).WithRealtime(publisher).WithViews(viewRepo)
 	docActivityService := docsvc.NewActivityService(activityLog, docRepo).WithAgentTrigger(triggerGate, projectRepo).WithNotificationService(notificationService)
 	automationService := automationsvc.New(automationRepo, taskRepo, projectRepo, publisher)
 	automationConsumer := worker.NewAutomationConsumer(redisClient, automationRepo, taskRepo, taskService, activityService, publisher, log).WithNotifier(notificationService).WithUserSetRecorder(taskRepo)

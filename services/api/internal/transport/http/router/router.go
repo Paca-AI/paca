@@ -889,9 +889,10 @@ func New(deps Deps) http.Handler {
 					r.With(require.Project(iam.ActionDocsRead)).Get("/changes", deps.Document.ListChanges)
 					r.With(require.Project(iam.ActionDocsRead)).Post("/batch-get", deps.Document.BatchGetDocuments)
 
-					// Documents — collection
-					r.With(require.Project(iam.ActionDocsRead)).Get("/", deps.Document.ListDocuments)
-					r.With(require.Project(iam.ActionDocsWrite), require.DocCreate()).Post("/", deps.Document.CreateDocument)
+					// Documents — collection. view_id lists or creates the
+					// notes of a note view, which also need views:read on it.
+					r.With(require.Project(iam.ActionDocsRead), require.DocView()).Get("/", deps.Document.ListDocuments)
+					r.With(require.Project(iam.ActionDocsWrite), require.DocCreate(), require.DocView()).Post("/", deps.Document.CreateDocument)
 
 					// Documents — single item
 					r.Route("/{docId}", func(r chi.Router) {

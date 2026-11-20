@@ -21,6 +21,7 @@ import {
 	ChevronDown,
 	KanbanSquare,
 	List,
+	NotebookPen,
 	Plus,
 	Puzzle,
 	Search,
@@ -110,6 +111,7 @@ import type { DateUpdate } from "./gantt-scale";
 import { GanttView } from "./gantt-view";
 import { ListView } from "./list-view";
 import { NewViewPopover } from "./new-view-popover";
+import { NoteView } from "./note-view";
 import { getImportanceBucketBounds } from "./priority";
 import { RenameViewDialog } from "./rename-view-dialog";
 import type { SprintFormPayload } from "./sprint-form-modal";
@@ -479,6 +481,7 @@ export function InteractionLayout({
 		const uninitializedViews = views.filter(
 			(view) =>
 				view.layout !== "Plugin" &&
+				view.layout !== "Note" &&
 				!initializedFiltersRef.current.has(view.id) &&
 				view.config?.filters === undefined,
 		);
@@ -521,6 +524,8 @@ export function InteractionLayout({
 
 	const activeView = views.find((v) => v.id === preferredViewId) ?? views[0];
 	const activeViewId = activeView?.id ?? "";
+	// A note view shows documents, not tasks: no task query runs for it.
+	const isNoteView = activeView?.layout === "Note";
 
 	// Plugin view registrations (for the "Add view" popover layout options)
 	const { getRegistrations } = usePluginRegistry();
@@ -855,7 +860,9 @@ export function InteractionLayout({
 	// view's filters, instead of the client guessing from the tasks it loaded.
 	// The Gantt view isn't paginated per column and keeps grouping what it loads.
 	const needsApiColumns =
-		hasApiColumns(columnBy, customFields) && activeView?.layout !== "Gantt";
+		hasApiColumns(columnBy, customFields) &&
+		activeView?.layout !== "Gantt" &&
+		!isNoteView;
 	const columnsFilterOpts = useMemo(() => {
 		const {
 			pageSize: _pageSize,
@@ -922,7 +929,8 @@ export function InteractionLayout({
 	const colQueriesEnabled =
 		fetchColumnDefs.length > 0 &&
 		!viewsQuery.isLoading &&
-		activeView?.layout !== "Gantt";
+		activeView?.layout !== "Gantt" &&
+		!isNoteView;
 
 	// Filters carried onto the children listed under an expanded parent row:
 	// the view's own filters and sort, minus what scopes the top level.
@@ -1069,7 +1077,11 @@ export function InteractionLayout({
 	const fallbackQueryOpts = allTasksQueryOptions(projectId, fallbackOpts);
 	const fallbackQuery = useQuery({
 		...fallbackQueryOpts,
-		enabled: !colQueriesEnabled && !viewsQuery.isLoading && !apiColumnsPending,
+		enabled:
+			!colQueriesEnabled &&
+			!viewsQuery.isLoading &&
+			!apiColumnsPending &&
+			!isNoteView,
 		// See the matching comment on the column queries above: "load more"
 		// grows pageSize (and thus the queryKey), so keep showing the smaller
 		// page's data while the larger one fetches instead of dropping to
@@ -1767,13 +1779,16 @@ export function InteractionLayout({
 			pluginRegistration?: PluginRegistration;
 		}) => {
 			const view_type = layoutToViewType(payload.layout);
+			// A note view lists notes, so it has no task filters to seed.
 			const config =
 				payload.layout === "Plugin" && payload.pluginRegistration
 					? {
 							plugin_manifest_id: payload.pluginRegistration.pluginId,
 							plugin_component: payload.pluginRegistration.component,
 						}
-					: buildDefaultViewConfig(payload.layout);
+					: payload.layout === "Note"
+						? undefined
+						: buildDefaultViewConfig(payload.layout);
 			return createViewByContext(
 				projectId,
 				context,
@@ -1949,11 +1964,17 @@ export function InteractionLayout({
 				setPreferredViewId(displayViews[nextIdx].id);
 			},
 			focusSearch: () => {
+				if (activeView?.layout === "Note") return;
 				setSearchOpen(true);
 				setTimeout(() => searchRef.current?.focus(), 0);
 			},
 			toggleViewSettings: () => {
-				if (!activeView || activeView.layout === "Plugin") return;
+				if (
+					!activeView ||
+					activeView.layout === "Plugin" ||
+					activeView.layout === "Note"
+				)
+					return;
 				setSettingsOpen((prev) => !prev);
 			},
 			focusCreateTask: () => {
@@ -2056,6 +2077,8 @@ export function InteractionLayout({
 										<ChartGantt className="size-3.5" />
 									) : view.layout === "Plugin" ? (
 										<Puzzle className="size-3.5" />
+									) : view.layout === "Note" ? (
+										<NotebookPen className="size-3.5" />
 									) : (
 										<List className="size-3.5" />
 									)}
@@ -2115,7 +2138,13 @@ export function InteractionLayout({
 					)}
 				</div>
 
-				<div className="flex shrink-0 items-center gap-1 pl-3 border-l border-border/50 ml-2">
+				{/* Task search and view settings: a note view has neither. */}
+				<div
+					className={cn(
+						"flex shrink-0 items-center gap-1 pl-3 border-l border-border/50 ml-2",
+						isNoteView && "hidden",
+					)}
+				>
 					{searchOpen ? (
 						<div className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/15 px-3 py-1.5 focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/15 transition-all duration-150">
 							<Search className="size-3.5 text-muted-foreground/90 shrink-0" />
@@ -2159,7 +2188,7 @@ export function InteractionLayout({
 						</button>
 					)}
 
-					{activeView && activeView.layout !== "Plugin" && (
+					{activeView && activeView.layout !== "Plugin" && !isNoteView && (
 						<ViewSettingsPanel
 							projectId={projectId}
 							view={activeView}
@@ -2214,6 +2243,12 @@ export function InteractionLayout({
 					<div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
 						{t("layout.shell.pluginNotAvailable")}
 					</div>
+				) : isNoteView && activeView ? (
+					<NoteView
+						key={activeView.id}
+						projectId={projectId}
+						viewId={activeView.id}
+					/>
 				) : tasksLoading ? (
 					activeView?.layout === "Board" ? (
 						<BoardViewSkeleton />
