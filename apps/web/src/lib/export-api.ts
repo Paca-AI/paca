@@ -103,12 +103,75 @@ export const projectExportsQueryOptions = (
 				: false,
 	});
 
-/** Starts a browser download of a presigned URL (the response is an attachment). */
-export function triggerDownload(url: string) {
-	const a = document.createElement("a");
-	a.href = url;
-	a.rel = "noopener";
-	document.body.appendChild(a);
-	a.click();
-	a.remove();
+/**
+ * Rewrites storage download URLs that were signed for `http://localhost`
+ * (no port) so they hit the same origin the SPA is on — e.g. `:3000` in
+ * docker-compose.dev. Without this, Cursor's Simple Browser navigates away
+ * from the portal when the export download starts.
+ */
+export function resolveDownloadUrl(url: string): string {
+	try {
+		const parsed = new URL(url, window.location.origin);
+		const onDevPort =
+			window.location.port !== "" &&
+			window.location.port !== "80" &&
+			window.location.port !== "443";
+		if (
+			parsed.pathname.startsWith("/storage/") &&
+			(parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") &&
+			parsed.port === "" &&
+			onDevPort
+		) {
+			parsed.protocol = window.location.protocol;
+			parsed.port = window.location.port;
+		}
+		return parsed.toString();
+	} catch {
+		return url;
+	}
+}
+
+function fileNameFromUrl(url: string): string | undefined {
+	try {
+		const disposition = new URL(url).searchParams.get(
+			"response-content-disposition",
+		);
+		if (!disposition) return undefined;
+		const match = /filename\*?=(?:UTF-8''|")?([^\";]+)"?/i.exec(disposition);
+		return match?.[1] ? decodeURIComponent(match[1]) : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * Downloads a presigned attachment URL without navigating the current tab.
+ * Uses a blob + `a[download]` so embedded browsers (Cursor Simple Browser)
+ * keep the SPA mounted; falls back to a new tab if fetch fails.
+ */
+export async function triggerDownload(url: string, fileName?: string) {
+	const href = resolveDownloadUrl(url);
+	const name = fileName ?? fileNameFromUrl(href) ?? "download";
+	try {
+		const res = await fetch(href);
+		if (!res.ok) throw new Error(`download failed: ${res.status}`);
+		const blob = await res.blob();
+		const objectUrl = URL.createObjectURL(blob);
+		const a = document.createElement("a");
+		a.href = objectUrl;
+		a.download = name;
+		a.rel = "noopener";
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
+		URL.revokeObjectURL(objectUrl);
+	} catch {
+		const a = document.createElement("a");
+		a.href = href;
+		a.rel = "noopener";
+		a.target = "_blank";
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
+	}
 }

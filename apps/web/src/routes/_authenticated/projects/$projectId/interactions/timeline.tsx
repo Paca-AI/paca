@@ -27,6 +27,7 @@ function TimelinePage() {
 	// "timeline" context today (that button only renders in "backlog"), kept
 	// for interface consistency with InteractionLayoutProps.
 	const canManageSprints = hasProjectPermission("sprints:write");
+	const canExport = hasProjectPermission("project:export");
 
 	return (
 		<InteractionLayout
@@ -38,6 +39,7 @@ function TimelinePage() {
 			canEdit={canEdit}
 			canManageViews={canManageViews}
 			canManageSprints={canManageSprints}
+			canExport={canExport}
 			sprintId={null}
 			context="timeline"
 		/>

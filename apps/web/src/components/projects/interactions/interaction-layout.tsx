@@ -113,6 +113,7 @@ import { ListView } from "./list-view";
 import { NewViewPopover } from "./new-view-popover";
 import { NoteView } from "./note-view";
 import { getImportanceBucketBounds } from "./priority";
+import { ProjectExportButton } from "./project-export-button";
 import { RenameViewDialog } from "./rename-view-dialog";
 import type { SprintFormPayload } from "./sprint-form-modal";
 import { TaskDetailModal } from "./task-detail-modal";
@@ -255,6 +256,8 @@ interface InteractionLayoutProps {
 	 * separate permission from canCreate (tasks.write): being able to
 	 * create a task doesn't imply being able to create or start a sprint. */
 	canManageSprints: boolean;
+	/** Gates the board toolbar Export control — project:export. */
+	canExport?: boolean;
 	onTaskClick?: (task: Task) => void;
 	sprintId?: string | null;
 	/** The view context — drives which API bucket is used for views */
@@ -334,6 +337,7 @@ export function InteractionLayout({
 	canEdit,
 	canManageViews,
 	canManageSprints,
+	canExport = false,
 	onTaskClick,
 	sprintId,
 	context,
@@ -2200,6 +2204,8 @@ export function InteractionLayout({
 							<Search className="size-3.5" />
 						</button>
 					)}
+
+					<ProjectExportButton projectId={projectId} canExport={canExport} />
 
 					{activeView && activeView.layout !== "Plugin" && !isNoteView && (
 						<ViewSettingsPanel

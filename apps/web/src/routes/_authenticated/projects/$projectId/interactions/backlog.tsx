@@ -25,6 +25,7 @@ function BacklogPage() {
 	// New/Start Sprint is a sprint-entity action, not a task one — sprints.write,
 	// not tasks.write (see authz.PermissionSprintsWrite).
 	const canManageSprints = hasProjectPermission("sprints:write");
+	const canExport = hasProjectPermission("project:export");
 
 	return (
 		<InteractionLayout
@@ -36,6 +37,7 @@ function BacklogPage() {
 			canEdit={canEdit}
 			canManageViews={canManageViews}
 			canManageSprints={canManageSprints}
+			canExport={canExport}
 			sprintId={null}
 			context="backlog"
 		/>

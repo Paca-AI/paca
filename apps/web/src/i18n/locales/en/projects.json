@@ -2238,6 +2238,11 @@
 			"renameView": "Rename view",
 			"deleteView": "Delete view",
 			"searchTasksPlaceholder": "Search tasks…",
+			"export": "Export",
+			"exporting": "Exporting…",
+			"exportProject": "Download tasks (Commitment, Effort, Priority, QA, Dev fields)",
+			"exportReady": "Exported {{count}} tasks",
+			"exportFailed": "Could not export tasks. Please try again.",
 			"pluginNotAvailable": "Plugin not available",
 			"columnsTruncated": "Only the first {{max}} columns are shown; some tasks are not in any column. Narrow the view with a filter to see the rest.",
 			"viewErrors": {

@@ -103,6 +103,7 @@ function SprintPage() {
 	// permission that happened to be reused here.
 	const canManageViews = hasProjectPermission("views:write");
 	const canManageSprints = hasProjectPermission("sprints:write");
+	const canExport = hasProjectPermission("project:export");
 
 	const [completeOpen, setCompleteOpen] = useState(false);
 	const [completeSprintError, setCompleteSprintError] = useState<string | null>(
@@ -297,6 +298,7 @@ function SprintPage() {
 				canEdit={canEdit}
 				canManageViews={canManageViews}
 				canManageSprints={canManageSprints}
+				canExport={canExport}
 				sprintId={sprintId}
 				context="sprint"
 				headerActions={

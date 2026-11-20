@@ -135,7 +135,10 @@ services:
       STORAGE_ENDPOINT: rustfs:9000
       # Public URL used to rewrite presigned URLs so browsers can reach RustFS
       # through the Caddy gateway instead of the internal Docker hostname.
-      STORAGE_PUBLIC_URL: ${PUBLIC_HOST:-http://localhost}/storage
+      # Dev gateway listens on :3000 — omit the port and browser downloads
+      # leave the SPA (Cursor Simple Browser navigates to :80 and the portal
+      # looks like it "stopped").
+      STORAGE_PUBLIC_URL: ${PUBLIC_HOST:-http://localhost:3000}/storage
       STORAGE_REGION: us-east-1
       STORAGE_BUCKET: paca
       STORAGE_ACCESS_KEY_ID: rustfsadmin
@@ -155,7 +158,7 @@ services:
       # INTERNAL_API_KEY in the agent-runner service.
       AI_AGENT_INTERNAL_KEY: dev-internal-key-change-in-production
       # Public base URL used by plugins to generate callback/webhook URLs.
-      PUBLIC_URL: ${PUBLIC_HOST:-http://localhost}
+      PUBLIC_URL: ${PUBLIC_HOST:-http://localhost:3000}
       # Purely descriptive — services/api never itself publishes any
       # environment port, it only echoes these back via GET
       # /environments/config so the web app's Connect page can show a real
@@ -240,7 +243,7 @@ services:
       # directly, bypassing Caddy, so no prefix stripping is needed.
       API_URL: http://api:8080
       REDIS_URL: redis://valkey:6379/0
-      CORS_ORIGINS: ${PUBLIC_HOST:-http://localhost}
+      CORS_ORIGINS: ${PUBLIC_HOST:-http://localhost:3000}
       LOG_LEVEL: debug
     volumes:
       - ../services/realtime:/app
