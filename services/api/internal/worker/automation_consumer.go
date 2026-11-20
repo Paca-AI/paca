@@ -204,12 +204,16 @@ type AutomationConsumer struct {
 	encryptor      *secret.Encryptor
 	publisher      *messaging.Publisher
 	httpClient     *http.Client
-	log            *slog.Logger
-	groupName      string
-	groupStartID   string
-	consumerName   string
-	stopCh         chan struct{}
-	doneCh         chan struct{}
+	// jevPrivateHosts is the operator's JEV_PRIVATE_HOSTS set — the hostnames
+	// the Jev client may reach on a private network address. Nil keeps the
+	// guard strict — see WithJevPrivateHosts.
+	jevPrivateHosts *netguard.PrivateHosts
+	log             *slog.Logger
+	groupName       string
+	groupStartID    string
+	consumerName    string
+	stopCh          chan struct{}
+	doneCh          chan struct{}
 }
 
 // WithPluginRuntime attaches the plugin runtime so plugin-contributed
@@ -240,6 +244,19 @@ func (c *AutomationConsumer) WithJevProjectService(svc projectSettingsReader, en
 // (which the default client would otherwise reject as a private address).
 func (c *AutomationConsumer) WithHTTPClient(client *http.Client) *AutomationConsumer {
 	c.httpClient = client
+	return c
+}
+
+// WithJevPrivateHosts lists the hostnames the Jev client may reach on a
+// private network address (JEV_PRIVATE_HOSTS) — for an instance that hosts
+// its own Jev-compatible gateway on an internal address. Nil (the default)
+// keeps the guard strict: every private address stays unreachable. The
+// consumer's shared outbound client must be built with the same set (see
+// bootstrap) — resolveJevAnswer swaps it in for the Jev client, and the
+// dialer only opens for a client that carries the set AND a request whose
+// context names the host.
+func (c *AutomationConsumer) WithJevPrivateHosts(hosts *netguard.PrivateHosts) *AutomationConsumer {
+	c.jevPrivateHosts = hosts
 	return c
 }
 
@@ -1528,7 +1545,7 @@ func (w *walker) resolveJevAnswer(ctx context.Context, node *automationdom.Node)
 	if err != nil {
 		return automationdom.ElseHandle, nil, "load project: " + err.Error()
 	}
-	jevClient := jev.ClientForProject(project.JevAPIKeySecret, project.JevBaseURL, project.JevModel, w.consumer.encryptor)
+	jevClient := jev.ClientForProject(project.JevAPIKeySecret, project.JevBaseURL, project.JevModel, w.consumer.encryptor, w.consumer.jevPrivateHosts)
 	if jevClient.Enabled() && w.consumer.httpClient != nil {
 		// Same transport as call_api (SSRF-safe by default); WithHTTPClient
 		// overrides both, so tests can point Jev at a local httptest.Server.

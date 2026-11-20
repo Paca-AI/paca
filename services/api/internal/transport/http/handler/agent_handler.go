@@ -21,6 +21,7 @@ import (
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/platform/jev"
+	"github.com/Paca-AI/api/internal/platform/netguard"
 	"github.com/Paca-AI/api/internal/platform/secret"
 	agentsvc "github.com/Paca-AI/api/internal/service/agent"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
@@ -68,7 +69,11 @@ type AgentHandler struct {
 	taskChecker        attachmentdom.TaskOwnerChecker
 	projectSvc         agentProjectJevReader
 	encryptor          *secret.Encryptor
-	listScoper         ListScoper
+	// jevPrivateHosts is the operator's JEV_PRIVATE_HOSTS set — the hostnames
+	// the Jev client may reach on a private network address. Nil keeps the
+	// guard strict — see WithJevPrivateHosts.
+	jevPrivateHosts *netguard.PrivateHosts
+	listScoper      ListScoper
 }
 
 // NewAgentHandler returns an AgentHandler wired to the agent service.
@@ -144,6 +149,15 @@ func (h *AgentHandler) WithTaskChecker(checker attachmentdom.TaskOwnerChecker) *
 func (h *AgentHandler) WithJevProjectService(svc agentProjectJevReader, encryptor *secret.Encryptor) *AgentHandler {
 	h.projectSvc = svc
 	h.encryptor = encryptor
+	return h
+}
+
+// WithJevPrivateHosts lists the hostnames the Jev client may reach on a
+// private network address (JEV_PRIVATE_HOSTS) — for an instance that hosts
+// its own Jev-compatible gateway on an internal address. Nil (the default)
+// keeps the guard strict: every private address stays unreachable.
+func (h *AgentHandler) WithJevPrivateHosts(hosts *netguard.PrivateHosts) *AgentHandler {
+	h.jevPrivateHosts = hosts
 	return h
 }
 
@@ -1409,7 +1423,7 @@ func (h *AgentHandler) jevClientForProject(ctx context.Context, projectID uuid.U
 	if err != nil {
 		return nil
 	}
-	return jev.ClientForProject(project.JevAPIKeySecret, project.JevBaseURL, project.JevModel, h.encryptor)
+	return jev.ClientForProject(project.JevAPIKeySecret, project.JevBaseURL, project.JevModel, h.encryptor, h.jevPrivateHosts)
 }
 
 // resolveAutoAgent picks one of candidates via Jev's choice primitive,

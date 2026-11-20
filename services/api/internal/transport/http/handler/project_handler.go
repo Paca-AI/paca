@@ -14,6 +14,7 @@ import (
 	sprintdom "github.com/Paca-AI/api/internal/domain/sprint"
 	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/platform/jev"
+	"github.com/Paca-AI/api/internal/platform/netguard"
 	"github.com/Paca-AI/api/internal/platform/secret"
 	"github.com/Paca-AI/api/internal/transport/http/dto"
 	"github.com/Paca-AI/api/internal/transport/http/middleware"
@@ -73,6 +74,10 @@ type ProjectHandler struct {
 	// means "use jev.New's own SSRF-safe default" — see
 	// WithProjectJevHTTPClient.
 	jevHTTPClient *http.Client
+	// jevPrivateHosts is the operator's JEV_PRIVATE_HOSTS set — the hostnames
+	// the Jev client may reach on a private network address. Nil keeps the
+	// guard strict — see WithProjectJevPrivateHosts.
+	jevPrivateHosts *netguard.PrivateHosts
 }
 
 // ProjectHandlerOption customizes optional project-handler dependencies.
@@ -123,6 +128,16 @@ func WithProjectAvatarService(svc attachmentdom.AvatarService) ProjectHandlerOpt
 func WithProjectJevHTTPClient(client *http.Client) ProjectHandlerOption {
 	return func(h *ProjectHandler) {
 		h.jevHTTPClient = client
+	}
+}
+
+// WithProjectJevPrivateHosts lists the hostnames the Jev client may reach on
+// a private network address (JEV_PRIVATE_HOSTS) — for an instance that hosts
+// its own Jev-compatible gateway on an internal address. Nil (the default)
+// keeps the guard strict: every private address stays unreachable.
+func WithProjectJevPrivateHosts(hosts *netguard.PrivateHosts) ProjectHandlerOption {
+	return func(h *ProjectHandler) {
+		h.jevPrivateHosts = hosts
 	}
 }
 
@@ -476,7 +491,7 @@ func (h *ProjectHandler) TestJevConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := jev.ClientForProject(p.JevAPIKeySecret, p.JevBaseURL, p.JevModel, h.encryptor)
+	client := jev.ClientForProject(p.JevAPIKeySecret, p.JevBaseURL, p.JevModel, h.encryptor, h.jevPrivateHosts)
 	if h.jevHTTPClient != nil && client.Enabled() {
 		client = client.WithHTTPClient(h.jevHTTPClient)
 	}

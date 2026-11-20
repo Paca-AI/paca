@@ -14,6 +14,7 @@ type Config struct {
 	Storage    StorageConfig
 	Security   SecurityConfig
 	Plugins    PluginsConfig
+	Jev        JevConfig
 	Release    ReleaseConfig
 	AIAgentURL string // base URL of the ai-agent service, e.g. http://ai-agent:8080
 	// AIAgentInternalKey authenticates server-to-server calls into ai-agent's
@@ -230,6 +231,17 @@ type PluginLimitsConfig struct {
 	// that may be proxied to a plugin route, and of an event payload
 	// dispatched to a plugin. 0 means "no limit".
 	MaxRequestBodyBytes int64
+}
+
+// JevConfig holds settings for the Jev decision-API client (platform/jev).
+type JevConfig struct {
+	// PrivateHosts lists exact hostnames the Jev client may reach on a
+	// private network address, for operators who host a Jev-compatible
+	// gateway on an internal address (JEV_PRIVATE_HOSTS). Empty by default,
+	// which keeps every private address unreachable — the project-supplied
+	// base URL is user input, so only list hosts whose exposure to project
+	// admins is acceptable; requests still carry the project's own API key.
+	PrivateHosts []string
 }
 
 // SecurityConfig holds secrets used by first-party and plugin features.

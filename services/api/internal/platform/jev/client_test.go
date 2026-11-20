@@ -3,15 +3,18 @@ package jev
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Paca-AI/api/internal/platform/netguard"
 )
 
 func TestNew_EmptyKeyReturnsNil(t *testing.T) {
-	if c := New("", "", ""); c != nil {
+	if c := New("", "", "", nil); c != nil {
 		t.Fatalf("expected nil client for empty key, got %v", c)
 	}
 }
@@ -21,7 +24,7 @@ func TestClient_Enabled(t *testing.T) {
 	if nilClient.Enabled() {
 		t.Fatal("nil client should not be Enabled")
 	}
-	if !New("k", "", "").Enabled() {
+	if !New("k", "", "", nil).Enabled() {
 		t.Fatal("client with a key should be Enabled")
 	}
 }
@@ -35,7 +38,7 @@ func TestSystemOne_NilClient(t *testing.T) {
 }
 
 func TestSystemOne_NoQuestions(t *testing.T) {
-	c := New("key", "", "")
+	c := New("key", "", "", nil)
 	_, err := c.SystemOne(context.Background(), "state", nil)
 	if err == nil {
 		t.Fatal("expected error calling SystemOne with no questions")
@@ -152,7 +155,7 @@ func TestSystemOne_RetriesRateLimit(t *testing.T) {
 // the dialer rather than the transport type — netguard returns a plain
 // *http.Transport (its SafeDialContext wired in), not a named type.
 func TestNew_DefaultsToSSRFSafeClient(t *testing.T) {
-	c := New("k", "", "")
+	c := New("k", "", "", nil)
 	if c == nil {
 		t.Fatal("expected a client for a non-empty key")
 	}
@@ -183,7 +186,7 @@ func TestSystemOne_RejectsPrivateAddress(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New("test-key", "", "")
+	c := New("test-key", "", "", nil)
 	c.baseURL = srv.URL
 
 	if _, err := c.SystemOne(context.Background(), "s", map[string]Question{"q": {Type: TypeNoul, Instructions: "?"}}); err == nil {
@@ -248,7 +251,7 @@ func TestSystemOne_KeepsShortErrorBody(t *testing.T) {
 // reason AutomationConsumer.WithHTTPClient exists.
 func newTestClient(t *testing.T, srvURL string) *Client {
 	t.Helper()
-	c := New("test-key", "", "").WithHTTPClient(&http.Client{Timeout: 5 * time.Second})
+	c := New("test-key", "", "", nil).WithHTTPClient(&http.Client{Timeout: 5 * time.Second})
 	c.baseURL = srvURL
 	return c
 }
@@ -261,3 +264,69 @@ func asAPIError(err error, target **APIError) bool {
 	}
 	return false
 }
+
+// TestNew_PrivateHosts covers the operator opt-in (JEV_PRIVATE_HOSTS): the
+// configured set is kept on the client and nil leaves it off. The dial-side
+// semantics of the set — which hosts open the exception, which answers stay
+// blocked, the pinned dial — are netguard's own, covered there.
+func TestNew_PrivateHosts(t *testing.T) {
+	hosts, rejected := netguard.NewPrivateHosts([]string{"gateway.internal"})
+	if len(rejected) != 0 {
+		t.Fatalf("unexpected rejected entries: %v", rejected)
+	}
+	if c := New("k", "", "", hosts); c.privateHosts != hosts {
+		t.Fatal("expected the configured set to be kept on the client")
+	}
+	if c := New("k", "", "", nil); c.privateHosts != nil {
+		t.Fatalf("expected no private hosts by default, got %v", c.privateHosts.Names())
+	}
+}
+
+// TestSystemOne_PrivateHostExceptionRidesOnRequestContext proves the second
+// half of netguard's two-key contract: the allowance reaches the dial only via
+// the request context, and only when the operator configured hosts — a
+// context-wrapped request is observable as a context distinct from the
+// caller's (http.NewRequestWithContext stores the context it is given).
+func TestSystemOne_PrivateHostExceptionRidesOnRequestContext(t *testing.T) {
+	hosts, rejected := netguard.NewPrivateHosts([]string{"gateway.internal"})
+	if len(rejected) != 0 {
+		t.Fatalf("unexpected rejected entries: %v", rejected)
+	}
+
+	cases := []struct {
+		name         string
+		privateHosts *netguard.PrivateHosts
+		wantWrapped  bool
+	}{
+		{"no hosts configured", nil, false},
+		{"hosts configured", hosts, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			callerCtx := context.WithValue(context.Background(), callerKey{}, "caller")
+			var sawWrapped bool
+			c := New("k", "", "", tc.privateHosts).
+				WithHTTPClient(&http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+					sawWrapped = r.Context() != callerCtx
+					return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"answers":{}}`))}, nil
+				})})
+
+			resp, err := c.SystemOne(callerCtx, "s", map[string]Question{"q": {Type: TypeNoul, Instructions: "?"}})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(resp.Answers) != 0 {
+				t.Errorf("unexpected answers: %v", resp.Answers)
+			}
+			if sawWrapped != tc.wantWrapped {
+				t.Errorf("context wrapped = %v, want %v", sawWrapped, tc.wantWrapped)
+			}
+		})
+	}
+}
+
+type callerKey struct{}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

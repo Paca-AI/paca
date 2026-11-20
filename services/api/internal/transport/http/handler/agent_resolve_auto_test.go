@@ -22,7 +22,7 @@ func TestResolveAutoAgent_SingleCandidateSkipsJev(t *testing.T) {
 	// A non-nil, non-Enabled client (empty key) would error if actually
 	// called — passing it here proves the single-candidate path never calls
 	// Jev at all.
-	id, confidence := resolveAutoAgent(context.Background(), jev.New("", "", ""), []*agentdom.Agent{only}, "hello")
+	id, confidence := resolveAutoAgent(context.Background(), jev.New("", "", "", nil), []*agentdom.Agent{only}, "hello")
 	if id != only.ID {
 		t.Errorf("expected the sole candidate to be picked, got %v", id)
 	}

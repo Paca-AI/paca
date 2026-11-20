@@ -18,6 +18,7 @@ import (
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/events"
 	"github.com/Paca-AI/api/internal/platform/jev"
+	"github.com/Paca-AI/api/internal/platform/netguard"
 	"github.com/Paca-AI/api/internal/platform/secret"
 )
 
@@ -92,12 +93,16 @@ type TaskAutoAssignConsumer struct {
 	activityRec   taskActivityRecorder
 	encryptor     *secret.Encryptor
 	jevHTTPClient *http.Client
-	log           *slog.Logger
-	consumerName  string
-	groupName     string
-	groupStartID  string
-	stopCh        chan struct{}
-	doneCh        chan struct{}
+	// jevPrivateHosts is the operator's JEV_PRIVATE_HOSTS set — the hostnames
+	// the Jev client may reach on a private network address. Nil keeps the
+	// guard strict — see WithJevPrivateHosts.
+	jevPrivateHosts *netguard.PrivateHosts
+	log             *slog.Logger
+	consumerName    string
+	groupName       string
+	groupStartID    string
+	stopCh          chan struct{}
+	doneCh          chan struct{}
 }
 
 // WithHTTPClient overrides the transport the Jev client uses. Nil (the
@@ -107,6 +112,15 @@ type TaskAutoAssignConsumer struct {
 // AutomationConsumer.WithHTTPClient.
 func (c *TaskAutoAssignConsumer) WithHTTPClient(client *http.Client) *TaskAutoAssignConsumer {
 	c.jevHTTPClient = client
+	return c
+}
+
+// WithJevPrivateHosts lists the hostnames the Jev client may reach on a
+// private network address (JEV_PRIVATE_HOSTS) — for an instance that hosts
+// its own Jev-compatible gateway on an internal address. Nil (the default)
+// keeps the guard strict: every private address stays unreachable.
+func (c *TaskAutoAssignConsumer) WithJevPrivateHosts(hosts *netguard.PrivateHosts) *TaskAutoAssignConsumer {
+	c.jevPrivateHosts = hosts
 	return c
 }
 
@@ -308,7 +322,7 @@ func (c *TaskAutoAssignConsumer) processTask(ctx context.Context, projectID, tas
 	if err != nil {
 		return fmt.Errorf("load project: %w", err)
 	}
-	jevClient := jev.ClientForProject(project.JevAPIKeySecret, project.JevBaseURL, project.JevModel, c.encryptor)
+	jevClient := jev.ClientForProject(project.JevAPIKeySecret, project.JevBaseURL, project.JevModel, c.encryptor, c.jevPrivateHosts)
 	if c.jevHTTPClient != nil && jevClient.Enabled() {
 		jevClient = jevClient.WithHTTPClient(c.jevHTTPClient)
 	}

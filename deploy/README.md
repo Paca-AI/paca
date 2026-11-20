@@ -320,6 +320,7 @@ docker compose --env-file .env up -d --scale postgres=0 --scale rustfs=0
 
 Plugins can't reach private addresses by default. To connect one to a service on your LAN or VPN, such as a self-hosted GitLab, set `PLUGIN_FETCH_PRIVATE_HOSTS` in `.env` to a comma-separated list of exact hostnames and add the same host to the plugin's `allowedOutboundDomains`. On Helm, set `api.plugins.fetchPrivateHosts`. The service must use `https` with a certificate the API container trusts. Loopback and link-local addresses, including cloud metadata endpoints, stay blocked. Read the requirements and security notes in [`docs/plugins/backend-plugin-system.md`](../docs/plugins/backend-plugin-system.md#hosts-on-a-private-network) first.
 
+The Jev client (autofill, auto-assign, automations, and the config test) has the same guard: a project's Jev base URL can't point at a private address. If you host a Jev-compatible gateway on your LAN, VPN or inside the cluster's network, set `JEV_PRIVATE_HOSTS` in `.env` to a comma-separated list of exact hostnames. On Helm, set `api.jev.privateHosts`. Every other private address stays blocked; only list hosts whose exposure to project admins is acceptable, since any project's Jev base URL can then name them — requests still carry the project's own API key.
 ### Upgrading to a new version
 
 **Recommended: upgrade script.** From the directory where your `docker-compose.yml` and

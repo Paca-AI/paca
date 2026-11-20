@@ -420,6 +420,25 @@ func New(cfg *config.Config) (*App, error) {
 		log.Warn("paca.fetch may reach private network addresses for these hosts", "hosts", fetchPrivateHosts.Names())
 	}
 
+	jevPrivateHosts, rejectedJevHosts := netguard.NewPrivateHosts(cfg.Jev.PrivateHosts)
+	for _, entry := range rejectedJevHosts {
+		log.Warn("JEV_PRIVATE_HOSTS: ignoring entry, only exact ASCII hostnames are accepted (punycode for international names, no leading or trailing dot)", "entry", entry)
+	}
+	if !jevPrivateHosts.Empty() {
+		log.Warn("the Jev client may reach private network addresses for these hosts", "hosts", jevPrivateHosts.Names())
+	}
+
+	// The Jev clients are built per project at the point of use (jev.
+	// ClientForProject), so each consumer just carries the operator's set.
+	taskAutofillConsumer.WithJevPrivateHosts(jevPrivateHosts)
+	taskAutoAssignConsumer.WithJevPrivateHosts(jevPrivateHosts)
+	automationConsumer.WithJevPrivateHosts(jevPrivateHosts)
+	// jev_condition reuses the consumer's shared outbound client for its Jev
+	// calls, so that client has to carry the set too. call_api keeps its full
+	// guard: the dialer only opens for requests whose context names the host
+	// (netguard.WithAllowedPrivateHosts), which call_api never adds.
+	automationConsumer.WithHTTPClient(netguard.NewSafeHTTPClientWithPrivateHosts(30*time.Second, jevPrivateHosts))
+
 	pluginRuntime := pluginrt.NewRuntime(pluginStore, pluginrt.HostServices{
 		DB:        sqlDB,
 		Log:       log,
@@ -524,6 +543,7 @@ func New(cfg *config.Config) (*App, error) {
 		WithMarketplace(marketplaceClient, pluginInstaller, pluginMigrationRunner)
 
 	agentHandler := handler.NewAgentHandler(triggerGate.WrapService(agentService), cfg.AIAgentURL, cfg.AIAgentInternalKey, cfg.Server.PublicURL).
+		WithJevPrivateHosts(jevPrivateHosts).
 		WithActivityRecorder(activityService).
 		WithActivityLister(activityLog).
 		WithMemberRepo(projectRepo).
@@ -619,6 +639,7 @@ func New(cfg *config.Config) (*App, error) {
 			// still doesn't carry it and its mocks are unaffected (see
 			// WithProjectJevConfigService's doc comment).
 			handler.WithProjectJevConfigService(projectService, encryptor),
+			handler.WithProjectJevPrivateHosts(jevPrivateHosts),
 		),
 		Task: handler.NewTaskHandler(taskService, viewService, activityService,
 			handler.WithTaskListScoper(authorizer),
