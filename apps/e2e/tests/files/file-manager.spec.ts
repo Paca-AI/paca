@@ -109,6 +109,11 @@ test.describe("File manager", () => {
 		}
 
 		// The Files section sits beside Documentation with its four entries.
+		// On mobile the sidebar is collapsed behind a toggle.
+		const viewport = page.viewportSize();
+		if (viewport && viewport.width <= 768) {
+			await page.getByRole("button", { name: "Toggle Sidebar" }).click();
+		}
 		for (const label of ["Files", "Recent", "Starred", "Trash"]) {
 			await expect(
 				page.getByRole("link", { name: label, exact: true }),
