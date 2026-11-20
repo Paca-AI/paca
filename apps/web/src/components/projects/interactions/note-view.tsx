@@ -45,7 +45,7 @@ export function NoteView({ projectId, viewId, headerSlot }: NoteViewProps) {
 		...viewNotesQueryOptions(projectId, viewId),
 		enabled: canRead,
 	});
-	// A view holds one document. Any extra ones (made through the API) stay
+	// A view holds one document; extras from before migration 000095 stay
 	// stored but are not shown.
 	const doc = notesQuery.data?.[0];
 
