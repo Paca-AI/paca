@@ -34,6 +34,9 @@ var (
 	// ErrNoteViewInvalid means a note names a view that is not a note view of
 	// the document's project.
 	ErrNoteViewInvalid = errors.New("document: view_id must name a note view of this project")
+	// ErrNoteViewTaken means the note view already has its document: a view
+	// holds exactly one.
+	ErrNoteViewTaken = errors.New("document: this note view already has its document")
 	// ErrNoteInFolder means a write would put a note (a document of a note
 	// view) in a folder: a note belongs to its view, not to the docs tree.
 	ErrNoteInFolder = errors.New("document: a note belongs to its view and cannot be put in a folder")

@@ -35,15 +35,22 @@ type RightPanel = "activity" | null;
 interface DocumentPaneProps {
 	projectId: string;
 	docId: string;
+	/** Leaves out the breadcrumb with the document's title, for a view that
+	 *  has a single document and names it itself (the note view). */
+	hideTitle?: boolean;
 }
 
 /**
  * One document, open for reading and editing: its breadcrumb and save state,
  * the managed-copy banner, the BlockNote editor with live collaboration, and
  * the comments and activity pane. The docs route shows it for a document of
- * the docs tree, and a note view for the selected note.
+ * the docs tree, and a note view for its one document.
  */
-export function DocumentPane({ projectId, docId }: DocumentPaneProps) {
+export function DocumentPane({
+	projectId,
+	docId,
+	hideTitle = false,
+}: DocumentPaneProps) {
 	const { t } = useTranslation("projects");
 	const { hasProjectPermission } = useProjectPermissions(projectId);
 	const canWrite = hasProjectPermission("docs:write");
@@ -258,29 +265,36 @@ export function DocumentPane({ projectId, docId }: DocumentPaneProps) {
 	return (
 		<div className="flex flex-col h-full min-h-0">
 			{/* ── Header bar ───────────────────────────────────────────────── */}
-			<div className="flex items-center justify-between px-4 py-2 bg-muted/20 border-b border-border/50 shrink-0 gap-3 min-w-0">
+			<div
+				className={cn(
+					"flex items-center px-4 py-2 bg-muted/20 border-b border-border/50 shrink-0 gap-3 min-w-0",
+					hideTitle ? "justify-end" : "justify-between",
+				)}
+			>
 				{/* Breadcrumb path */}
-				<Breadcrumb className="min-w-0">
-					<BreadcrumbList className="flex-nowrap gap-1 text-xs sm:gap-1">
-						{folderPath.map((folder) => (
-							<Fragment key={folder.id}>
-								<BreadcrumbItem className="min-w-0">
-									<span className="max-w-32 truncate">{folder.name}</span>
-								</BreadcrumbItem>
-								<BreadcrumbSeparator />
-							</Fragment>
-						))}
-						<BreadcrumbItem className="min-w-0">
-							{doc?.title ? (
-								<BreadcrumbPage className="max-w-60 truncate font-medium">
-									{doc.title}
-								</BreadcrumbPage>
-							) : !doc ? (
-								<Skeleton className="h-3 w-28" />
-							) : null}
-						</BreadcrumbItem>
-					</BreadcrumbList>
-				</Breadcrumb>
+				{!hideTitle && (
+					<Breadcrumb className="min-w-0">
+						<BreadcrumbList className="flex-nowrap gap-1 text-xs sm:gap-1">
+							{folderPath.map((folder) => (
+								<Fragment key={folder.id}>
+									<BreadcrumbItem className="min-w-0">
+										<span className="max-w-32 truncate">{folder.name}</span>
+									</BreadcrumbItem>
+									<BreadcrumbSeparator />
+								</Fragment>
+							))}
+							<BreadcrumbItem className="min-w-0">
+								{doc?.title ? (
+									<BreadcrumbPage className="max-w-60 truncate font-medium">
+										{doc.title}
+									</BreadcrumbPage>
+								) : !doc ? (
+									<Skeleton className="h-3 w-28" />
+								) : null}
+							</BreadcrumbItem>
+						</BreadcrumbList>
+					</Breadcrumb>
+				)}
 
 				{/* Right: save status + panel toggle */}
 				<div className="flex items-center gap-2 shrink-0">

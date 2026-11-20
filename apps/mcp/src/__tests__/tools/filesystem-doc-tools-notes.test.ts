@@ -96,7 +96,7 @@ describe("list_docs with viewId", () => {
 });
 
 describe("write_doc with viewId", () => {
-	it("creates the note when the view has none with that title", async () => {
+	it("creates the document when the view has none", async () => {
 		const { apiClient, docClient } = clients([]);
 		const result = await handleFilesystemDocTool(
 			"write_doc",
@@ -121,7 +121,7 @@ describe("write_doc with viewId", () => {
 		expect(text(result)).toBe("Created note: Retro (docId: n9)");
 	});
 
-	it("updates the view's note with that title", async () => {
+	it("updates the view's document", async () => {
 		const { apiClient, docClient } = clients();
 		const result = await handleFilesystemDocTool(
 			"write_doc",
@@ -131,6 +131,21 @@ describe("write_doc with viewId", () => {
 				path: "sprint goals",
 				content: "Ship notes",
 			},
+			apiClient,
+			docClient,
+		);
+		expect(docClient.patchDocument).toHaveBeenCalledWith("p1", "n1", {
+			content: expect.any(Array),
+		});
+		expect(apiClient.createDocument).not.toHaveBeenCalled();
+		expect(text(result)).toBe("Updated note: Sprint goals (docId: n1)");
+	});
+
+	it("updates the view's document whatever title is given", async () => {
+		const { apiClient, docClient } = clients();
+		const result = await handleFilesystemDocTool(
+			"write_doc",
+			{ projectId: "p1", viewId: "v1", path: "Another title", content: "x" },
 			apiClient,
 			docClient,
 		);

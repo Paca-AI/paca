@@ -269,6 +269,9 @@ const (
 	// CodeDocNoteViewInvalid indicates a note was created in a view that is
 	// not a note view of the project.
 	CodeDocNoteViewInvalid Code = "DOC_NOTE_VIEW_INVALID"
+	// CodeDocNoteViewTaken indicates the note view already has its document;
+	// a note view holds exactly one.
+	CodeDocNoteViewTaken Code = "DOC_NOTE_VIEW_TAKEN"
 	// CodeDocNoteInFolder indicates a write would put a note (a document of a
 	// note view) in a folder.
 	CodeDocNoteInFolder Code = "DOC_NOTE_IN_FOLDER"

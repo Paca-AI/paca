@@ -2372,35 +2372,18 @@
 			}
 		},
 		"noteView": {
-			"title": "笔记",
-			"newNote": "新建笔记",
 			"untitled": "无标题",
-			"titleLabel": "笔记标题",
-			"actions": "{{title}} 的操作",
-			"rename": "重命名",
-			"moveUp": "上移",
-			"moveDown": "下移",
-			"delete": "删除",
+			"retry": "重试",
 			"empty": {
-				"title": "还没有笔记",
-				"description": "记录属于此视图的冲刺目标、会议纪要或检查清单。",
-				"readOnly": "此视图还没有笔记。"
+				"readOnly": "此视图还没有文档。"
 			},
 			"noPermission": {
-				"title": "你无权查看这些笔记",
-				"description": "笔记属于文档。请向项目管理员申请访问项目文档的权限。"
-			},
-			"deleteDialog": {
-				"title": "删除笔记？",
-				"description": "“{{title}}”将对所有人删除。",
-				"cancel": "取消",
-				"delete": "删除"
+				"title": "你无法查看此文档",
+				"description": "视图的文档是项目文档。请向项目管理员申请项目文档的访问权限。"
 			},
 			"errors": {
-				"titleInvalid": "标题不能为空，也不能包含“/”。",
-				"renameFailed": "无法重命名笔记，请重试。",
-				"reorderFailed": "无法调整笔记顺序",
-				"loadFailed": "无法加载笔记。"
+				"loadFailed": "无法加载文档。",
+				"createFailed": "无法创建文档。"
 			}
 		},
 		"renameViewDialog": {

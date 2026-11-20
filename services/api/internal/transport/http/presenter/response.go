@@ -461,6 +461,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeDocLockNeedsSource
 	case errors.Is(err, docdom.ErrNoteViewInvalid):
 		return http.StatusBadRequest, apierr.CodeDocNoteViewInvalid
+	case errors.Is(err, docdom.ErrNoteViewTaken):
+		return http.StatusConflict, apierr.CodeDocNoteViewTaken
 	case errors.Is(err, docdom.ErrNoteInFolder):
 		return http.StatusBadRequest, apierr.CodeDocNoteInFolder
 	case errors.Is(err, docdom.ErrDocPathInvalid):

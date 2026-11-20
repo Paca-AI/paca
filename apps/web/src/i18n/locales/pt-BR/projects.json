@@ -2372,35 +2372,18 @@
 			}
 		},
 		"noteView": {
-			"title": "Notas",
-			"newNote": "Nova nota",
 			"untitled": "Sem título",
-			"titleLabel": "Título da nota",
-			"actions": "Ações de {{title}}",
-			"rename": "Renomear",
-			"moveUp": "Mover para cima",
-			"moveDown": "Mover para baixo",
-			"delete": "Excluir",
+			"retry": "Tentar novamente",
 			"empty": {
-				"title": "Ainda não há notas",
-				"description": "Escreva as metas do sprint, atas de reunião ou uma checklist que pertença a esta visualização.",
-				"readOnly": "Esta visualização ainda não tem notas."
+				"readOnly": "Esta visualização ainda não tem documento."
 			},
 			"noPermission": {
-				"title": "Você não pode ver estas notas",
-				"description": "Notas são documentos. Peça a um administrador do projeto acesso aos documentos do projeto."
-			},
-			"deleteDialog": {
-				"title": "Excluir a nota?",
-				"description": "“{{title}}” será excluída para todos.",
-				"cancel": "Cancelar",
-				"delete": "Excluir"
+				"title": "Você não pode ver este documento",
+				"description": "O documento da visualização é um documento do projeto. Peça a um administrador do projeto acesso aos documentos do projeto."
 			},
 			"errors": {
-				"titleInvalid": "O título não pode ficar vazio nem conter “/”.",
-				"renameFailed": "Não foi possível renomear a nota. Tente novamente.",
-				"reorderFailed": "Não foi possível reordenar as notas",
-				"loadFailed": "Não foi possível carregar as notas."
+				"loadFailed": "Não foi possível carregar o documento.",
+				"createFailed": "Não foi possível criar o documento."
 			}
 		},
 		"renameViewDialog": {

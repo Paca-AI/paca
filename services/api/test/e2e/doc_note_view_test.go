@@ -96,6 +96,16 @@ func TestE2ENoteView_NotesBelongToTheirView(t *testing.T) {
 		}
 	})
 
+	t.Run("a_view_holds_one_document", func(t *testing.T) {
+		status, e, _ := apiCall(env, t, client, token, http.MethodPost, docs, map[string]any{"title": "Second", "view_id": notesView})
+		if status != http.StatusConflict || e.ErrorCode != "DOC_NOTE_VIEW_TAKEN" {
+			t.Fatalf("second note: status=%d code=%q, want 409 DOC_NOTE_VIEW_TAKEN", status, e.ErrorCode)
+		}
+		if ids := listDocIDsViaAPI(t, env, client, token, projID, "view_id="+notesView); len(ids) != 1 || ids[0] != noteID {
+			t.Fatalf("notes of the view = %v, want [%s]", ids, noteID)
+		}
+	})
+
 	t.Run("only_note_views_hold_notes", func(t *testing.T) {
 		var taskView string
 		for _, id := range listViewIDsViaAPI(t, env, client, token, projID, sprintID) {
@@ -156,17 +166,19 @@ func TestE2ENoteView_NotesBelongToTheirView(t *testing.T) {
 	})
 }
 
-// Migration 000094 can run again over a database it already migrated.
+// Migrations 000094 and 000095 can run again over a database it already migrated.
 func TestE2ENoteView_MigrationIsRerunnable(t *testing.T) {
 	t.Parallel()
 	env := newE2EEnv(t)
 	_, thisFile, _, _ := runtime.Caller(0)
-	migration, err := os.ReadFile(filepath.Join(filepath.Dir(thisFile), "..", "..", "migrations", "000094_add_note_view_type.sql"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := env.db.ExecContext(env.ctx, string(migration)); err != nil {
-		t.Fatalf("second run of the migration: %v", err)
+	for _, name := range []string{"000094_add_note_view_type.sql", "000095_note_view_single_document.sql"} {
+		migration, err := os.ReadFile(filepath.Join(filepath.Dir(thisFile), "..", "..", "migrations", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := env.db.ExecContext(env.ctx, string(migration)); err != nil {
+			t.Fatalf("second run of %s: %v", name, err)
+		}
 	}
 	var triggers int
 	if err := env.db.GetContext(env.ctx, &triggers, `SELECT COUNT(*) FROM pg_trigger WHERE tgname = 'trg_sprint_views_delete_notes'`); err != nil {
