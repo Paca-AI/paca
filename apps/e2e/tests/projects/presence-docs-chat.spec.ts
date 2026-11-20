@@ -84,6 +84,7 @@ test.describe("Presence in docs and chat", () => {
 			roleName: uniqueName("ROLE"),
 			// No project.members:read: names must come from the server.
 			permissions: {
+				"tasks:read": true,
 				"docs:read": true,
 				"docs:write": true,
 				"channels:read": true,
