@@ -19,16 +19,20 @@ import {
 interface NoteViewProps {
 	projectId: string;
 	viewId: string;
+	/** Where the document's save status and comments and activity toggle go:
+	 *  the view header, next to where other views keep their settings. */
+	headerSlot: HTMLElement | null;
 }
 
 /**
  * A note view: one editable document that belongs to the view (sprint goals,
  * meeting minutes, a checklist), opened in the same editor and comments and
- * activity pane as the project's docs, with no title and no list of notes.
+ * activity pane as the project's docs, with no title and no list of notes. Its save status and activity toggle
+ * sit in the view header.
  * The document is created the first time someone who can write opens the
  * view. Reading it needs docs:read and changing it docs:write.
  */
-export function NoteView({ projectId, viewId }: NoteViewProps) {
+export function NoteView({ projectId, viewId, headerSlot }: NoteViewProps) {
 	const { t } = useTranslation("projects");
 	const qc = useQueryClient();
 	const { hasProjectPermission, isLoading: permissionsLoading } =
@@ -93,7 +97,7 @@ export function NoteView({ projectId, viewId }: NoteViewProps) {
 					key={doc.id}
 					projectId={projectId}
 					docId={doc.id}
-					hideTitle
+					headerSlot={headerSlot}
 				/>
 			</div>
 		);

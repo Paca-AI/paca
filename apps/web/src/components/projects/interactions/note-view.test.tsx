@@ -23,12 +23,12 @@ vi.mock("@/hooks/use-project-permissions", () => ({
 vi.mock("@/components/projects/docs/document-pane", () => ({
 	DocumentPane: ({
 		docId,
-		hideTitle,
+		headerSlot,
 	}: {
 		docId: string;
-		hideTitle?: boolean;
+		headerSlot?: HTMLElement | null;
 	}) => (
-		<div data-testid="document-pane" data-hide-title={String(!!hideTitle)}>
+		<div data-testid="document-pane" data-header-slot={String(!!headerSlot)}>
 			{docId}
 		</div>
 	),
@@ -50,13 +50,15 @@ const note = (id: string, position = 0): Document => ({
 let notes: Document[] = [];
 const envelope = (data: unknown) => ({ data: { data } });
 
+const slot = document.createElement("div");
+
 function renderView() {
 	const client = new QueryClient({
 		defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
 	});
 	return render(
 		<QueryClientProvider client={client}>
-			<NoteView projectId="p1" viewId="v1" />
+			<NoteView projectId="p1" viewId="v1" headerSlot={slot} />
 		</QueryClientProvider>,
 	);
 }
@@ -83,7 +85,7 @@ describe("NoteView", () => {
 
 		const pane = await screen.findByTestId("document-pane");
 		expect(pane).toHaveTextContent("n1");
-		expect(pane).toHaveAttribute("data-hide-title", "true");
+		expect(pane).toHaveAttribute("data-header-slot", "true");
 		expect(h.get).toHaveBeenCalledWith("/projects/p1/docs", {
 			params: { page_size: 200, view_id: "v1" },
 		});
