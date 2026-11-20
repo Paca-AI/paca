@@ -228,11 +228,8 @@ test.describe("The general scope follows other people's changes", () => {
 		});
 		await signIn(page, username, RESTRICTED_PASSWORD);
 		await page.goto(`${BASE_URL}/files?scope=general`);
-		await expect(
-			page.getByRole("link", { name: "Trash", exact: true }),
-		).toBeVisible({
-			timeout: 15_000,
-		});
+		// The sidebar (with its Trash link) is a closed Sheet on phones, so wait on the page itself.
+		await expect(page.getByRole("main")).toBeVisible({ timeout: 15_000 });
 		await settleSocket(page);
 
 		const folder = name("general");
