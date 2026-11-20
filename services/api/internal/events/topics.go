@@ -145,6 +145,14 @@ const (
 	TopicDocFolderUpdated = "doc.folder.updated"
 	TopicDocFolderDeleted = "doc.folder.deleted"
 
+	// --- File manager events ------------------------------------------------
+	// TopicFileChanged is published (realtime only, never to the activity log)
+	// by filesvc whenever a file or folder is created, renamed, moved, trashed,
+	// restored or deleted, so another user browsing the same folder sees it
+	// without reloading. The payload names the folders whose listing changed;
+	// it carries no file name, and clients refetch what they show.
+	TopicFileChanged = "file.changed"
+
 	// --- Doc comment events -------------------------------------------------
 	TopicDocCommentAdded   = "doc.comment.added"
 	TopicDocCommentUpdated = "doc.comment.updated"

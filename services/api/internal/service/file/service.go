@@ -52,6 +52,8 @@ type Service struct {
 	store  storage.Client
 	bucket string
 	now    func() time.Time
+
+	realtime realtimeSink
 }
 
 var _ filedom.Service = (*Service)(nil)
@@ -168,6 +170,7 @@ func (s *Service) CreateFolder(ctx context.Context, scope filedom.Scope, actor u
 	if err := s.repo.CreateFolder(ctx, n); err != nil {
 		return nil, err
 	}
+	s.announce(ctx, scope, changeCreated, n, parentID)
 	return s.repo.GetNode(ctx, n.ID, actor)
 }
 
@@ -187,6 +190,7 @@ func (s *Service) Rename(ctx context.Context, scope filedom.Scope, actor, id uui
 	if err := s.repo.Rename(ctx, n, name); err != nil {
 		return nil, err
 	}
+	s.announce(ctx, scope, changeUpdated, n, n.ParentID)
 	return s.repo.GetNode(ctx, id, actor)
 }
 
@@ -231,6 +235,8 @@ func (s *Service) Update(ctx context.Context, scope filedom.Scope, actor, id uui
 			return nil, err
 		}
 	}
+	// n.ParentID is where it was; the listings of both folders changed.
+	s.announce(ctx, scope, changeUpdated, n, n.ParentID, parentIDIf(move, parentID, n.ParentID))
 	return s.repo.GetNode(ctx, id, actor)
 }
 
@@ -258,6 +264,7 @@ func (s *Service) Move(ctx context.Context, scope filedom.Scope, actor, id uuid.
 	if err := s.repo.Move(ctx, n, parentID); err != nil {
 		return nil, err
 	}
+	s.announce(ctx, scope, changeMoved, n, n.ParentID, parentID)
 	return s.repo.GetNode(ctx, id, actor)
 }
 
@@ -272,9 +279,17 @@ func (s *Service) Trash(ctx context.Context, scope filedom.Scope, actor, id uuid
 		return filedom.ErrNodeLocked
 	}
 	if n.DeletedForGood() {
-		return s.deleteReferencedFile(ctx, n)
+		if err := s.deleteReferencedFile(ctx, n); err != nil {
+			return err
+		}
+		s.announce(ctx, scope, changeDeleted, n, n.ParentID)
+		return nil
 	}
-	return s.repo.Trash(ctx, n, actor, s.now())
+	if err := s.repo.Trash(ctx, n, actor, s.now()); err != nil {
+		return err
+	}
+	s.announce(ctx, scope, changeTrashed, n, n.ParentID)
+	return nil
 }
 
 // deleteReferencedFile deletes a file that a task, document or annotation
@@ -305,7 +320,19 @@ func (s *Service) Restore(ctx context.Context, scope filedom.Scope, actor, id uu
 	if err := s.repo.Restore(ctx, n); err != nil {
 		return nil, err
 	}
-	return s.repo.GetNode(ctx, id, actor)
+	restored, err := s.repo.GetNode(ctx, id, actor)
+	if err != nil {
+		return nil, err
+	}
+	// Restore may put it back at the root when its folder is gone: announce
+	// where it landed. A restored folder also brings its contents back, so its
+	// own listing changed too.
+	if restored.IsFolder() {
+		s.announce(ctx, scope, changeRestored, restored, restored.ParentID, &restored.ID)
+	} else {
+		s.announce(ctx, scope, changeRestored, restored, restored.ParentID)
+	}
+	return restored, nil
 }
 
 // DeletePermanently removes a trashed node and its bytes.
@@ -322,6 +349,8 @@ func (s *Service) DeletePermanently(ctx context.Context, scope filedom.Scope, id
 		return err
 	}
 	s.deleteObjects(ctx, objs)
+	// Only the trash listing shows it, but name the folder all the same.
+	s.announce(ctx, scope, changeDeleted, n, n.ParentID)
 	return nil
 }
 
@@ -462,7 +491,12 @@ func (s *Service) CompleteUpload(ctx context.Context, scope filedom.Scope, actor
 	if err := s.files.UpdateFileStatus(ctx, f.ID, attachmentdom.UploadStatusUploaded, nil); err != nil {
 		return nil, fmt.Errorf("file svc: update file status: %w", err)
 	}
-	return s.repo.GetNode(ctx, f.ID, actor)
+	node, err := s.repo.GetNode(ctx, f.ID, actor)
+	if err != nil {
+		return nil, err
+	}
+	s.announce(ctx, scope, changeCreated, node, node.ParentID)
+	return node, nil
 }
 
 // DownloadURL presigns a GET for a file and records the open.
@@ -523,4 +557,13 @@ func (s *Service) ListRecent(ctx context.Context, scope filedom.Scope, actor uui
 // ListTrash lists the trashed items of the scope.
 func (s *Service) ListTrash(ctx context.Context, scope filedom.Scope, actor uuid.UUID, limit, offset int) ([]*filedom.Node, int, error) {
 	return s.repo.ListTrash(ctx, scope, actor, limit, offset)
+}
+
+// parentIDIf is the folder a node is in after an Update: the new one when it
+// was moved, else where it already was.
+func parentIDIf(move bool, to, current *uuid.UUID) *uuid.UUID {
+	if move {
+		return to
+	}
+	return current
 }

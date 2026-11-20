@@ -56,6 +56,8 @@ import { toast } from "@/components/ui/toast";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 import { useFileWriteAccess } from "@/hooks/use-file-write-access";
+import { useProjectRealtime } from "@/hooks/use-project-realtime";
+import { useWorkspaceFilesRealtime } from "@/hooks/use-workspace-files-realtime";
 import {
 	ApiErrorCode,
 	getApiErrorCode,
@@ -197,6 +199,14 @@ export function FilesPage({
 			: search.scope
 				? { projectId: search.scope }
 				: null;
+
+	// Other people's changes to the folder being browsed. The project routes
+	// already follow their project (its layout joins the rooms); the global
+	// page follows the general scope, and joins the browsed project's rooms.
+	useWorkspaceFilesRealtime(!projectId);
+	useProjectRealtime(
+		projectId ? undefined : (browseScope?.projectId ?? undefined),
+	);
 
 	const rootScopes: FileScope[] = useMemo(
 		() =>

@@ -12,8 +12,12 @@
 import type { Logger } from "pino";
 import type { Server, Socket } from "socket.io";
 import type { AccessDecider } from "./access.ts";
-import { ApiRequestError, fetchProjectPermissions } from "./api-client.ts";
-import type { EventNamespace } from "./permissions.ts";
+import {
+	ApiRequestError,
+	fetchProjectPermissions,
+	verifyTokenWithAPI,
+} from "./api-client.ts";
+import { type EventNamespace, WORKSPACE_FILES_ROOM } from "./permissions.ts";
 import { syncProjectRooms } from "./rooms.ts";
 
 const DEFAULT_INTERVAL_MS = 60_000;
@@ -67,6 +71,12 @@ export function createResyncer(
 				for (let job = jobs.shift(); job; job = jobs.shift()) await job();
 			});
 			await Promise.all(workers);
+			// A role change can also grant or revoke the platform-level
+			// files:read that the workspace file room stands for. Unlike a
+			// project room it has no per-event check behind it, so the periodic
+			// pass covers it too (a failed announced pass, or a socket restored
+			// by connection state recovery, is corrected within one interval).
+			await resyncWorkspaceFiles();
 		} finally {
 			running = false;
 			if (again) {
@@ -123,6 +133,49 @@ export function createResyncer(
 				socket.emit("permissions:changed", { projectId, namespaces: after });
 			}
 		}
+	}
+
+	// resyncWorkspaceFiles puts each account's sockets in the workspace files
+	// room, or takes them out, by their current platform-level files:read. One
+	// request per account (not per token or socket): a user's tabs share the
+	// answer. Tokens are tried until one is accepted; only the sockets whose own
+	// token the API rejected are ended. Any other failure leaves the room as it
+	// is until the next pass.
+	async function resyncWorkspaceFiles(): Promise<void> {
+		const byUser = new Map<string, Socket[]>();
+		for (const socket of io.sockets.sockets.values()) {
+			const list = byUser.get(socket.data.userId);
+			if (list) list.push(socket);
+			else byUser.set(socket.data.userId, [socket]);
+		}
+		const jobs = [...byUser.values()].map((sockets) => async () => {
+			let live = sockets;
+			for (const token of new Set(sockets.map((s) => s.data.rawToken))) {
+				try {
+					const auth = await verifyTokenWithAPI(apiUrl, token);
+					const allowed = auth.globalPermissions.includes("files:read");
+					for (const s of live) {
+						if (allowed) s.join(WORKSPACE_FILES_ROOM);
+						else s.leave(WORKSPACE_FILES_ROOM);
+					}
+					return;
+				} catch (err) {
+					logger.warn({ err }, "workspace files room resync failed");
+					if (err instanceof ApiRequestError && err.status === 401) {
+						for (const s of live) {
+							if (s.data.rawToken === token) s.disconnect(true);
+						}
+						live = live.filter((s) => s.data.rawToken !== token);
+						continue;
+					}
+					return;
+				}
+			}
+		});
+		const workers = Array.from({ length: CONCURRENCY }, async () => {
+			for (let job = jobs.shift(); job; job = jobs.shift()) await job();
+		});
+		await Promise.all(workers);
 	}
 
 	function roomsOf(socket: Socket, projectId: string): string {

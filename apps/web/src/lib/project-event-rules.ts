@@ -23,6 +23,7 @@ import {
 	applyTaskChange,
 	refreshTaskSubQueries,
 } from "@/lib/cache-patch";
+import { applyFileChange, type FileChangedPayload } from "@/lib/files-api";
 import { projectTaskLinksKey } from "@/lib/interaction-api";
 import { invalidateMemberDirectory } from "@/lib/member-directory";
 import { projectRolesKey } from "@/lib/role-api";
@@ -92,6 +93,23 @@ function invalidateAgentActivities({
 }
 
 export const EVENT_RULES: EventRule[] = [
+	{
+		// Someone created, renamed, moved, trashed or restored a file or folder
+		// of the project's file manager: refetch the listings it touched.
+		name: "files",
+		matches: (t) => t === "file.changed",
+		handle: (ctx, event) => {
+			const payload = event.payload as FileChangedPayload;
+			// A socket with platform files:read also receives the general
+			// scope's changes (useWorkspaceFilesRealtime owns those), and a
+			// project event names its own project.
+			if (payload.scope !== "project" || payload.project_id !== ctx.projectId) {
+				return true;
+			}
+			applyFileChange(ctx.queryClient, { projectId: ctx.projectId }, payload);
+			return true;
+		},
+	},
 	{
 		// A task's comments, attachments and links hang off the task: refresh
 		// those, not every task list.

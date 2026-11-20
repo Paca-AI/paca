@@ -132,6 +132,34 @@ describe("routeEvent with an authz descriptor", () => {
 		expect(s.sent.length).toBe(1);
 	});
 
+	it("routes a project's file.changed to the files room (files:read)", async () => {
+		const s = socket("u");
+		const { io } = fakeIo({ [`project:${P}:files`]: [s] });
+		routeEvent(
+			io,
+			{
+				type: "file.changed",
+				payload: { scope: "project", folder_ids: [] },
+				authz: authzFor("files:read", `project/${P}`),
+			},
+			log,
+			routing(() => true).routing,
+		);
+		await sleep(20);
+		expect(s.sent.length).toBe(1);
+	});
+
+	it("sends a general-scope file.changed to the workspace files room only", () => {
+		const { io, emitted } = fakeIo({});
+		routeEvent(
+			io,
+			{ type: "file.changed", payload: { scope: "general", root: true } },
+			log,
+			routing(() => true).routing,
+		);
+		expect(emitted.map((e) => e.room)).toEqual(["workspace:files"]);
+	});
+
 	it("drops a descriptor whose action has no room instead of guessing", async () => {
 		const s = socket("u");
 		const { io, emitted } = fakeIo({ [`project:${P}:tasks`]: [s] });
