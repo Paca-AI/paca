@@ -115,6 +115,25 @@ test.describe("Presence in docs and chat", () => {
 			const probe = track(
 				await Probe.connect({ token: await accessTokenOf(api) }),
 			);
+			// The chat channel room (chat:join) has the same rule.
+			const otherChannel = await request.post(
+				`${API_URL}/projects/${other}/channels`,
+				{ data: { kind: "public", name: uniqueName("room").toLowerCase() } },
+			);
+			const otherChannelId = (await otherChannel.json()).data.id as string;
+			const chatAck = await new Promise<{ ok: boolean; reason?: string }>(
+				(resolve) =>
+					probe.socket
+						.timeout(10_000)
+						.emit(
+							"chat:join",
+							{ projectId, channelId: otherChannelId },
+							(_e: unknown, res: { ok: boolean; reason?: string }) =>
+								resolve(res),
+						),
+			);
+			expect(chatAck).toMatchObject({ ok: false, reason: "forbidden" });
+
 			for (const ref of [
 				{ kind: "doc", projectId, id: otherDoc },
 				{ kind: "task", projectId, id: otherTask },

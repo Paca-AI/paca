@@ -53,7 +53,7 @@ function setup(allow: (userId: string, resource: string) => boolean) {
 				return allow(token.replace("tok-", ""), q.resource);
 			}),
 	});
-	const hub = new ChatHub(io, decider, log);
+	const hub = new ChatHub(io, decider, log, async () => true);
 	const add = (userId: string) => {
 		const s = fakeSocket(userId);
 		sockets.set(`${userId}-${sockets.size}`, s);
@@ -124,7 +124,7 @@ describe("ChatHub.join", () => {
 				throw new Error("down");
 			},
 		});
-		const hub = new ChatHub(io, decider, log);
+		const hub = new ChatHub(io, decider, log, async () => true);
 		const s = fakeSocket(U1);
 		expect(await hub.join(asSocket(s), P, C)).toEqual({
 			ok: false,
@@ -310,5 +310,37 @@ describe("chat announcements through the subscriber", () => {
 		await new Promise((r) => setTimeout(r, 10));
 		expect(s.rooms.has(`channel:${C}`)).toBe(false);
 		expect(t.emitted).toHaveLength(0);
+	});
+});
+
+describe("ChatHub project scoping", () => {
+	it("refuses a channel that is not in the project the client names", async () => {
+		const asked: string[] = [];
+		const sockets = new Map();
+		const io = {
+			sockets: { sockets },
+			to: () => ({ emit() {} }),
+		} as unknown as Server;
+		// IAM allows everything (a grant on project/<p>/*)...
+		const decider = new AccessDecider("http://api", {
+			check: async (_u, _t, _p, queries) => queries.map(() => true),
+		});
+		// ...but the project-scoped lookup does not find the channel there.
+		const hub = new ChatHub(io, decider, log, async (_token, path) => {
+			asked.push(path);
+			return false;
+		});
+		const s = fakeSocket(U1);
+		expect(await hub.join(s as never, P, C)).toEqual({
+			ok: false,
+			reason: "forbidden",
+		});
+		expect(s.rooms.size).toBe(0);
+		expect(s.data.chatChannels.size).toBe(0);
+		expect(asked).toEqual([`/projects/${P}/channels/${C}`]);
+
+		// A direct message is looked up on the DM route.
+		await hub.join(s as never, "", C);
+		expect(asked.at(-1)).toBe(`/chat/dms/${C}`);
 	});
 });

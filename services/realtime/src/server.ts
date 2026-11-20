@@ -59,6 +59,7 @@ import { Server } from "socket.io";
 import type { AccessDecider, Viewer } from "./access.ts";
 import {
 	ApiRequestError,
+	entityReadable,
 	fetchProjectPermissions,
 	verifyTokenWithAPI,
 } from "./api-client.ts";
@@ -313,7 +314,9 @@ export function createSocketServer(
 			: undefined;
 	sync?.start();
 
-	const chat = new ChatHub(io, decider, logger);
+	const chat = new ChatHub(io, decider, logger, (token, path) =>
+		entityReadable(config.apiUrl, token, path),
+	);
 
 	// Presence: viewers and typing in a task (see presence.ts).
 	const presence = new PresenceHub({
