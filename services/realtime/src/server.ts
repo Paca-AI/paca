@@ -552,8 +552,9 @@ export function createSocketServer(
 				ack({ ok: false, reason: "invalid" });
 				return;
 			}
-			// Join the socket.io room first so no change between the access
-			// answer and the ack is missed; undone when the join is refused.
+			// presence.join emits to the room synchronously before returning, so
+			// joining the socket.io room right after loses no update: the ack
+			// carries the snapshot and later changes arrive through the room.
 			const room = liveRoomName(ref.kind, ref.id);
 			const res = await presence.join(
 				socket.id,

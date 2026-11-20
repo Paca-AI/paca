@@ -526,8 +526,8 @@ func (s *Svc) TaskLastSeen(ctx context.Context, userID, taskID uuid.UUID) (*time
 // OpenTask records a view of the task and reads the user's mentions on it. The
 // returned time is the previous view, so the activity pane can mark what is
 // new since then.
-func (s *Svc) OpenTask(ctx context.Context, userID, taskID uuid.UUID) (*time.Time, error) {
-	prev, err := s.repo.TouchTaskRead(ctx, userID, taskID, time.Now())
+func (s *Svc) OpenTask(ctx context.Context, userID, projectID, taskID uuid.UUID) (*time.Time, error) {
+	prev, err := s.repo.TouchTaskRead(ctx, userID, projectID, taskID, time.Now())
 	if err != nil {
 		return nil, err
 	}

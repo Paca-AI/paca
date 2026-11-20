@@ -12,6 +12,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
+	taskdom "github.com/Paca-AI/api/internal/domain/task"
 )
 
 // --- sqlx model -------------------------------------------------------------
@@ -419,19 +420,33 @@ func (r *NotificationRepository) TaskLastSeen(ctx context.Context, userID, taskI
 }
 
 // TouchTaskRead upserts the task's last-seen time (never backwards) and
-// returns the time it replaced.
-func (r *NotificationRepository) TouchTaskRead(ctx context.Context, userID, taskID uuid.UUID, at time.Time) (*time.Time, error) {
-	prev, err := r.TaskLastSeen(ctx, userID, taskID)
-	if err != nil {
-		return nil, err
+// returns the time it replaced, in one statement. The task must belong to
+// projectID and not be deleted; otherwise nothing is written and
+// taskdom.ErrTaskNotFound is returned. A data-modifying CTE shares the
+// statement's snapshot, so prev is the value from before the upsert.
+func (r *NotificationRepository) TouchTaskRead(ctx context.Context, userID, projectID, taskID uuid.UUID, at time.Time) (*time.Time, error) {
+	var res struct {
+		Found int        `db:"found"`
+		Prev  *time.Time `db:"prev"`
 	}
-	_, err = r.db.ExecContext(ctx, `
-		INSERT INTO task_reads (account_id, task_id, last_seen_at) VALUES ($1, $2, $3)
-		ON CONFLICT (account_id, task_id) DO UPDATE
-		SET last_seen_at = GREATEST(task_reads.last_seen_at, EXCLUDED.last_seen_at)`,
-		userID.String(), taskID.String(), at)
+	err := r.db.GetContext(ctx, &res, `
+		WITH t AS (
+			SELECT id FROM tasks WHERE id = $2 AND project_id = $3 AND deleted_at IS NULL
+		), prev AS (
+			SELECT last_seen_at FROM task_reads WHERE account_id = $1 AND task_id = $2
+		), up AS (
+			INSERT INTO task_reads (account_id, task_id, last_seen_at)
+			SELECT $1, t.id, $4 FROM t
+			ON CONFLICT (account_id, task_id) DO UPDATE
+			SET last_seen_at = GREATEST(task_reads.last_seen_at, EXCLUDED.last_seen_at)
+		)
+		SELECT (SELECT COUNT(*) FROM t) AS found, (SELECT last_seen_at FROM prev) AS prev`,
+		userID.String(), taskID.String(), projectID.String(), at)
 	if err != nil {
 		return nil, fmt.Errorf("notification repo: touch task read: %w", err)
 	}
-	return prev, nil
+	if res.Found == 0 {
+		return nil, taskdom.ErrTaskNotFound
+	}
+	return res.Prev, nil
 }

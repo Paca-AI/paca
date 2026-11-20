@@ -175,7 +175,7 @@ Today a mention notification reads "Mina mentioned you in APO-142 Fix token refr
 
 - **Header:** actor avatar, "Mina mentioned you", time.
 - **Context row:** project chip, sprint chip (`Sprint 12`, or `Backlog` when the task has none; resolved when the notification is read, so it stays right if the task moves), task key and title, and the task's current status.
-- **Excerpt:** the first ~140 characters of the comment with your mention highlighted. Stored with the notification, so it survives edits and deletion.
+- **Excerpt:** the first ~140 characters of the comment with your mention highlighted. Stored with the notification, so it survives edits and deletion. Because it is a stored copy, it stays readable to the recipient after the comment is deleted or after they lose access to the project, and the unread-mention counts (task and sprint badges) likewise keep counting until the notification is read or the task is deleted. Both are deliberate: a notification is the recipient's own record. Anyone who needs mentions purged on access loss must delete the rows; nothing does it automatically.
 - **Click:** opens the task panel scrolled to that comment and highlights it briefly, then marks the notification read.
 - **Grouping:** several mentions on one task collapse to "3 mentions in APO-142".
 - **Filters:** All, Mentions, Assigned, Agents, plus a project filter.

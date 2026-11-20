@@ -142,7 +142,7 @@ func (r *fakeNotificationRepo) TaskLastSeen(_ context.Context, userID, taskID uu
 	return nil, nil
 }
 
-func (r *fakeNotificationRepo) TouchTaskRead(ctx context.Context, userID, taskID uuid.UUID, at time.Time) (*time.Time, error) {
+func (r *fakeNotificationRepo) TouchTaskRead(ctx context.Context, userID, _, taskID uuid.UUID, at time.Time) (*time.Time, error) {
 	prev, _ := r.TaskLastSeen(ctx, userID, taskID)
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -1614,14 +1614,14 @@ func TestOpenTask_ReadsMentionsAndReturnsPreviousView(t *testing.T) {
 		t.Fatalf("want one unread mention, got %+v", got)
 	}
 
-	prev, err := svc.OpenTask(ctx, user, taskID)
+	prev, err := svc.OpenTask(ctx, user, projectID, taskID)
 	if err != nil || prev != nil {
 		t.Fatalf("first open: prev=%v err=%v", prev, err)
 	}
 	if got, _ := svc.UnreadMentionsByTask(ctx, user, nil); len(got) != 0 {
 		t.Fatalf("mentions should be read, got %+v", got)
 	}
-	if prev, _ := svc.OpenTask(ctx, user, taskID); prev == nil {
+	if prev, _ := svc.OpenTask(ctx, user, projectID, taskID); prev == nil {
 		t.Fatal("second open should report the first view")
 	}
 }

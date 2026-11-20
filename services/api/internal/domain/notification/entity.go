@@ -188,8 +188,10 @@ type Repository interface {
 	TaskLastSeen(ctx context.Context, userID, taskID uuid.UUID) (*time.Time, error)
 	// TouchTaskRead records that userID viewed the task at `at` (it never
 	// moves the time backwards) and returns the time it replaced, nil if the
-	// task had not been viewed before.
-	TouchTaskRead(ctx context.Context, userID, taskID uuid.UUID, at time.Time) (*time.Time, error)
+	// task had not been viewed before. The task must belong to projectID and
+	// still exist, otherwise it returns taskdom.ErrTaskNotFound and records
+	// nothing.
+	TouchTaskRead(ctx context.Context, userID, projectID, taskID uuid.UUID, at time.Time) (*time.Time, error)
 }
 
 // Service defines the notification use-cases exposed to callers.
@@ -230,7 +232,8 @@ type Service interface {
 	// previous last-seen time (nil on a first view), which the "unread since"
 	// divider is drawn from, and marks the user's unread mentions on the task
 	// as read.
-	OpenTask(ctx context.Context, userID, taskID uuid.UUID) (previous *time.Time, err error)
+	// The task must belong to projectID (taskdom.ErrTaskNotFound otherwise).
+	OpenTask(ctx context.Context, userID, projectID, taskID uuid.UUID) (previous *time.Time, err error)
 	// UnreadCount returns the count of unread notifications for the user.
 	UnreadCount(ctx context.Context, userID uuid.UUID) (int64, error)
 	// MarkAsRead marks a single notification as read.

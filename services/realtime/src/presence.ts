@@ -102,11 +102,21 @@ interface Room {
 
 export type JoinResult =
 	| { ok: true; snapshot: PresenceSnapshot; canType: boolean }
-	| { ok: false; reason: "forbidden" | "unavailable" | "limit" };
+	| {
+			ok: false;
+			// "superseded": the socket left (or re-joined) the room while the
+			// access check ran, so this join no longer stands.
+			reason: "forbidden" | "unavailable" | "limit" | "superseded";
+	  };
 
 export class PresenceHub {
 	private readonly rooms = new Map<string, Room>();
 	private readonly byRoom = new Map<string, Set<string>>(); // socket -> room names
+	// Latest join ticket per `socket|room` while its access check is in
+	// flight. A leave deletes it, so a join that completes afterwards sees it
+	// was withdrawn and does not add a ghost viewer.
+	private readonly pending = new Map<string, number>();
+	private joinSeq = 0;
 	private timer?: ReturnType<typeof setInterval>;
 	private lastBeat = 0;
 
@@ -150,6 +160,9 @@ export class PresenceHub {
 		}
 		const a = ACTIONS[ref.kind];
 		const resource = `project/${ref.projectId}/${a.seg}/${ref.id}`;
+		const key = `${socketId}|${name}`;
+		const ticket = ++this.joinSeq;
+		this.pending.set(key, ticket);
 		let canRead: boolean;
 		let canType: boolean;
 		try {
@@ -164,9 +177,14 @@ export class PresenceHub {
 				}),
 			]);
 		} catch (err) {
+			if (this.pending.get(key) === ticket) this.pending.delete(key);
 			this.opts.logger?.warn({ err }, "presence access check failed");
 			return { ok: false, reason: "unavailable" };
 		}
+		if (this.pending.get(key) !== ticket) {
+			return { ok: false, reason: "superseded" };
+		}
+		this.pending.delete(key);
 		if (!canRead) return { ok: false, reason: "forbidden" };
 		if (!stillConnected()) return { ok: false, reason: "unavailable" };
 
@@ -194,10 +212,14 @@ export class PresenceHub {
 
 	leave(socketId: string, ref: LiveRef): void {
 		const name = liveRoomName(ref.kind, ref.id);
+		this.pending.delete(`${socketId}|${name}`);
 		this.remove(socketId, name);
 	}
 
 	leaveAll(socketId: string): void {
+		for (const key of [...this.pending.keys()]) {
+			if (key.startsWith(`${socketId}|`)) this.pending.delete(key);
+		}
 		for (const name of [...(this.byRoom.get(socketId) ?? [])]) {
 			this.remove(socketId, name);
 		}
@@ -221,19 +243,40 @@ export class PresenceHub {
 		this.changed(room);
 	}
 
-	// recheck drops sockets that no longer may read their room (an IAM change).
-	// A failed check keeps the socket: one API blip must not evict everyone.
+	// recheck drops sockets that no longer may read their room (an IAM change)
+	// and refreshes whether the rest may type. A failed check keeps the socket
+	// as it was: one API blip must not evict everyone. Identical questions
+	// (same account, same room) are asked once per pass.
 	async recheck(onRevoked: (socketId: string, ref: LiveRef) => void) {
+		const answers = new Map<string, Promise<[boolean, boolean]>>();
 		for (const room of [...this.rooms.values()]) {
+			const a = ACTIONS[room.ref.kind];
+			const resource = `project/${room.ref.projectId}/${a.seg}/${room.ref.id}`;
 			for (const [socketId, m] of [...room.members]) {
+				const key = `${room.name}|${m.viewer.userId}`;
+				let answer = answers.get(key);
+				if (!answer) {
+					answer = Promise.all([
+						this.opts.decider.can(m.viewer, room.ref.projectId, {
+							action: a.read,
+							resource,
+						}),
+						this.opts.decider.can(m.viewer, room.ref.projectId, {
+							action: a.write,
+							resource,
+						}),
+					]);
+					answers.set(key, answer);
+				}
 				try {
-					const ok = await this.opts.decider.can(m.viewer, room.ref.projectId, {
-						action: ACTIONS[room.ref.kind].read,
-						resource: `project/${room.ref.projectId}/${ACTIONS[room.ref.kind].seg}/${room.ref.id}`,
-					});
-					if (!ok) {
+					const [canRead, canType] = await answer;
+					if (room.members.get(socketId) !== m) continue; // left meanwhile
+					if (!canRead) {
 						this.remove(socketId, room.name);
 						onRevoked(socketId, room.ref);
+					} else if (m.canType && !canType) {
+						m.canType = false;
+						if (room.typingUntil.delete(m.viewer.userId)) this.changed(room);
 					}
 				} catch {
 					// keep

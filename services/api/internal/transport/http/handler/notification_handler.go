@@ -164,7 +164,11 @@ func parseNotificationFilter(r *http.Request) (notificationdom.ListFilter, error
 	var f notificationdom.ListFilter
 	q := r.URL.Query()
 	if raw := q.Get("type"); raw != "" {
-		for _, t := range strings.Split(raw, ",") {
+		parts := strings.Split(raw, ",")
+		if len(parts) > 4 {
+			return f, apierr.New(apierr.CodeBadRequest, "too many notification types")
+		}
+		for _, t := range parts {
 			switch nt := notificationdom.NotificationType(strings.TrimSpace(t)); nt {
 			case notificationdom.NotificationTypeAssigned, notificationdom.NotificationTypeMentioned,
 				notificationdom.NotificationTypeQuestion, notificationdom.NotificationTypeAutomation:
@@ -231,12 +235,19 @@ func (h *NotificationHandler) OpenTask(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, apierr.New(apierr.CodeUnauthenticated, "unauthenticated"))
 		return
 	}
+	projectID, err := uuid.Parse(chi.URLParam(r, "projectId"))
+	if err != nil {
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid project id"))
+		return
+	}
 	taskID, err := uuid.Parse(chi.URLParam(r, "taskId"))
 	if err != nil {
 		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid task id"))
 		return
 	}
-	prev, err := h.svc.OpenTask(r.Context(), userID, taskID)
+	// The task must belong to the project in the URL: the router gate names the
+	// task by those two ids but does not check they match.
+	prev, err := h.svc.OpenTask(r.Context(), userID, projectID, taskID)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

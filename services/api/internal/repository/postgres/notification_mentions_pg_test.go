@@ -2,12 +2,14 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
 	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
+	taskdom "github.com/Paca-AI/api/internal/domain/task"
 )
 
 // The mention queries run against a real schema: the joins that resolve a
@@ -118,11 +120,14 @@ func TestNotificationRepo_MentionsInContext_PG(t *testing.T) {
 	// task_reads: first touch returns nil, the next returns the first time, and
 	// the stored time never moves backwards.
 	t1 := now.Truncate(time.Microsecond) // Postgres keeps microseconds
-	prev, err := repo.TouchTaskRead(ctx, recipient, inSprint, t1)
+	if _, err := repo.TouchTaskRead(ctx, recipient, uuid.New(), inSprint, t1); !errors.Is(err, taskdom.ErrTaskNotFound) {
+		t.Fatalf("task read under another project: %v", err)
+	}
+	prev, err := repo.TouchTaskRead(ctx, recipient, p, inSprint, t1)
 	if err != nil || prev != nil {
 		t.Fatalf("first touch: %v %v", prev, err)
 	}
-	prev, err = repo.TouchTaskRead(ctx, recipient, inSprint, t1.Add(-time.Hour))
+	prev, err = repo.TouchTaskRead(ctx, recipient, p, inSprint, t1.Add(-time.Hour))
 	if err != nil || prev == nil || !prev.Equal(t1) {
 		t.Fatalf("second touch: %v %v", prev, err)
 	}

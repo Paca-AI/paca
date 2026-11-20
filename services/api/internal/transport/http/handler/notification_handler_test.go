@@ -90,7 +90,7 @@ func (m *mockNotificationSvc) TaskLastSeen(context.Context, uuid.UUID, uuid.UUID
 	return nil, nil
 }
 
-func (m *mockNotificationSvc) OpenTask(context.Context, uuid.UUID, uuid.UUID) (*time.Time, error) {
+func (m *mockNotificationSvc) OpenTask(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (*time.Time, error) {
 	return nil, nil
 }
 

@@ -155,6 +155,53 @@ describe("PresenceHub", () => {
 		await s.hub.recheck((id) => revoked.push(id));
 		expect(revoked).toEqual(["s1"]);
 	});
+
+	it("does not add a viewer whose join was withdrawn by a leave", async () => {
+		let release!: () => void;
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		const hub = new PresenceHub({
+			decider: {
+				can: async () => {
+					await gate;
+					return true;
+				},
+			} as unknown as AccessDecider,
+			replica: "a",
+			transport: { emit: () => {} },
+		});
+		const joining = hub.join("s1", v("u1"), ref);
+		hub.leave("s1", ref);
+		release();
+		expect(await joining).toEqual({ ok: false, reason: "superseded" });
+		const again = await setup().hub.join("s2", v("u2"), ref);
+		expect(again.ok).toBe(true);
+		// the hub that saw the leave holds no room for s1
+		const probe = await hub.join("s3", v("u3"), ref);
+		expect(probe.ok && probe.snapshot.viewers).toEqual(["u3"]);
+	});
+
+	it("stops a socket typing once it loses write access", async () => {
+		let write = true;
+		const emitted: PresenceSnapshot[] = [];
+		const hub = new PresenceHub({
+			decider: {
+				can: async (_v: Viewer, _p: string, q: { action: string }) =>
+					q.action === "tasks:read" ? true : write,
+			} as unknown as AccessDecider,
+			replica: "a",
+			transport: { emit: (_r, s) => emitted.push(s) },
+		});
+		await hub.join("s1", v("u1"), ref);
+		hub.typing("s1", "task", T, true);
+		expect(emitted.at(-1)?.typing).toEqual(["u1"]);
+		write = false;
+		await hub.recheck(() => {});
+		expect(emitted.at(-1)?.typing).toEqual([]);
+		hub.typing("s1", "task", T, true);
+		expect(emitted.at(-1)?.typing).toEqual([]);
+	});
 });
 
 describe("PresenceHub across replicas", () => {

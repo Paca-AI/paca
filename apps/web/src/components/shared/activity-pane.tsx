@@ -268,13 +268,32 @@ export function ActivityPane<T extends ActivityEntry>({
 		const el = scrollAreaRef.current?.querySelector<HTMLElement>(
 			`[data-entry-id="${CSS.escape(focusEntryId)}"]`,
 		);
-		if (!el) return;
+		if (!el) {
+			// The comment may sit on an older page: keep paging until it is
+			// loaded, the feed ends, or a page fails (a deleted comment ends it).
+			const loaded = sorted.some((e) => e.id === focusEntryId);
+			if (
+				!loaded &&
+				hasNextPage &&
+				!isFetchingNextPage &&
+				!isFetchNextPageError
+			) {
+				void fetchNextPage();
+			}
+			return;
+		}
 		focusedRef.current = focusEntryId;
 		el.scrollIntoView({ block: "center" });
 		setHighlightId(focusEntryId);
 		const timer = setTimeout(() => setHighlightId(null), 2500);
 		return () => clearTimeout(timer);
-	}, [focusEntryId, visible.length]);
+	}, [
+		focusEntryId,
+		visible.length,
+		sorted.length,
+		hasNextPage,
+		isFetchingNextPage,
+	]);
 
 	const handleFilterChange = (next: ActivityFilter) => {
 		setFilter(next);
