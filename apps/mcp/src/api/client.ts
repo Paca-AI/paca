@@ -177,11 +177,16 @@ export class PacaAPIClient {
 			pageSize?: number;
 			cursor?: string;
 		} = {},
-	): Promise<{ items: Task[]; nextCursor?: string | null }> {
+	): Promise<{
+		items: Task[];
+		nextCursor?: string | null;
+		total?: number;
+	}> {
 		const params: string[] = [];
 		if (options.pageSize !== undefined)
 			params.push(`page_size=${options.pageSize}`);
-		if (options.cursor) params.push(`cursor=${options.cursor}`);
+		if (options.cursor)
+			params.push(`cursor=${encodeURIComponent(options.cursor)}`);
 		if (options.sprintId !== undefined)
 			params.push(`sprint_id=${options.sprintId}`);
 		if (options.statusId !== undefined)
@@ -204,9 +209,11 @@ export class PacaAPIClient {
 		if (Array.isArray(response)) {
 			return { items: response, nextCursor: null };
 		}
+		const total = response.total_count ?? response.total;
 		return {
 			items: response.items || response.tasks || response.data || [],
 			nextCursor: response.next_cursor ?? null,
+			...(typeof total === "number" ? { total } : {}),
 		};
 	}
 
