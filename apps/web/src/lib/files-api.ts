@@ -21,7 +21,9 @@ export interface FileNode {
 	id: string;
 	project_id: string | null;
 	parent_id: string | null;
-	kind: "folder" | "file";
+	/** A "doc" is a Documentation document: listed, opened in the docs editor,
+	 *  never renamed, moved, deleted or downloaded here. */
+	kind: "folder" | "file" | "doc";
 	name: string;
 	/** Where a file came from: upload | task_attachment | doc | annotation. */
 	source?: string;
@@ -34,8 +36,11 @@ export interface FileNode {
 	deleted_at?: string | null;
 	accessed_at?: string | null;
 	starred: boolean;
-	/** Set on the default folders: task_attachments | task | docs | annotations. */
+	/** Set on the default folders: task_attachments | task | docs | annotations | documentation. */
 	system?: string;
+	/** "docs" for the Documentation folder and everything in it (folders,
+	 *  documents, files): the docs permissions apply as well as the files ones. */
+	area?: string;
 	/** Locked items cannot be renamed or moved. */
 	locked: boolean;
 }
@@ -76,7 +81,7 @@ export interface FileListParams {
 	order?: "asc" | "desc";
 }
 
-interface Page {
+export interface Page {
 	items: FileNode[];
 	total_count: number;
 	page_size: number;
@@ -225,6 +230,14 @@ export async function setNodeStarred(
 	await apiClient.instance.put(`${filesBase(scope)}/nodes/${id}/star`, {
 		starred,
 	});
+}
+
+/** Records in the caller's Recent that they opened a document. */
+export async function recordNodeOpen(
+	scope: FileScope,
+	id: string,
+): Promise<void> {
+	await apiClient.instance.post(`${filesBase(scope)}/nodes/${id}/open`);
 }
 
 export interface FileDownload {
@@ -433,6 +446,31 @@ export const fileSectionQueryOptions = (
 		staleTime: 15_000,
 	});
 
+/** Where else a file is used: the task it is attached to and the documents
+ *  that reference it. */
+export interface FileRelations {
+	task: { id: string; key: string; number: number; title: string } | null;
+	documents: { id: string; title: string }[];
+}
+
+export async function getNodeRelations(
+	scope: FileScope,
+	id: string,
+): Promise<FileRelations> {
+	const { data } = await apiClient.instance.get<SuccessEnvelope<FileRelations>>(
+		`${filesBase(scope)}/nodes/${id}/relations`,
+	);
+	return data.data;
+}
+
+export const fileRelationsQueryOptions = (scope: FileScope, id: string) =>
+	queryOptions({
+		queryKey: [...filesScopeKey(scope), "relations", id] as const,
+		queryFn: () => getNodeRelations(scope, id),
+		enabled: !!id && !!scope.projectId,
+		staleTime: 15_000,
+	});
+
 export const fileNodePathQueryOptions = (scope: FileScope, id: string) =>
 	queryOptions({
 		queryKey: [...filesScopeKey(scope), "path", id] as const,
@@ -638,6 +676,7 @@ export function fileCategory(
 	n: Pick<FileNode, "kind" | "name" | "content_type">,
 ) {
 	if (n.kind === "folder") return "folder" satisfies FileCategory;
+	if (n.kind === "doc") return "document" satisfies FileCategory;
 	const ct = n.content_type ?? "";
 	if (ct.startsWith("image/")) return "image";
 	if (ct.startsWith("video/")) return "video";

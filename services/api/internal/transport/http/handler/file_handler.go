@@ -29,6 +29,25 @@ type FileHandler struct {
 	svc        filedom.Service
 	projects   projectdom.Service
 	authorizer iam.Checker
+	// listScoper narrows whole-scope lists (search, starred, recent) to the
+	// documents the caller may read; without it Documentation is left out.
+	listScoper ListScoper
+}
+
+// WithListScoper lets whole-scope file lists include the Documentation
+// documents the caller may read.
+func (h *FileHandler) WithListScoper(s ListScoper) *FileHandler {
+	h.listScoper = s
+	return h
+}
+
+// docScoped returns r's context carrying the caller's document scope for a
+// project route, which the repository applies inside the list query.
+func (h *FileHandler) docScoped(r *http.Request, fr fileRequest) (context.Context, error) {
+	if fr.scope.ProjectID == nil {
+		return r.Context(), nil
+	}
+	return scopedContext(r, h.listScoper, iam.ActionDocsRead, *fr.scope.ProjectID, "doc")
 }
 
 // NewFileHandler returns a FileHandler. projects and authorizer are used only
@@ -131,7 +150,12 @@ func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 		in.ParentID = &id
 	}
-	nodes, total, err := h.svc.List(r.Context(), fr.scope, fr.actor, in)
+	ctx, err := h.docScoped(r, fr)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	nodes, total, err := h.svc.List(ctx, fr.scope, fr.actor, in)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -151,6 +175,21 @@ func (h *FileHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	presenter.OK(w, r, dto.FileNodeFromEntity(n))
+}
+
+// Relations handles GET .../files/nodes/{nodeId}/relations: the task the file
+// is attached to and the documents that reference it.
+func (h *FileHandler) Relations(w http.ResponseWriter, r *http.Request) {
+	fr, ok := fileCtx(w, r, true)
+	if !ok {
+		return
+	}
+	rel, err := h.svc.Relations(r.Context(), fr.scope, fr.actor, fr.node)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.OK(w, r, dto.FileRelationsFromEntity(rel))
 }
 
 // Path handles GET .../files/nodes/{nodeId}/path: the breadcrumb, root first.
@@ -337,12 +376,31 @@ func (h *FileHandler) ListStarred(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, err)
 		return
 	}
-	nodes, total, err := h.svc.ListStarred(r.Context(), fr.scope, fr.actor, limit, offset)
+	ctx, err := h.docScoped(r, fr)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	nodes, total, err := h.svc.ListStarred(ctx, fr.scope, fr.actor, limit, offset)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
 	presenter.OK(w, r, pageOf(nodes, total, limit, offset))
+}
+
+// RecordOpen handles POST .../files/nodes/{nodeId}/open: the caller opened a
+// document, which has no download to record it.
+func (h *FileHandler) RecordOpen(w http.ResponseWriter, r *http.Request) {
+	fr, ok := fileCtx(w, r, true)
+	if !ok {
+		return
+	}
+	if err := h.svc.RecordOpen(r.Context(), fr.scope, fr.actor, fr.node); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.NoContent(w)
 }
 
 // ListRecent handles GET .../files/recent.
@@ -356,7 +414,12 @@ func (h *FileHandler) ListRecent(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, err)
 		return
 	}
-	nodes, err := h.svc.ListRecent(r.Context(), fr.scope, fr.actor, limit)
+	ctx, err := h.docScoped(r, fr)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	nodes, err := h.svc.ListRecent(ctx, fr.scope, fr.actor, limit)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
@@ -375,7 +438,12 @@ func (h *FileHandler) ListTrash(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, err)
 		return
 	}
-	nodes, total, err := h.svc.ListTrash(r.Context(), fr.scope, fr.actor, limit, offset)
+	ctx, err := h.docScoped(r, fr)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	nodes, total, err := h.svc.ListTrash(ctx, fr.scope, fr.actor, limit, offset)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return

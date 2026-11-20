@@ -22,7 +22,9 @@
 			"list": "列表视图"
 		},
 		"typeFilter": "类型",
-		"allTypes": "所有类型"
+		"allTypes": "所有类型",
+		"newDocument": "新建文档",
+		"untitledDocument": "无标题"
 	},
 	"types": {
 		"document": "文档",
@@ -89,7 +91,8 @@
 		"delete": "删除",
 		"restore": "还原",
 		"deleteForever": "永久删除",
-		"more": "更多操作"
+		"more": "更多操作",
+		"openDocument": "打开文档"
 	},
 	"system": {
 		"task_attachments": "附加到此项目任务的文件。",
@@ -189,7 +192,8 @@
 		"FILE_NODE_NOT_TRASHED": "该项目不在回收站中。",
 		"FILE_UPLOAD_INCOMPLETE": "上传未完成。",
 		"FILE_TOO_LARGE": "文件过大，无法上传。",
-		"FILE_TYPE_INVALID": "未知的文件类型筛选。"
+		"FILE_TYPE_INVALID": "未知的文件类型筛选。",
+		"docOutsideDocumentation": "文档只能在“文档”内移动。"
 	},
 	"noAccess": {
 		"title": "您无法查看这些文件",
@@ -234,6 +238,35 @@
 				"audio": "嵌入音频",
 				"file": "嵌入文件"
 			}
+		}
+	},
+	"docFolder": {
+		"actions": "文件操作",
+		"preview": "预览",
+		"download": "下载",
+		"details": "详细信息",
+		"showInFiles": "在文件中显示",
+		"moveTo": "移动到…",
+		"remove": "移到回收站",
+		"upload": "上传文件",
+		"fromFiles": "从项目文件中添加",
+		"pickTitle": "添加项目文件",
+		"pickHint": "从文件中选择一个文件移动到此文件夹。一个文件只位于一个文件夹，因此它会离开当前文件夹。",
+		"task": "任务",
+		"documents": "被以下文档使用",
+		"moveTitle": "移动到文件夹",
+		"moveHint": "文件将移动到你选择的文件夹。",
+		"root": "文档",
+		"noSubfolders": "没有子文件夹",
+		"current": "当前",
+		"moveHere": "移动到此处",
+		"toast": {
+			"failed": "无法更新文件夹中的文件",
+			"removed": "已移到回收站",
+			"removedHint": "可在 30 天内从文件的回收站中还原。",
+			"moved": "已移动到文件夹",
+			"added": "已将文件移到此文件夹",
+			"uploaded": "文件已上传"
 		}
 	}
 }

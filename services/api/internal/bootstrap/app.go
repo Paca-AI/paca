@@ -636,13 +636,15 @@ func New(cfg *config.Config) (*App, error) {
 		View:       handler.NewViewHandler(viewService).WithViewListScoper(authorizer),
 		Attachment: handler.NewAttachmentHandler(attachmentService),
 		Document: handler.NewDocumentHandler(docService, docActivityService).
+			WithPublicURL(cfg.Server.PublicURL).
 			WithDocListScoper(authorizer).
 			WithDocAuthorizer(authorizer).
 			WithDocChanges(docsvc.NewChangesService(docRepo)).
 			WithDocAvatarService(attachmentService).
 			WithDocNotificationService(notificationService),
 		DocFile:            handler.NewDocFileHandler(attachmentService),
-		File:               handler.NewFileHandler(fileService, projectService, authorizer),
+		File:               handler.NewFileHandler(fileService, projectService, authorizer).WithListScoper(authorizer),
+		FileAreas:          fileRepo,
 		Notification:       handler.NewNotificationHandler(notificationService, handler.WithNotificationAvatarService(attachmentService)),
 		APIKey:             handler.NewAPIKeyHandler(apiKeyService),
 		ServiceAccount:     handler.NewServiceAccountHandler(serviceAccountService, apiKeyService).WithAvatarService(attachmentService),

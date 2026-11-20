@@ -994,7 +994,8 @@
 			"unsaved": "Unsaved",
 			"saving": "Saving…",
 			"saved": "Saved",
-			"commentsAndActivity": "Comments & activity"
+			"commentsAndActivity": "Comments & activity",
+			"downloadMarkdown": "Download as Markdown"
 		},
 		"activity": {
 			"created": "created this document",

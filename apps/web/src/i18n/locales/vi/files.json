@@ -22,7 +22,9 @@
 			"list": "Dạng danh sách"
 		},
 		"typeFilter": "Loại",
-		"allTypes": "Tất cả loại"
+		"allTypes": "Tất cả loại",
+		"newDocument": "Tài liệu mới",
+		"untitledDocument": "Chưa đặt tên"
 	},
 	"types": {
 		"document": "Tài liệu",
@@ -89,7 +91,8 @@
 		"delete": "Xóa",
 		"restore": "Khôi phục",
 		"deleteForever": "Xóa vĩnh viễn",
-		"more": "Thêm thao tác"
+		"more": "Thêm thao tác",
+		"openDocument": "Mở tài liệu"
 	},
 	"system": {
 		"task_attachments": "Các tệp đính kèm vào công việc của dự án này.",
@@ -189,7 +192,8 @@
 		"FILE_NODE_NOT_TRASHED": "Mục này không ở trong thùng rác.",
 		"FILE_UPLOAD_INCOMPLETE": "Quá trình tải lên chưa hoàn tất.",
 		"FILE_TOO_LARGE": "Tệp này quá lớn để tải lên.",
-		"FILE_TYPE_INVALID": "Bộ lọc loại tệp không hợp lệ."
+		"FILE_TYPE_INVALID": "Bộ lọc loại tệp không hợp lệ.",
+		"docOutsideDocumentation": "Tài liệu chỉ có thể được chuyển trong Tài liệu dự án."
 	},
 	"noAccess": {
 		"title": "Bạn không thể xem các tệp này",
@@ -234,6 +238,35 @@
 				"audio": "Nhúng âm thanh",
 				"file": "Nhúng tệp"
 			}
+		}
+	},
+	"docFolder": {
+		"actions": "Thao tác với tệp",
+		"preview": "Xem trước",
+		"download": "Tải xuống",
+		"details": "Chi tiết",
+		"showInFiles": "Hiện trong Tệp",
+		"moveTo": "Di chuyển tới…",
+		"remove": "Chuyển vào thùng rác",
+		"upload": "Tải tệp lên",
+		"fromFiles": "Thêm từ tệp của dự án",
+		"pickTitle": "Thêm tệp của dự án",
+		"pickHint": "Chọn một tệp trong Tệp để chuyển vào thư mục này. Một tệp chỉ nằm trong một thư mục nên nó sẽ rời thư mục hiện tại.",
+		"task": "Công việc",
+		"documents": "Được dùng trong tài liệu",
+		"moveTitle": "Di chuyển tới thư mục",
+		"moveHint": "Tệp sẽ được chuyển tới thư mục bạn chọn.",
+		"root": "Tài liệu",
+		"noSubfolders": "Không có thư mục con",
+		"current": "Hiện tại",
+		"moveHere": "Chuyển vào đây",
+		"toast": {
+			"failed": "Không thể cập nhật các tệp của thư mục",
+			"removed": "Đã chuyển vào thùng rác",
+			"removedHint": "Khôi phục từ thùng rác của Tệp trong vòng 30 ngày.",
+			"moved": "Đã chuyển tới thư mục",
+			"added": "Đã chuyển tệp vào thư mục này",
+			"uploaded": "Đã tải tệp lên"
 		}
 	}
 }

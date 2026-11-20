@@ -994,7 +994,8 @@
 			"unsaved": "저장되지 않음",
 			"saving": "저장 중…",
 			"saved": "저장됨",
-			"commentsAndActivity": "댓글 및 활동"
+			"commentsAndActivity": "댓글 및 활동",
+			"downloadMarkdown": "Markdown으로 다운로드"
 		},
 		"activity": {
 			"created": "이 문서를 만들었습니다",

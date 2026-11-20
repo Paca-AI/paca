@@ -994,7 +994,8 @@
 			"unsaved": "Não salvo",
 			"saving": "Salvando…",
 			"saved": "Salvo",
-			"commentsAndActivity": "Comentários e atividade"
+			"commentsAndActivity": "Comentários e atividade",
+			"downloadMarkdown": "Baixar como Markdown"
 		},
 		"activity": {
 			"created": "criou este documento",

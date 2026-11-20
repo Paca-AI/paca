@@ -1004,7 +1004,8 @@
 			"unsaved": "Не сохранено",
 			"saving": "Сохранение…",
 			"saved": "Сохранено",
-			"commentsAndActivity": "Комментарии и активность"
+			"commentsAndActivity": "Комментарии и активность",
+			"downloadMarkdown": "Скачать как Markdown"
 		},
 		"activity": {
 			"created": "создал(а) этот документ",

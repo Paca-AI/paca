@@ -336,6 +336,26 @@ export async function deleteFolder(
 	);
 }
 
+/** Downloads a document as a Markdown file (its title as the first heading). */
+export async function downloadDocMarkdown(
+	projectId: string,
+	docId: string,
+	fileName: string,
+): Promise<void> {
+	const { data } = await apiClient.instance.get<Blob>(
+		`/projects/${projectId}/docs/${docId}/markdown`,
+		{ responseType: "blob" },
+	);
+	const url = URL.createObjectURL(data);
+	const a = document.createElement("a");
+	a.href = url;
+	a.download = fileName;
+	document.body.appendChild(a);
+	a.click();
+	a.remove();
+	URL.revokeObjectURL(url);
+}
+
 // ── Document API ──────────────────────────────────────────────────────────────
 
 /** One page of a project's documents in manual order, without their bodies.

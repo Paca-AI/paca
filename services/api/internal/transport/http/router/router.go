@@ -61,7 +61,10 @@ type Deps struct {
 	TaskNumbers httpmw.TaskNumberLookup
 	// Conversations resolves a conversation addressed by id alone (the agent
 	// API) to its project, for the conversations:read gate.
-	Conversations    httpmw.ConversationLookup
+	Conversations httpmw.ConversationLookup
+	// FileAreas tells which file manager nodes sit in a project's Documentation
+	// subtree, so those routes also require the docs action.
+	FileAreas        httpmw.FileAreaLookup
 	MemberPrincipals httpmw.MemberPrincipalLookup
 	// ChangeHeads stamps project reads with the change-log head (X-Change-Seq),
 	// so a realtime client can start its feed where its data was read. Optional.
@@ -437,7 +440,7 @@ func New(deps Deps) http.Handler {
 				if deps.File != nil {
 					r.Route("/files", func(r chi.Router) {
 						r.Get("/roots", deps.File.Roots)
-						mountFileRoutes(r, deps.File, require.Global(iam.ActionFilesRead), require.Global(iam.ActionFilesWrite))
+						mountFileRoutes(r, deps.File, require.Global(iam.ActionFilesRead), require.Global(iam.ActionFilesWrite), nil)
 					})
 				}
 			})
@@ -897,6 +900,7 @@ func New(deps Deps) http.Handler {
 					// Documents — single item
 					r.Route("/{docId}", func(r chi.Router) {
 						r.With(require.ProjectEntity("doc", "docId", resDoc, iam.ActionDocsRead)).Get("/", deps.Document.GetDocument)
+						r.With(require.ProjectEntity("doc", "docId", resDoc, iam.ActionDocsRead)).Get("/markdown", deps.Document.DownloadMarkdown)
 						r.With(require.ProjectEntity("doc", "docId", resDoc, iam.ActionDocsWrite), require.DocChange()).Patch("/", deps.Document.UpdateDocument)
 						r.With(require.ProjectEntity("doc", "docId", resDoc, iam.ActionDocsWrite)).Delete("/", deps.Document.DeleteDocument)
 
@@ -926,7 +930,7 @@ func New(deps Deps) http.Handler {
 				// the default folders for task attachments, doc files and screenshots.
 				if deps.File != nil {
 					r.Route("/files", func(r chi.Router) {
-						mountFileRoutes(r, deps.File, require.Project(iam.ActionFilesRead), require.Project(iam.ActionFilesWrite))
+						mountFileRoutes(r, deps.File, require.Project(iam.ActionFilesRead), require.Project(iam.ActionFilesWrite), require.FileDocs)
 					})
 				}
 
@@ -1437,21 +1441,40 @@ func sameHostnameOrigin(origin, host string) bool {
 // mountFileRoutes registers the file manager routes of one scope. read and
 // write are that scope's gates (a project's files:*, or the general scope's
 // platform-root files:*). Starring is per-user state, so it only needs read.
-func mountFileRoutes(r chi.Router, h *handler.FileHandler, read, write func(http.Handler) http.Handler) {
-	r.With(read).Get("/nodes", h.List)
-	r.With(read).Get("/nodes/{nodeId}", h.Get)
-	r.With(read).Get("/nodes/{nodeId}/path", h.Path)
-	r.With(read).Get("/nodes/{nodeId}/download-url", h.DownloadURL)
-	r.With(read).Put("/nodes/{nodeId}/star", h.SetStarred)
+func mountFileRoutes(r chi.Router, h *handler.FileHandler, read, write func(http.Handler) http.Handler, docs func(iam.Action, ...httpmw.FileTarget) func(http.Handler) http.Handler) {
+	// In a project, anything in the Documentation subtree also needs the docs
+	// action (docs:read to look, docs:write to change), on top of files:*.
+	// docs is nil for the general scope, which has no Documentation.
+	docsRead := func(targets ...httpmw.FileTarget) func(http.Handler) http.Handler {
+		if docs == nil {
+			return func(next http.Handler) http.Handler { return next }
+		}
+		return docs(iam.ActionDocsRead, targets...)
+	}
+	docsWrite := func(targets ...httpmw.FileTarget) func(http.Handler) http.Handler {
+		if docs == nil {
+			return func(next http.Handler) http.Handler { return next }
+		}
+		return docs(iam.ActionDocsWrite, targets...)
+	}
+	node := httpmw.FileURLNode("nodeId")
+
+	r.With(read, docsRead(httpmw.FileQueryParent)).Get("/nodes", h.List)
+	r.With(read, docsRead(node)).Get("/nodes/{nodeId}", h.Get)
+	r.With(read, docsRead(node)).Get("/nodes/{nodeId}/path", h.Path)
+	r.With(read, docsRead(node)).Get("/nodes/{nodeId}/download-url", h.DownloadURL)
+	r.With(read, docsRead(node)).Get("/nodes/{nodeId}/relations", h.Relations)
+	r.With(read, docsRead(node)).Put("/nodes/{nodeId}/star", h.SetStarred)
+	r.With(read, docsRead(node)).Post("/nodes/{nodeId}/open", h.RecordOpen)
 	r.With(read).Get("/starred", h.ListStarred)
 	r.With(read).Get("/recent", h.ListRecent)
 	r.With(read).Get("/trash", h.ListTrash)
 
-	r.With(write).Post("/folders", h.CreateFolder)
-	r.With(write).Patch("/nodes/{nodeId}", h.Update)
-	r.With(write).Delete("/nodes/{nodeId}", h.Trash)
-	r.With(write).Post("/nodes/{nodeId}/restore", h.Restore)
-	r.With(write).Delete("/nodes/{nodeId}/permanent", h.DeletePermanently)
-	r.With(write).Post("/uploads/initiate", h.InitiateUpload)
-	r.With(write).Post("/uploads/complete", h.CompleteUpload)
+	r.With(write, docsWrite(httpmw.FileBodyField("parent_id"))).Post("/folders", h.CreateFolder)
+	r.With(write, docsWrite(node, httpmw.FileBodyField("parent_id"))).Patch("/nodes/{nodeId}", h.Update)
+	r.With(write, docsWrite(node)).Delete("/nodes/{nodeId}", h.Trash)
+	r.With(write, docsWrite(node)).Post("/nodes/{nodeId}/restore", h.Restore)
+	r.With(write, docsWrite(node)).Delete("/nodes/{nodeId}/permanent", h.DeletePermanently)
+	r.With(write, docsWrite(httpmw.FileBodyField("parent_id"))).Post("/uploads/initiate", h.InitiateUpload)
+	r.With(write, docsWrite(httpmw.FileBodyField("file_id"))).Post("/uploads/complete", h.CompleteUpload)
 }

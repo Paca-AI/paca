@@ -22,7 +22,9 @@
 			"list": "목록 보기"
 		},
 		"typeFilter": "유형",
-		"allTypes": "모든 유형"
+		"allTypes": "모든 유형",
+		"newDocument": "새 문서",
+		"untitledDocument": "제목 없음"
 	},
 	"types": {
 		"document": "문서",
@@ -89,7 +91,8 @@
 		"delete": "삭제",
 		"restore": "복원",
 		"deleteForever": "영구 삭제",
-		"more": "더보기"
+		"more": "더보기",
+		"openDocument": "문서 열기"
 	},
 	"system": {
 		"task_attachments": "이 프로젝트의 작업에 첨부된 파일입니다.",
@@ -189,7 +192,8 @@
 		"FILE_NODE_NOT_TRASHED": "해당 항목은 휴지통에 없습니다.",
 		"FILE_UPLOAD_INCOMPLETE": "업로드가 완료되지 않았습니다.",
 		"FILE_TOO_LARGE": "파일이 너무 커서 업로드할 수 없습니다.",
-		"FILE_TYPE_INVALID": "알 수 없는 파일 유형 필터입니다."
+		"FILE_TYPE_INVALID": "알 수 없는 파일 유형 필터입니다.",
+		"docOutsideDocumentation": "문서는 문서화 폴더 안에서만 이동할 수 있습니다."
 	},
 	"noAccess": {
 		"title": "이 파일을 볼 수 없습니다",
@@ -234,6 +238,35 @@
 				"audio": "오디오 삽입",
 				"file": "파일 삽입"
 			}
+		}
+	},
+	"docFolder": {
+		"actions": "파일 작업",
+		"preview": "미리보기",
+		"download": "다운로드",
+		"details": "세부정보",
+		"showInFiles": "파일에서 보기",
+		"moveTo": "이동…",
+		"remove": "휴지통으로 이동",
+		"upload": "파일 업로드",
+		"fromFiles": "프로젝트 파일에서 추가",
+		"pickTitle": "프로젝트 파일 추가",
+		"pickHint": "파일에서 이 폴더로 이동할 파일을 선택하세요. 파일은 한 폴더에만 있으므로 현재 폴더에서 이동됩니다.",
+		"task": "작업",
+		"documents": "사용된 문서",
+		"moveTitle": "폴더로 이동",
+		"moveHint": "파일이 선택한 폴더로 이동합니다.",
+		"root": "문서",
+		"noSubfolders": "하위 폴더 없음",
+		"current": "현재",
+		"moveHere": "여기로 이동",
+		"toast": {
+			"failed": "폴더의 파일을 업데이트하지 못했습니다",
+			"removed": "휴지통으로 이동했습니다",
+			"removedHint": "30일 이내에 파일 휴지통에서 복원할 수 있습니다.",
+			"moved": "폴더로 이동했습니다",
+			"added": "파일을 이 폴더로 이동했습니다",
+			"uploaded": "파일을 업로드했습니다"
 		}
 	}
 }

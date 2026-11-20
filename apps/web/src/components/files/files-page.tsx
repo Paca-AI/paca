@@ -8,8 +8,8 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import {
-	ChevronRight,
 	FilePlus2,
+	FileText,
 	FolderPlus,
 	FolderUp,
 	Grid2x2,
@@ -32,6 +32,10 @@ import {
 import { useTranslation } from "react-i18next";
 import { LoadMoreSentinel } from "@/components/shared/load-more-sentinel";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
+import {
+	PathBreadcrumb,
+	type PathCrumb,
+} from "@/components/shared/path-breadcrumb";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -55,7 +59,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
-import { useFileWriteAccess } from "@/hooks/use-file-write-access";
+import {
+	useDocsWriteAccess,
+	useFileWriteAccess,
+} from "@/hooks/use-file-write-access";
 import { useProjectRealtime } from "@/hooks/use-project-realtime";
 import { useWorkspaceFilesRealtime } from "@/hooks/use-workspace-files-realtime";
 import {
@@ -64,6 +71,11 @@ import {
 	getApiErrorMessage,
 	isForbiddenError,
 } from "@/lib/api-error";
+import {
+	createDocument,
+	downloadDocMarkdown,
+	updateDocument,
+} from "@/lib/doc-api";
 import {
 	collectDropped,
 	collectFromInput,
@@ -86,9 +98,11 @@ import {
 	fileRootsQueryOptions,
 	fileSectionQueryOptions,
 	GENERAL_SCOPE,
+	getNode,
 	getNodeDownload,
 	invalidateFiles,
 	moveNode,
+	recordNodeOpen,
 	renameNode,
 	restoreNode,
 	scopeOfNode,
@@ -97,7 +111,6 @@ import {
 } from "@/lib/files-api";
 import { showErrorToast } from "@/lib/notify";
 import { projectQueryOptions } from "@/lib/project-api";
-import { cn } from "@/lib/utils";
 import { buildFileActions, type FileActionHandlers } from "./file-actions";
 import {
 	ConfirmDialog,
@@ -149,6 +162,9 @@ export function parseFilesSearch(raw: Record<string, unknown>): FilesSearch {
 		type: str(raw.type),
 	};
 }
+
+/** A document was dropped or moved somewhere outside Documentation. */
+class DocOutsideDocumentationError extends Error {}
 
 const SKELETON_ROWS = ["a", "b", "c", "d", "e", "f"] as const;
 
@@ -233,6 +249,14 @@ export function FilesPage({
 			: t("roots.general");
 
 	const canWriteScope = useFileWriteAccess(sectionScopes);
+	const canWriteDocs = useDocsWriteAccess(sectionScopes);
+	// A node in Documentation needs docs:write as well as files:write.
+	// A document is changed through the docs API, which needs docs:write only.
+	const canWriteNode = (n: FileNode) =>
+		n.kind === "doc"
+			? canWriteDocs(scopeOfNode(n))
+			: canWriteScope(scopeOfNode(n)) &&
+				(n.area !== "docs" || canWriteDocs(scopeOfNode(n)));
 
 	// ── Data ─────────────────────────────────────────────────────────────────
 	const [sort, setSort] = useState<{ key: FileSortKey; desc: boolean }>({
@@ -389,6 +413,14 @@ export function FilesPage({
 		}
 	};
 	const fail = (error: unknown) => {
+		if (error instanceof DocOutsideDocumentationError) {
+			showErrorToast({
+				title: t("toast.failed"),
+				description: t("errors.docOutsideDocumentation"),
+				error,
+			});
+			return;
+		}
 		const code = getApiErrorCode(error);
 		const known =
 			code && (Object.values(ApiErrorCode) as string[]).includes(code);
@@ -431,8 +463,16 @@ export function FilesPage({
 		onSettled: () => refresh(sectionScopes),
 	});
 	const renameM = useMutation({
-		mutationFn: ({ node, name }: { node: FileNode; name: string }) =>
-			renameNode(scopeOfNode(node), node.id, name),
+		mutationFn: async ({ node, name }: { node: FileNode; name: string }) => {
+			// A document's name is its title; the .md is only how it shows up here.
+			if (node.kind === "doc" && node.project_id) {
+				await updateDocument(node.project_id, node.id, {
+					title: name.replace(/\.(md|markdown)$/i, "").trim(),
+				});
+				return;
+			}
+			await renameNode(scopeOfNode(node), node.id, name);
+		},
 		onSuccess: () => {
 			ok(t("toast.renamed"));
 			setDialog(null);
@@ -448,7 +488,24 @@ export function FilesPage({
 			items: FileNode[];
 			parentId: string | null;
 		}) => {
-			for (const n of items) await moveNode(scopeOfNode(n), n.id, parentId);
+			for (const n of items) {
+				if (n.kind === "doc" && n.project_id) {
+					// Documents move through the docs API; the top of Documentation
+					// is "no folder" there, and nothing outside Documentation will do.
+					let folderId = parentId;
+					if (parentId) {
+						const target = await getNode(scopeOfNode(n), parentId);
+						if (target.area !== "docs")
+							throw new DocOutsideDocumentationError();
+						if (target.system === "documentation") folderId = null;
+					} else {
+						throw new DocOutsideDocumentationError();
+					}
+					await updateDocument(n.project_id, n.id, { folder_id: folderId });
+				} else {
+					await moveNode(scopeOfNode(n), n.id, parentId);
+				}
+			}
 			return items.length;
 		},
 		onSuccess: (count) => {
@@ -532,6 +589,11 @@ export function FilesPage({
 
 	const download = async (n: FileNode) => {
 		try {
+			// A document downloads as the Markdown file it is.
+			if (n.kind === "doc" && n.project_id) {
+				await downloadDocMarkdown(n.project_id, n.id, n.name);
+				return;
+			}
 			const d = await getNodeDownload(scopeOfNode(n), n.id, {
 				download: true,
 			});
@@ -550,7 +612,13 @@ export function FilesPage({
 	const open = (n: FileNode) => {
 		if (inTrash) return;
 		if (n.kind === "folder") goToFolder(scopeOfNode(n), n.id);
-		else setPreviewId(n.id);
+		else if (n.kind === "doc" && n.project_id) {
+			void recordNodeOpen(scopeOfNode(n), n.id).catch(() => undefined);
+			void navigate({
+				to: "/projects/$projectId/docs/$docId",
+				params: { projectId: n.project_id, docId: n.id },
+			});
+		} else setPreviewId(n.id);
 	};
 
 	/**
@@ -560,9 +628,7 @@ export function FilesPage({
 	 * selection bar and the menus submit the same set.
 	 */
 	const trashNodes = (items: FileNode[]) => {
-		const deletable = items.filter(
-			(n) => !n.system && canWriteScope(scopeOfNode(n)),
-		);
+		const deletable = items.filter((n) => !n.system && canWriteNode(n));
 		if (deletable.length === 0) return;
 		if (deletable.some(deletesForGood))
 			setDialog({ kind: "trash", nodes: deletable });
@@ -583,24 +649,55 @@ export function FilesPage({
 	};
 
 	const actionsFor = (n: FileNode) =>
-		buildFileActions(
-			n,
-			{ t, inTrash, canWrite: canWriteScope(scopeOfNode(n)) },
-			handlers,
-		);
+		buildFileActions(n, { t, inTrash, canWrite: canWriteNode(n) }, handlers);
 
 	// ── Upload (picker + drop) ───────────────────────────────────────────────
+	// Documentation takes new folders, files and documents (docs:write too);
+	// the other default folders and managed folders take nothing.
+	const inDocs = currentFolder?.area === "docs";
+	// The Documentation folder is on the breadcrumb of everything inside it.
+	const docsRoot = path.find((n) => n.system === "documentation");
 	const canUploadHere =
 		section === "browse" &&
 		!!browseScope &&
 		canWriteScope(browseScope) &&
-		!(currentFolder?.system || currentFolder?.locked);
+		(inDocs
+			? canWriteDocs(browseScope)
+			: !(currentFolder?.system || currentFolder?.locked));
 	const startUpload = (entries: UploadEntry[]) => {
 		if (!browseScope || entries.length === 0) return;
-		enqueueUploads(browseScope, folderId, entries, () =>
-			refresh([browseScope]),
+		enqueueUploads(
+			browseScope,
+			folderId,
+			entries,
+			() => refresh([browseScope]),
+			// Into Documentation a Markdown file becomes a document.
+			inDocs && docsRoot && browseScope.projectId
+				? { markdownToDocs: { rootFolderId: docsRoot.id } }
+				: {},
 		);
 	};
+	// A new document goes in the folder being viewed (the Documentation folder
+	// itself means the top of the docs tree) and opens in the editor.
+	const newDocM = useMutation({
+		mutationFn: () => {
+			const pid = browseScope?.projectId;
+			if (!pid || !currentFolder) throw new Error("no folder");
+			return createDocument(pid, {
+				title: t("header.untitledDocument"),
+				folder_id: currentFolder.system ? undefined : currentFolder.id,
+			});
+		},
+		onSuccess: (doc) => {
+			const pid = browseScope?.projectId;
+			if (pid)
+				void navigate({
+					to: "/projects/$projectId/docs/$docId",
+					params: { projectId: pid, docId: doc.id },
+				});
+		},
+		onError: fail,
+	});
 	const fileInput = useRef<HTMLInputElement>(null);
 	const folderInput = useRef<HTMLInputElement>(null);
 	const [dropping, setDropping] = useState(false);
@@ -642,7 +739,7 @@ export function FilesPage({
 		} else if (e.key === "Escape") {
 			setSelected(new Set());
 		} else if (e.key === "F2" && picked.length === 1 && !picked[0].locked) {
-			if (canWriteScope(scopeOfNode(picked[0]))) handlers.rename(picked[0]);
+			if (canWriteNode(picked[0])) handlers.rename(picked[0]);
 		} else if (
 			(e.key === "Delete" || e.key === "Backspace") &&
 			picked.length > 0 &&
@@ -659,19 +756,58 @@ export function FilesPage({
 			: t(`sectionTitle.${section}` as "sectionTitle.trash");
 	const atRoots = section === "browse" && !projectId && !browseScope;
 	const searching = !!query || !!typeFilter;
-	const writableHere =
-		section === "browse" && !!browseScope && canWriteScope(browseScope);
+	const writableHere = canUploadHere;
 
 	const locationOf = (n: FileNode) => {
 		const where = scopeName(scopeOfNode(n));
 		return projectId ? "" : where;
 	};
 
+	// The location, in the shared breadcrumb: files > scope > folders. Every
+	// crumb that is a folder takes drops, so items can be moved by dragging.
+	const rootLabel = projectId
+		? (project.data?.name ?? t("nav.files"))
+		: t("nav.files");
+	const dropOn = (id: string | null) =>
+		writableHere
+			? { mime: FILE_DRAG_MIME, onDrop: (ids: string[]) => moveByDrag(ids, id) }
+			: undefined;
+	const showScope = !projectId && !!browseScope;
+	const crumbs: PathCrumb[] = [
+		...(showScope
+			? [
+					{
+						key: "files",
+						label: rootLabel,
+						onSelect: () => goToFolder(null, null),
+					},
+					{
+						key: "scope",
+						label: browseScope ? scopeName(browseScope) : "",
+						onSelect: () => goToFolder(browseScope, null),
+						drop: dropOn(null),
+					},
+				]
+			: [
+					{
+						key: "scope",
+						label: rootLabel,
+						onSelect: () => goToFolder(browseScope, null),
+						drop: dropOn(null),
+					},
+				]),
+		...path.map((p) => ({
+			key: p.id,
+			label: p.name,
+			onSelect: () => goToFolder(browseScope, p.id),
+			drop: p.locked && p.area !== "docs" ? undefined : dropOn(p.id),
+		})),
+	];
+
 	const viewProps: FileViewProps = {
 		nodes,
 		selected,
-		canDrag: (n) =>
-			section === "browse" && !n.locked && canWriteScope(scopeOfNode(n)),
+		canDrag: (n) => section === "browse" && !n.locked && canWriteNode(n),
 		inTrash,
 		showLocation: !projectId && section !== "browse",
 		locationOf,
@@ -729,30 +865,13 @@ export function FilesPage({
 			    selecting an item never moves the list (which would break a double click). */}
 			<div className="relative">
 				<header className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
-					<nav
-						aria-label={title}
-						className="flex min-w-0 flex-1 flex-wrap items-center gap-1 text-lg font-semibold"
-					>
-						{section !== "browse" ? (
-							<h1>{title}</h1>
-						) : (
-							<Breadcrumbs
-								rootLabel={
-									projectId
-										? (project.data?.name ?? t("nav.files"))
-										: t("nav.files")
-								}
-								showScope={!projectId && !!browseScope}
-								scopeLabel={browseScope ? scopeName(browseScope) : ""}
-								path={path}
-								onRoots={() => goToFolder(null, null)}
-								onScopeRoot={() => goToFolder(browseScope, null)}
-								onFolder={(id) => goToFolder(browseScope, id)}
-								onDropOn={(ids, id) => moveByDrag(ids, id)}
-								canDrop={writableHere}
-							/>
-						)}
-					</nav>
+					{section !== "browse" ? (
+						<nav aria-label={title} className="min-w-0 flex-1">
+							<h1 className="text-lg font-semibold">{title}</h1>
+						</nav>
+					) : (
+						<PathBreadcrumb className="flex-1" crumbs={crumbs} />
+					)}
 
 					{section === "browse" && !atRoots && (
 						<div className="relative w-56 max-sm:w-full">
@@ -813,33 +932,39 @@ export function FilesPage({
 						</ToggleGroup>
 					)}
 					{/* New — top right of the page */}
-					{writableHere &&
-						!(currentFolder?.system || currentFolder?.locked) && (
-							<DropdownMenu>
-								<DropdownMenuTrigger render={<Button />}>
-									<Plus className="size-4" />
-									{t("header.new")}
-								</DropdownMenuTrigger>
-								<DropdownMenuContent align="end" className="min-w-48">
+					{writableHere && (
+						<DropdownMenu>
+							<DropdownMenuTrigger render={<Button />}>
+								<Plus className="size-4" />
+								{t("header.new")}
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end" className="min-w-48">
+								<DropdownMenuItem
+									onClick={() => setDialog({ kind: "newFolder" })}
+								>
+									<FolderPlus className="size-4" />
+									{t("header.newFolder")}
+								</DropdownMenuItem>
+								{inDocs && browseScope?.projectId && (
 									<DropdownMenuItem
-										onClick={() => setDialog({ kind: "newFolder" })}
+										disabled={newDocM.isPending}
+										onClick={() => newDocM.mutate()}
 									>
-										<FolderPlus className="size-4" />
-										{t("header.newFolder")}
+										<FileText className="size-4" />
+										{t("header.newDocument")}
 									</DropdownMenuItem>
-									<DropdownMenuItem onClick={() => fileInput.current?.click()}>
-										<FilePlus2 className="size-4" />
-										{t("header.uploadFile")}
-									</DropdownMenuItem>
-									<DropdownMenuItem
-										onClick={() => folderInput.current?.click()}
-									>
-										<FolderUp className="size-4" />
-										{t("header.uploadFolder")}
-									</DropdownMenuItem>
-								</DropdownMenuContent>
-							</DropdownMenu>
-						)}
+								)}
+								<DropdownMenuItem onClick={() => fileInput.current?.click()}>
+									<FilePlus2 className="size-4" />
+									{t("header.uploadFile")}
+								</DropdownMenuItem>
+								<DropdownMenuItem onClick={() => folderInput.current?.click()}>
+									<FolderUp className="size-4" />
+									{t("header.uploadFolder")}
+								</DropdownMenuItem>
+							</DropdownMenuContent>
+						</DropdownMenu>
+					)}
 					<input
 						ref={fileInput}
 						type="file"
@@ -880,8 +1005,7 @@ export function FilesPage({
 							const picked = nodes.filter((n) => selected.has(n.id));
 							const first = picked[0];
 							const writable =
-								picked.length > 0 &&
-								picked.every((n) => canWriteScope(scopeOfNode(n)));
+								picked.length > 0 && picked.every((n) => canWriteNode(n));
 							if (!first || !writable) return null;
 							if (inTrash) {
 								return (
@@ -1098,118 +1222,6 @@ export function FilesPage({
 				</Suspense>
 			)}
 		</div>
-	);
-}
-
-// ── Breadcrumbs ───────────────────────────────────────────────────────────────
-
-function Crumb({
-	label,
-	current,
-	onClick,
-	onDropOn,
-	canDrop,
-}: {
-	label: string;
-	current?: boolean;
-	onClick: () => void;
-	onDropOn?: (ids: string[]) => void;
-	canDrop?: boolean;
-}) {
-	const [over, setOver] = useState(false);
-	return (
-		<button
-			type="button"
-			aria-current={current ? "page" : undefined}
-			onClick={onClick}
-			onDragOver={(e) => {
-				if (canDrop && e.dataTransfer.types.includes(FILE_DRAG_MIME)) {
-					e.preventDefault();
-					setOver(true);
-				}
-			}}
-			onDragLeave={() => setOver(false)}
-			onDrop={(e) => {
-				setOver(false);
-				const raw = e.dataTransfer.getData(FILE_DRAG_MIME);
-				if (canDrop && raw && onDropOn) {
-					e.preventDefault();
-					onDropOn(JSON.parse(raw) as string[]);
-				}
-			}}
-			className={cn(
-				"max-w-56 truncate rounded-md px-2 py-0.5 hover:bg-muted",
-				current ? "font-semibold" : "font-normal text-muted-foreground",
-				over && "bg-primary/20 ring-2 ring-primary",
-			)}
-		>
-			{label}
-		</button>
-	);
-}
-
-function Breadcrumbs({
-	rootLabel,
-	showScope,
-	scopeLabel,
-	path,
-	onRoots,
-	onScopeRoot,
-	onFolder,
-	onDropOn,
-	canDrop,
-}: {
-	rootLabel: string;
-	/** Global Files: the first crumb is "Files", the second the scope. */
-	showScope: boolean;
-	scopeLabel: string;
-	path: FileNode[];
-	onRoots: () => void;
-	onScopeRoot: () => void;
-	onFolder: (id: string) => void;
-	onDropOn: (ids: string[], folderId: string | null) => void;
-	canDrop: boolean;
-}) {
-	const sep = (
-		<ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-	);
-	const last = path.length - 1;
-	return (
-		<>
-			{showScope ? (
-				<>
-					<Crumb label={rootLabel} onClick={onRoots} />
-					{sep}
-					<Crumb
-						label={scopeLabel}
-						current={path.length === 0}
-						onClick={onScopeRoot}
-						canDrop={canDrop}
-						onDropOn={(ids) => onDropOn(ids, null)}
-					/>
-				</>
-			) : (
-				<Crumb
-					label={rootLabel}
-					current={path.length === 0}
-					onClick={onScopeRoot}
-					canDrop={canDrop}
-					onDropOn={(ids) => onDropOn(ids, null)}
-				/>
-			)}
-			{path.map((p, i) => (
-				<span key={p.id} className="flex items-center gap-1">
-					{sep}
-					<Crumb
-						label={p.name}
-						current={i === last}
-						onClick={() => onFolder(p.id)}
-						canDrop={canDrop && !p.locked}
-						onDropOn={(ids) => onDropOn(ids, p.id)}
-					/>
-				</span>
-			))}
-		</>
 	);
 }
 

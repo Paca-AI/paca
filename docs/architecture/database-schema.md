@@ -29,6 +29,7 @@ Interactive diagram: [https://dbdiagram.io/d/Paca-69c212ae78c6c4bc7a4fc190](http
 | `000065_drop_project_is_public.sql` | Drops `projects.is_public`. There is no public mode: every project route needs a signed-in caller whose roles allow the action, so the flag (which only let anonymous visitors in) and its data are removed. |
 
 | `000066_unified_accounts.sql` | Introduces `accounts` (one row per user, agent or service account) as the single home for identity, name, avatar and soft-delete; `users` and `agents` become extension tables keyed by the account id; `role_attachments`, `project_members`, `api_keys` and the audit columns reference `accounts`; the duplicated and legacy columns are dropped. See [Accounts model](#accounts-model). |
+| `000096_documentation_in_files.sql` | One folder tree for Documentation and Files: documentation folders move into `file_folders` (same ids) under a locked per-project `documentation` system folder (`file_folders` gains `position`, `area`, `created_by_member`); `doc_folders` becomes an updatable view over that subtree; `documents.trashed_at` for restorable deletions; `file_items` gains documents (`<title>.md`, `text/markdown`) and `area`; deleting a documentation folder trashes its subtree. See `docs/product/unified-documentation-files.md`. |
 
 *(Migrations between `000008` and `000017`/`000022`/`000031` that touch other subsystems — tasks, sprints, docs, notifications, etc. — are omitted here; see `services/api/migrations/` for the full, authoritative list.)*
 
@@ -353,10 +354,15 @@ Table task_assignees {
 }
 
 // --- DOCUMENTATION ---
+// doc_folders is a VIEW (migration 000096): the documentation folders are rows of
+// file_folders at or below the project's `documentation` system folder
+// (area = 'docs'). It keeps the shape the docs code reads and writes (INSTEAD OF
+// triggers write file_folders); a top-level folder has a NULL parent here and
+// the Documentation folder as its parent in file_folders.
 Table doc_folders {
-  id         uuid [primary key]
+  id         uuid [primary key, note: 'Same id as the file_folders row']
   project_id uuid [not null, ref: > projects.id]
-  parent_id  uuid [null, ref: > doc_folders.id, note: 'null = root; self-reference for nested folders']
+  parent_id  uuid [null, ref: > file_folders.id, note: 'null = directly under the Documentation folder']
   name       varchar [not null]
   position   integer [not null, default: 0, note: 'Zero-based order among siblings']
   created_by uuid [null, ref: > project_members.id]
@@ -367,7 +373,7 @@ Table doc_folders {
 Table documents {
   id         uuid [primary key]
   project_id uuid [not null, ref: > projects.id]
-  folder_id  uuid [null, ref: > doc_folders.id, note: 'null = root (no folder)']
+  folder_id  uuid [null, ref: > file_folders.id, note: 'null = directly under the Documentation folder']
   view_id    uuid [null, ref: > sprint_views.id, note: 'Set on a note: the note view it belongs to. A note is never in a folder (CHECK view_id IS NULL OR folder_id IS NULL) and never part of the docs tree, path lookups, search or the change feed. At most one live document names a view (partial unique index uq_documents_note_view, migration 000095). Deleting the view soft-deletes its notes (trigger, migration 000094); the foreign key then sets view_id to NULL on them.']
   title      varchar [not null, default: 'Untitled']
   content    jsonb [null, note: 'BlockNote rich-text document stored as a JSON array of block objects. null means no content. Each block follows the BlockNote schema: { id, type, props, content, children }.']

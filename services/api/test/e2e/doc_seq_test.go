@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sync"
 	"testing"
@@ -140,12 +141,14 @@ func TestDocSeq_FolderDeleteBumpsDocsAndFoldersSeq(t *testing.T) {
 	if status, _, _, raw := docRequest(t, env, client, token, http.MethodDelete, docs+"/folders/"+folder, nil, nil); status != http.StatusNoContent {
 		t.Fatalf("delete folder: %d %s", status, raw)
 	}
-	var folderID *string
-	if err := env.db.GetContext(env.ctx, &folderID, `SELECT folder_id::text FROM documents WHERE id = $1`, inside); err != nil {
+	// The folder goes to the trash with its documents (migration 000096): the
+	// document is soft-deleted and restorable, not re-rooted.
+	var trashed bool
+	if err := env.db.GetContext(env.ctx, &trashed, `SELECT deleted_at IS NOT NULL AND trashed_at IS NOT NULL FROM documents WHERE id = $1`, inside); err != nil {
 		t.Fatal(err)
 	}
-	if folderID != nil {
-		t.Fatalf("the foreign key left folder_id = %s", *folderID)
+	if !trashed {
+		t.Fatal("a document in a deleted folder must be trashed with it")
 	}
 	insideAfter, _ := docSeq(t, env, inside)
 	if insideAfter <= foldersRenamed {
@@ -215,6 +218,9 @@ func TestDocSeq_MigrationNumbersExistingRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// doc_folders is a view since migration 000096; its trigger now lives on
+	// file_folders, so the old trigger statements cannot be replayed.
+	migration = regexp.MustCompile(`(?s)DROP TRIGGER IF EXISTS doc_folders_bump_seq ON doc_folders;.*?FUNCTION doc_folders_bump_seq\(\);`).ReplaceAll(migration, nil)
 	for run := 1; run <= 2; run++ {
 		if _, err := env.db.ExecContext(env.ctx, string(migration)); err != nil {
 			t.Fatalf("run %d of the migration: %v", run, err)

@@ -46,6 +46,7 @@ import (
 	automationsvc "github.com/Paca-AI/api/internal/service/automation"
 	docsvc "github.com/Paca-AI/api/internal/service/doc"
 	exportsvc "github.com/Paca-AI/api/internal/service/export"
+	filesvc "github.com/Paca-AI/api/internal/service/file"
 	mfasvc "github.com/Paca-AI/api/internal/service/mfa"
 	projectsvc "github.com/Paca-AI/api/internal/service/project"
 	rolesvc "github.com/Paca-AI/api/internal/service/role"
@@ -249,6 +250,8 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	pluginRepoForAgent := pgRepo.NewPluginRepository(db)
 	agentService := agentsvc.New(agentRepo, noopMemberCacheInvalidator{Service: projectService}, publisher, pluginRepoForAgent)
 	var attachmentService *attachmentsvc.Service
+	fileRepo := pgRepo.NewFileRepository(db)
+	var fileHandler *handler.FileHandler
 	if sharedStorageEndpoint != "" {
 		storageEndpoint := sharedStorageEndpoint
 		storageClient, storageErr := storage.NewS3Client(ctx, storage.S3Config{
@@ -266,6 +269,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 			t.Fatalf("ensure bucket: %v", err)
 		}
 		attachmentService = attachmentsvc.New(attachmentRepo, attachmentsvc.NewTaskOwnerChecker(taskRepo), attachmentsvc.NewDocOwnerChecker(docRepo), storageClient, attachBucket)
+		fileHandler = handler.NewFileHandler(filesvc.New(fileRepo, attachmentRepo, storageClient, attachBucket), projectService, authorizer).WithListScoper(authorizer)
 	}
 
 	cookieCfg := handler.CookieConfig{
@@ -324,6 +328,8 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 			WithDocChanges(docsvc.NewChangesService(docRepo)),
 		View:         handler.NewViewHandler(viewService),
 		Attachment:   handler.NewAttachmentHandler(attachmentService),
+		File:         fileHandler,
+		FileAreas:    fileRepo,
 		APIKey:       handler.NewAPIKeyHandler(apiKeyService),
 		Automation:   handler.NewAutomationHandler(automationService),
 		Agent:        handler.NewAgentHandler(agentService, "", "", "").WithMemberRepo(projectRepo).WithActivityLister(activityLog),

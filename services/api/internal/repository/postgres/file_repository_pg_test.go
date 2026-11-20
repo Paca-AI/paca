@@ -40,8 +40,8 @@ func TestFileRepository_DefaultFoldersAndClassification(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := namesOf(root); total != 3 || got[0] != "Annotation screenshots" || got[1] != "Document files" || got[2] != "Task attachments" {
-		t.Fatalf("project root = %v (total %d), want the three default folders", got, total)
+	if got := namesOf(root); total != 4 || got[0] != "Annotation screenshots" || got[1] != "Document files" || got[2] != "Documentation" || got[3] != "Task attachments" {
+		t.Fatalf("project root = %v (total %d), want the four default folders", got, total)
 	}
 	for _, n := range root {
 		if !n.Locked() || n.SystemKey == "" {
@@ -206,5 +206,41 @@ func TestFileRepository_FoldersMoveTrashRestorePurge(t *testing.T) {
 	var stars int
 	if err := db.GetContext(t.Context(), &stars, `SELECT COUNT(*) FROM file_stars`); err != nil || stars != 0 {
 		t.Fatalf("stars after purge = %d (err %v), want 0", stars, err)
+	}
+}
+
+// A file's relations are the task it is attached to and the documents that
+// mention it or own it.
+func TestFileRepository_Relations(t *testing.T) {
+	db := newIAMPGTestDB(t)
+	fx := newIAMFx(t, db)
+	repo := NewFileRepository(db)
+	project := fx.project()
+	ctx := t.Context()
+
+	task, mention, owner := uuid.New(), uuid.New(), uuid.New()
+	pgExec(t, db, `UPDATE projects SET task_id_prefix = 'PACA' WHERE id = $1`, project)
+	pgExec(t, db, `INSERT INTO tasks (id, project_id, task_number, title) VALUES ($1, $2, 12, 'Evaluate')`, task, project)
+	attached := addUploadedFile(t, db, "tasks/"+task.String()+"/x/a.pdf", "a.pdf", "application/pdf")
+	pgExec(t, db, `INSERT INTO task_attachments (task_id, file_id) VALUES ($1, $2)`, task, attached)
+	pgExec(t, db, `INSERT INTO documents (id, project_id, title, content) VALUES ($1, $2, 'Method', $3::jsonb)`,
+		mention, project, `[{"type":"file","props":{"url":"files://`+project.String()+`/`+attached.String()+`"}}]`)
+	pgExec(t, db, `INSERT INTO documents (id, project_id, title) VALUES ($1, $2, 'Unrelated')`, owner, project)
+
+	rel, err := repo.Relations(ctx, project, attached)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel.Task == nil || rel.Task.Key != "PACA-12" || rel.Task.Title != "Evaluate" {
+		t.Fatalf("task = %+v", rel.Task)
+	}
+	if len(rel.Documents) != 1 || rel.Documents[0].ID != mention {
+		t.Fatalf("documents = %+v, want only the one that mentions the file", rel.Documents)
+	}
+
+	docFile := addUploadedFile(t, db, "docs/"+owner.String()+"/y/image.png", "image.png", "image/png")
+	rel, err = repo.Relations(ctx, project, docFile)
+	if err != nil || rel.Task != nil || len(rel.Documents) != 1 || rel.Documents[0].ID != owner {
+		t.Fatalf("document file relations = %+v, %v; want its owning document", rel, err)
 	}
 }

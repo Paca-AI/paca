@@ -22,7 +22,9 @@
 			"list": "Vista de lista"
 		},
 		"typeFilter": "Tipo",
-		"allTypes": "Todos los tipos"
+		"allTypes": "Todos los tipos",
+		"newDocument": "Nuevo documento",
+		"untitledDocument": "Sin título"
 	},
 	"types": {
 		"document": "Documentos",
@@ -89,7 +91,8 @@
 		"delete": "Eliminar",
 		"restore": "Restaurar",
 		"deleteForever": "Eliminar definitivamente",
-		"more": "Más acciones"
+		"more": "Más acciones",
+		"openDocument": "Abrir documento"
 	},
 	"system": {
 		"task_attachments": "Archivos adjuntos a las tareas de este proyecto.",
@@ -190,7 +193,8 @@
 		"FILE_NODE_NOT_TRASHED": "Ese elemento no está en la papelera.",
 		"FILE_UPLOAD_INCOMPLETE": "La subida no se completó.",
 		"FILE_TOO_LARGE": "Ese archivo es demasiado grande para subirlo.",
-		"FILE_TYPE_INVALID": "Filtro de tipo de archivo desconocido."
+		"FILE_TYPE_INVALID": "Filtro de tipo de archivo desconocido.",
+		"docOutsideDocumentation": "Los documentos solo se pueden mover dentro de Documentación."
 	},
 	"noAccess": {
 		"title": "No puedes ver estos archivos",
@@ -235,6 +239,35 @@
 				"audio": "Insertar audio",
 				"file": "Insertar archivo"
 			}
+		}
+	},
+	"docFolder": {
+		"actions": "Acciones del archivo",
+		"preview": "Vista previa",
+		"download": "Descargar",
+		"details": "Detalles",
+		"showInFiles": "Mostrar en Archivos",
+		"moveTo": "Mover a…",
+		"remove": "Mover a la papelera",
+		"upload": "Subir archivo",
+		"fromFiles": "Añadir desde los archivos del proyecto",
+		"pickTitle": "Añadir un archivo del proyecto",
+		"pickHint": "Elige un archivo de Archivos para moverlo a esta carpeta. Un archivo está en una sola carpeta, así que sale de la actual.",
+		"task": "Tarea",
+		"documents": "Usado en documentos",
+		"moveTitle": "Mover a una carpeta",
+		"moveHint": "El archivo se mueve a la carpeta que elijas.",
+		"root": "Documentación",
+		"noSubfolders": "Sin subcarpetas",
+		"current": "Actual",
+		"moveHere": "Mover aquí",
+		"toast": {
+			"failed": "No se pudieron actualizar los archivos de la carpeta",
+			"removed": "Movido a la papelera",
+			"removedHint": "Restáuralo desde la papelera de Archivos en un plazo de 30 días.",
+			"moved": "Movido a la carpeta",
+			"added": "Archivo movido a esta carpeta",
+			"uploaded": "Archivo subido"
 		}
 	}
 }

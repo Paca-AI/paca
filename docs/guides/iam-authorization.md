@@ -124,7 +124,7 @@ A few consequences worth knowing:
 | `project.settings.custom_fields` | `project.settings.custom_fields:write` | Edit the project's custom fields. |
 | `sprints` | `sprints:read`, `sprints:write` | View / manage sprints. |
 | `views` | `views:read`, `views:write` | View / manage board, backlog and timeline views. |
-| `docs` | `docs:read`, `docs:write` | View / manage documents and folders. |
+| `docs` | `docs:read`, `docs:write` | View / manage documents and folders. Also required, on top of `files:*`, for anything in the project's Documentation folder when reached through Files (folders, documents and the files inside it). |
 | `files` | `files:read`, `files:write` | Browse, preview and download files / upload, organise, trash and restore them. A project's files are checked on the project; the general (workspace) files on the platform root `file/*`. |
 | `workflows` | `workflows:read`, `workflows:write` | View / manage automations. |
 | `annotations` | `annotations:read` | View page annotations. |

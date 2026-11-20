@@ -73,6 +73,13 @@ type Service interface {
 	// open in the caller's recents.
 	DownloadURL(ctx context.Context, scope Scope, actor, id uuid.UUID, ttl time.Duration, forceDownload bool) (url string, node *Node, err error)
 
+	// Relations returns the task and documents that use a file of a project.
+	Relations(ctx context.Context, scope Scope, actor, id uuid.UUID) (*Relations, error)
+
+	// RecordOpen records in the caller's recents that they opened an item that
+	// has no download of its own (a document).
+	RecordOpen(ctx context.Context, scope Scope, actor, id uuid.UUID) error
+
 	SetStarred(ctx context.Context, scope Scope, actor, id uuid.UUID, starred bool) error
 	ListStarred(ctx context.Context, scope Scope, actor uuid.UUID, limit, offset int) ([]*Node, int, error)
 	ListRecent(ctx context.Context, scope Scope, actor uuid.UUID, limit int) ([]*Node, error)

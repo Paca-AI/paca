@@ -38,6 +38,10 @@ function item(page: Page, name: string) {
 	return page.locator("[data-file-id]").filter({ hasText: name }).first();
 }
 
+/** The location shown above the list (the shared path breadcrumb). */
+const breadcrumb = (page: Page) =>
+	page.getByRole("navigation", { name: "breadcrumb" });
+
 async function uploadViaPicker(page: Page, name: string, body: string) {
 	// The New menu clicks a hidden input; set the files on it directly.
 	await page
@@ -104,6 +108,7 @@ test.describe("File manager", () => {
 			"Task attachments",
 			"Document files",
 			"Annotation screenshots",
+			"Documentation",
 		]) {
 			await expect(item(page, name)).toBeVisible();
 		}
@@ -152,7 +157,7 @@ test.describe("File manager", () => {
 
 		// Open it (double click) and upload a file there.
 		await item(page, "Specs").dblclick();
-		await expect(page.getByRole("button", { name: "Specs" })).toBeVisible(); // breadcrumb
+		await expect(breadcrumb(page).getByText("Specs")).toBeVisible(); // breadcrumb: the current folder
 		await uploadViaPicker(page, "notes.txt", "hello from the file manager");
 		await expect(item(page, "notes.txt")).toBeVisible({ timeout: 30_000 });
 
@@ -211,7 +216,7 @@ test.describe("File manager", () => {
 		await page.goto(filesUrl(projectId));
 		await item(page, "Task attachments").dblclick();
 		await expect(
-			page.getByRole("button", { name: "Task attachments" }),
+			breadcrumb(page).getByText("Task attachments"),
 		).toBeVisible(); // breadcrumb: the folder opened
 		// One subfolder per task, named after the task key.
 		const taskFolder = page.locator("[data-file-id]").first();
@@ -541,7 +546,7 @@ test.describe("File manager", () => {
 		await page.goto(filesUrl(projectId));
 		await item(page, "Document files").dblclick();
 		await expect(
-			page.getByRole("button", { name: "Document files" }),
+			breadcrumb(page).getByText("Document files"),
 		).toBeVisible();
 		await item(page, "diagram.txt").click({ button: "right" });
 		// Offered as Delete, not "Move to trash": it is used by a document.

@@ -54,6 +54,8 @@ type Repository interface {
 	// PurgeTrashedBefore does the same for every trashed subtree older than t.
 	PurgeTrashedBefore(ctx context.Context, t time.Time, limit int) ([]StorageObject, error)
 	SetStarred(ctx context.Context, userID, itemID uuid.UUID, starred bool) error
+	// Relations returns the task and documents that use a project file.
+	Relations(ctx context.Context, projectID, fileID uuid.UUID) (*Relations, error)
 	// Touch records that the user opened the item.
 	Touch(ctx context.Context, userID, itemID uuid.UUID) error
 }

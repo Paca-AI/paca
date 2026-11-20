@@ -61,7 +61,7 @@ function useItemDnd(
 	p: Pick<FileViewProps, "canDrag" | "onDragItems" | "onDropOnFolder">,
 ) {
 	const [over, setOver] = useState(false);
-	const droppable = n.kind === "folder" && !n.system;
+	const droppable = n.kind === "folder" && (!n.system || n.area === "docs");
 	return {
 		over,
 		props: {
@@ -356,7 +356,7 @@ function GridCard({ node: n, ...p }: FileViewProps & { node: FileNode }) {
 export function FileGridView(p: FileViewProps) {
 	const { t } = useTranslation("files");
 	const folders = p.nodes.filter((n) => n.kind === "folder");
-	const files = p.nodes.filter((n) => n.kind === "file");
+	const files = p.nodes.filter((n) => n.kind !== "folder");
 	return (
 		<div className="space-y-6 p-4">
 			{folders.length > 0 && (

@@ -22,7 +22,9 @@
 			"list": "Visualização em lista"
 		},
 		"typeFilter": "Tipo",
-		"allTypes": "Todos os tipos"
+		"allTypes": "Todos os tipos",
+		"newDocument": "Novo documento",
+		"untitledDocument": "Sem título"
 	},
 	"types": {
 		"document": "Documentos",
@@ -89,7 +91,8 @@
 		"delete": "Excluir",
 		"restore": "Restaurar",
 		"deleteForever": "Excluir permanentemente",
-		"more": "Mais ações"
+		"more": "Mais ações",
+		"openDocument": "Abrir documento"
 	},
 	"system": {
 		"task_attachments": "Arquivos anexados às tarefas deste projeto.",
@@ -190,7 +193,8 @@
 		"FILE_NODE_NOT_TRASHED": "Esse item não está na lixeira.",
 		"FILE_UPLOAD_INCOMPLETE": "O envio não foi concluído.",
 		"FILE_TOO_LARGE": "Esse arquivo é grande demais para enviar.",
-		"FILE_TYPE_INVALID": "Filtro de tipo de arquivo desconhecido."
+		"FILE_TYPE_INVALID": "Filtro de tipo de arquivo desconhecido.",
+		"docOutsideDocumentation": "Os documentos só podem ser movidos dentro de Documentação."
 	},
 	"noAccess": {
 		"title": "Você não pode ver estes arquivos",
@@ -235,6 +239,35 @@
 				"audio": "Incorporar áudio",
 				"file": "Incorporar arquivo"
 			}
+		}
+	},
+	"docFolder": {
+		"actions": "Ações do arquivo",
+		"preview": "Visualizar",
+		"download": "Baixar",
+		"details": "Detalhes",
+		"showInFiles": "Mostrar em Arquivos",
+		"moveTo": "Mover para…",
+		"remove": "Mover para a lixeira",
+		"upload": "Enviar arquivo",
+		"fromFiles": "Adicionar dos arquivos do projeto",
+		"pickTitle": "Adicionar um arquivo do projeto",
+		"pickHint": "Escolha um arquivo em Arquivos para mover para esta pasta. Um arquivo fica em uma só pasta, então ele sai da atual.",
+		"task": "Tarefa",
+		"documents": "Usado em documentos",
+		"moveTitle": "Mover para uma pasta",
+		"moveHint": "O arquivo é movido para a pasta escolhida.",
+		"root": "Documentação",
+		"noSubfolders": "Nenhuma subpasta",
+		"current": "Atual",
+		"moveHere": "Mover para cá",
+		"toast": {
+			"failed": "Não foi possível atualizar os arquivos da pasta",
+			"removed": "Movido para a lixeira",
+			"removedHint": "Restaure-o pela lixeira de Arquivos em até 30 dias.",
+			"moved": "Movido para a pasta",
+			"added": "Arquivo movido para esta pasta",
+			"uploaded": "Arquivo enviado"
 		}
 	}
 }

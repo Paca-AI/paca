@@ -42,12 +42,14 @@ type guards struct {
 	taskNumbers httpmw.TaskNumberLookup
 	// conversations resolves a conversation addressed by id alone to where it lives.
 	conversations httpmw.ConversationLookup
+	// fileAreas tells which file manager nodes are in the Documentation subtree.
+	fileAreas httpmw.FileAreaLookup
 }
 
 func newGuards(deps Deps) guards {
 	return guards{
 		iam: deps.IAM, agentEnvs: deps.AgentEnvironments,
-		sessionEnv: deps.SessionEnvironments, roleAttachments: deps.RoleAttachments, members: deps.MemberPrincipals, taskNumbers: deps.TaskNumbers, conversations: deps.Conversations,
+		sessionEnv: deps.SessionEnvironments, roleAttachments: deps.RoleAttachments, members: deps.MemberPrincipals, taskNumbers: deps.TaskNumbers, conversations: deps.Conversations, fileAreas: deps.FileAreas,
 	}
 }
 
@@ -91,6 +93,9 @@ const (
 	// resDocView: a document listing or create may name a note view
 	// (view_id), whose notes then follow the view's own access.
 	resDocView = "project/{projectId}/view/{view_id of the query or body}"
+	// resFileDocsArea: a file manager request that touches the Documentation
+	// subtree also needs the docs action on the project.
+	resFileDocsArea = "project/{projectId} (docs action) when the node the request names is in Documentation"
 	// resViewReorderItems: a view reorder names its views in the body, and
 	// each one is authorized individually.
 	resViewReorderItems = "views named in view_ids of a view reorder"
@@ -209,6 +214,13 @@ func (g guards) DocCreate() func(http.Handler) http.Handler {
 // docs:read / docs:write. Declare it after the route's action gate.
 func (g guards) DocView() func(http.Handler) http.Handler {
 	return markGate(resDocView, httpmw.RequireDocView(g.iam, iam.ActionViewsRead, "projectId"))
+}
+
+// FileDocs adds action (docs:read or docs:write) on the project wherever the
+// file manager request touches the Documentation subtree, through the nodes the
+// targets name. Declare it after the route's files gate.
+func (g guards) FileDocs(action iam.Action, targets ...httpmw.FileTarget) func(http.Handler) http.Handler {
+	return markGate(resFileDocsArea, httpmw.RequireFileDocsArea(g.iam, g.fileAreas, action, "projectId", targets...))
 }
 
 // DocChange authorizes an update of one document: moving it to another folder

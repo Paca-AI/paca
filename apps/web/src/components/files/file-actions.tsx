@@ -2,6 +2,7 @@ import type { TFunction } from "i18next";
 import {
 	Download,
 	Eye,
+	FileText,
 	FolderInput,
 	FolderOpen,
 	Info,
@@ -74,6 +75,70 @@ export function buildFileActions(
 					},
 				]
 			: [];
+	}
+	// A document opens in the docs editor; renaming and moving go through the
+	// docs API. It is trashed like a file.
+	if (n.kind === "doc") {
+		const docActions: FileAction[] = [
+			{
+				key: "open",
+				label: t("actions.openDocument"),
+				icon: <FileText className={icon} />,
+				run: () => h.open(n),
+			},
+			{
+				key: "download",
+				label: t("actions.download"),
+				icon: <Download className={icon} />,
+				run: () => h.download(n),
+			},
+			{
+				key: "star",
+				label: n.starred ? t("actions.unstar") : t("actions.star"),
+				icon: n.starred ? (
+					<StarOff className={icon} />
+				) : (
+					<Star className={icon} />
+				),
+				run: () => h.toggleStar(n),
+				separatorBefore: true,
+			},
+		];
+		if (canWrite) {
+			docActions.push(
+				{
+					key: "rename",
+					label: t("actions.rename"),
+					icon: <Pencil className={icon} />,
+					run: () => h.rename(n),
+					separatorBefore: true,
+				},
+				{
+					key: "move",
+					label: t("actions.move"),
+					icon: <FolderInput className={icon} />,
+					run: () => h.move(n),
+				},
+			);
+		}
+		docActions.push({
+			key: "details",
+			label: t("actions.details"),
+			icon: <Info className={icon} />,
+			run: () => h.details(n),
+			separatorBefore: true,
+		});
+		if (canWrite) {
+			docActions.push({
+				key: "trash",
+				label: t("actions.trash"),
+				icon: <Trash2 className={icon} />,
+				run: () => h.trash(n),
+				destructive: true,
+				separatorBefore: true,
+			});
+		}
+		return docActions;
 	}
 	const isFolder = n.kind === "folder";
 	const actions: FileAction[] = [

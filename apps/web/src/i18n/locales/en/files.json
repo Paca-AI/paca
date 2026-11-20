@@ -22,7 +22,9 @@
 			"list": "List view"
 		},
 		"typeFilter": "Type",
-		"allTypes": "All types"
+		"allTypes": "All types",
+		"newDocument": "New document",
+		"untitledDocument": "Untitled"
 	},
 	"types": {
 		"document": "Documents",
@@ -89,7 +91,8 @@
 		"delete": "Delete",
 		"restore": "Restore",
 		"deleteForever": "Delete forever",
-		"more": "More actions"
+		"more": "More actions",
+		"openDocument": "Open document"
 	},
 	"system": {
 		"task_attachments": "Files attached to this project's tasks.",
@@ -190,7 +193,8 @@
 		"FILE_NODE_NOT_TRASHED": "That item is not in the trash.",
 		"FILE_UPLOAD_INCOMPLETE": "The upload did not finish.",
 		"FILE_TOO_LARGE": "That file is too large to upload.",
-		"FILE_TYPE_INVALID": "Unknown file type filter."
+		"FILE_TYPE_INVALID": "Unknown file type filter.",
+		"docOutsideDocumentation": "Documents can only be moved within Documentation."
 	},
 	"noAccess": {
 		"title": "You cannot view these files",
@@ -235,6 +239,35 @@
 				"audio": "Embed audio",
 				"file": "Embed file"
 			}
+		}
+	},
+	"docFolder": {
+		"actions": "File actions",
+		"preview": "Preview",
+		"download": "Download",
+		"details": "Details",
+		"showInFiles": "Show in Files",
+		"moveTo": "Move to…",
+		"remove": "Move to trash",
+		"upload": "Upload file",
+		"fromFiles": "Add from project files",
+		"pickTitle": "Add a project file",
+		"pickHint": "Pick a file from Files to move into this folder. A file lives in one folder, so it leaves its current one.",
+		"task": "Task",
+		"documents": "Used in documents",
+		"moveTitle": "Move to folder",
+		"moveHint": "The file moves to the folder you choose.",
+		"root": "Documentation",
+		"noSubfolders": "No subfolders",
+		"current": "Current",
+		"moveHere": "Move here",
+		"toast": {
+			"failed": "Couldn't update the folder's files",
+			"removed": "Moved to trash",
+			"removedHint": "Restore it from the Files trash within 30 days.",
+			"moved": "Moved to folder",
+			"added": "File moved to this folder",
+			"uploaded": "File uploaded"
 		}
 	}
 }

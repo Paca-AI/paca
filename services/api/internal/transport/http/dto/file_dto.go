@@ -63,8 +63,13 @@ type FileNodeResponse struct {
 	Starred     bool       `json:"starred"`
 	// System is "task_attachments" or "task" for the product-managed folders.
 	System string `json:"system,omitempty"`
+	// Area is "docs" for the Documentation folder, what is inside it, and the
+	// documents there: the docs actions apply as well as the files ones.
+	Area string `json:"area,omitempty"`
 	// Locked nodes cannot be renamed or moved; deleting one removes a task
-	// attachment for good rather than trashing it.
+	// attachment for good rather than trashing it. A document is not locked
+	// here: it is renamed and moved through the docs API (the file routes
+	// still refuse it).
 	Locked bool `json:"locked"`
 }
 
@@ -74,7 +79,7 @@ func FileNodeFromEntity(n *filedom.Node) FileNodeResponse {
 		ID: n.ID, ProjectID: n.ProjectID, ParentID: n.ParentID, Kind: string(n.Kind), Name: n.Name, Source: n.Source,
 		ContentType: n.ContentType, Size: n.Size, OwnerID: n.CreatedBy, OwnerName: n.OwnerName,
 		CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt, DeletedAt: n.DeletedAt, AccessedAt: n.AccessedAt,
-		Starred: n.Starred, System: n.SystemKey, Locked: n.Locked(),
+		Starred: n.Starred, System: n.SystemKey, Area: n.Area, Locked: n.Locked() && n.Kind != filedom.KindDoc,
 	}
 }
 
@@ -103,4 +108,36 @@ type FileDownloadResponse struct {
 	ContentType string    `json:"content_type"`
 	Size        int64     `json:"size"`
 	ExpiresAt   time.Time `json:"expires_at"`
+}
+
+// FileRelationsResponse is where else a file is used.
+type FileRelationsResponse struct {
+	Task      *FileTaskRef      `json:"task"`
+	Documents []FileDocumentRef `json:"documents"`
+}
+
+// FileTaskRef names the task a file is attached to.
+type FileTaskRef struct {
+	ID     uuid.UUID `json:"id"`
+	Key    string    `json:"key"`
+	Number int64     `json:"number"`
+	Title  string    `json:"title"`
+}
+
+// FileDocumentRef names a document that references a file.
+type FileDocumentRef struct {
+	ID    uuid.UUID `json:"id"`
+	Title string    `json:"title"`
+}
+
+// FileRelationsFromEntity maps relations to their response.
+func FileRelationsFromEntity(r *filedom.Relations) FileRelationsResponse {
+	out := FileRelationsResponse{Documents: make([]FileDocumentRef, 0, len(r.Documents))}
+	if r.Task != nil {
+		out.Task = &FileTaskRef{ID: r.Task.ID, Key: r.Task.Key, Number: r.Task.Number, Title: r.Task.Title}
+	}
+	for _, d := range r.Documents {
+		out.Documents = append(out.Documents, FileDocumentRef{ID: d.ID, Title: d.Title})
+	}
+	return out
 }

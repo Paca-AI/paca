@@ -16,6 +16,9 @@ type Kind string
 const (
 	KindFolder Kind = "folder"
 	KindFile   Kind = "file"
+	// KindDoc is a document of the Documentation tree. The docs editor owns
+	// it: the file manager lists it and opens it but never changes it.
+	KindDoc Kind = "doc"
 )
 
 // System keys mark the default folders the product manages itself.
@@ -28,6 +31,9 @@ const (
 	SystemKeyDocs = "docs"
 	// SystemKeyAnnotations holds page-annotation screenshots.
 	SystemKeyAnnotations = "annotations"
+	// SystemKeyDocumentation is the per-project "Documentation" folder, the
+	// root of the documentation folders.
+	SystemKeyDocumentation = "documentation"
 )
 
 // File sources: which part of the product a file came from.
@@ -98,6 +104,10 @@ type Node struct {
 	Kind      Kind
 	Name      string
 	SystemKey string
+	// Area is "docs" for a folder in the Documentation subtree, which the
+	// documentation feature manages; empty otherwise.
+	// For a file or a document it is "docs" when it sits in that subtree.
+	Area string
 	// Source is where a file came from (Source* constants); empty for folders.
 	Source     string
 	CreatedBy  *uuid.UUID
@@ -130,7 +140,12 @@ func (n *Node) IsFolder() bool { return n.Kind == KindFolder }
 // and everything inside them. A file there can still be downloaded, starred
 // and deleted (see Service.Trash).
 func (n *Node) Locked() bool {
-	return n.SystemKey != "" || n.ParentSystemKey != ""
+	// A file inside the Documentation subtree can still be renamed and moved:
+	// only the folders (and the documents) there are managed by docs.
+	// A file directly in the Documentation folder is an ordinary file; the
+	// folders and documents there belong to docs.
+	return n.SystemKey != "" || (n.ParentSystemKey != "" && n.ParentSystemKey != SystemKeyDocumentation) ||
+		n.Kind == KindDoc || (n.IsFolder() && n.Area != "")
 }
 
 // DeletedForGood reports whether deleting the item removes it permanently
@@ -153,4 +168,25 @@ func (n *Node) DeletedForGood() bool {
 type StorageObject struct {
 	Bucket string
 	Key    string
+}
+
+// Relations is where else a file is used: the task it is attached to and the
+// documents that reference it.
+type Relations struct {
+	Task      *TaskRef
+	Documents []DocRef
+}
+
+// TaskRef names a task.
+type TaskRef struct {
+	ID     uuid.UUID
+	Key    string // e.g. PACA-12
+	Title  string
+	Number int64
+}
+
+// DocRef names a document.
+type DocRef struct {
+	ID    uuid.UUID
+	Title string
 }
