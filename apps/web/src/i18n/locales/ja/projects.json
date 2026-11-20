@@ -994,7 +994,8 @@
 			"unsaved": "未保存",
 			"saving": "保存中…",
 			"saved": "保存しました",
-			"commentsAndActivity": "コメントとアクティビティ"
+			"commentsAndActivity": "コメントとアクティビティ",
+			"downloadMarkdown": "Markdown としてダウンロード"
 		},
 		"activity": {
 			"created": "このドキュメントを作成しました",

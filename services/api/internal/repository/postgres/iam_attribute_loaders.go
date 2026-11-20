@@ -38,7 +38,10 @@ func NewIAMAttributeLoaders(db *sqlx.DB) []iam.AttributeLoader {
 		&scalarLoader{db: db, kind: "view", table: "sprint_views", cols: map[string]string{
 			"view.sprint_id": "sprint_id",
 		}},
-		&docLoader{scalarLoader{db: db, kind: "doc", table: "documents", where: "deleted_at IS NULL", cols: map[string]string{
+		// A document in the trash still resolves (restoring or purging it from
+		// Files is authorized on the document); a deletion that is not a trash
+		// entry does not.
+		&docLoader{scalarLoader{db: db, kind: "doc", table: "documents", where: "(deleted_at IS NULL OR trashed_at IS NOT NULL)", cols: map[string]string{
 			"doc.folder_id": "folder_id",
 		}, multi: map[string]string{
 			// The document's folder plus every ancestor folder. UNION (no
@@ -46,7 +49,7 @@ func NewIAMAttributeLoaders(db *sqlx.DB) []iam.AttributeLoader {
 			// terminates instead of recursing forever.
 			"doc.ancestor_folder_ids": `WITH RECURSIVE anc(id, parent_id) AS (
 					SELECT f.id, f.parent_id FROM doc_folders f
-					WHERE f.id = (SELECT d.folder_id FROM documents d WHERE d.id = $1::uuid AND d.deleted_at IS NULL)
+					WHERE f.id = (SELECT d.folder_id FROM documents d WHERE d.id = $1::uuid AND (d.deleted_at IS NULL OR d.trashed_at IS NOT NULL))
 					  AND ($2::text = '' OR f.project_id::text = $2::text)
 				  UNION
 					SELECT f.id, f.parent_id FROM doc_folders f JOIN anc a ON f.id = a.parent_id

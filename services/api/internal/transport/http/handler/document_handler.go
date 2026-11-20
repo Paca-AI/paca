@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"io"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -28,12 +30,21 @@ type DocumentHandler struct {
 	notificationSvc notificationdom.Service
 	listScoper      ListScoper
 	authz           docAuthorizer
+	// publicURL is the app's origin, which relative links in a downloaded
+	// Markdown file resolve against.
+	publicURL string
 }
 
 // NewDocumentHandler returns a DocumentHandler wired to the doc service and
 // activity service.
 func NewDocumentHandler(svc docdom.Service, activitySvc docdom.ActivityService) *DocumentHandler {
 	return &DocumentHandler{svc: svc, activitySvc: activitySvc}
+}
+
+// WithPublicURL sets the app's public origin for downloaded Markdown.
+func (h *DocumentHandler) WithPublicURL(url string) *DocumentHandler {
+	h.publicURL = url
+	return h
 }
 
 // WithDocListScoper limits document lists and search to the documents the
@@ -390,6 +401,37 @@ func (h *DocumentHandler) GetDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	presenter.OK(w, r, dto.DocumentFromEntity(d))
+}
+
+// DownloadMarkdown handles GET /projects/:projectId/docs/:docId/markdown: the
+// document as a Markdown file (its title as the first heading, then its body),
+// served as a download.
+func (h *DocumentHandler) DownloadMarkdown(w http.ResponseWriter, r *http.Request) {
+	projectID, err := parseProjectID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	docID, err := parseDocID(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	d, err := h.svc.GetDocument(r.Context(), docID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if d.ProjectID != projectID || d.ViewID != nil {
+		presenter.Error(w, r, docdom.ErrDocNotFound)
+		return
+	}
+	name := docdom.MarkdownFileName(d.Title)
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "private, no-cache")
+	_, _ = io.WriteString(w, docdom.RenderMarkdown(d.Title, d.Content, h.publicURL))
 }
 
 // CreateDocument handles POST /projects/:projectId/docs.

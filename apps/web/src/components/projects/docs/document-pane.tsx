@@ -1,17 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, Check, MessageSquare } from "lucide-react";
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { AlertCircle, Check, Download, MessageSquare } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { ReportIssueButton } from "@/components/report-issue-button";
 import { NoPermissionState } from "@/components/shared/no-permission-state";
 import {
-	Breadcrumb,
-	BreadcrumbItem,
-	BreadcrumbList,
-	BreadcrumbPage,
-	BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
+	PathBreadcrumb,
+	type PathCrumb,
+} from "@/components/shared/path-breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
@@ -21,9 +19,12 @@ import {
 	docFolderPathQueryOptions,
 	docQueryKeys,
 	docQueryOptions,
+	downloadDocMarkdown,
 	updateDocument,
 } from "@/lib/doc-api";
+import { fileNodePathQueryOptions } from "@/lib/files-api";
 import { notifyError } from "@/lib/notify";
+import { projectQueryOptions } from "@/lib/project-api";
 import { useCurrentContextStore } from "@/lib/shortcuts/current-context-store";
 import { cn } from "@/lib/utils";
 import { DocActivityPane } from "./doc-activity-pane";
@@ -55,6 +56,7 @@ export function DocumentPane({
 	headerSlot,
 }: DocumentPaneProps) {
 	const { t } = useTranslation("projects");
+	const navigate = useNavigate();
 	const { hasProjectPermission } = useProjectPermissions(projectId);
 	const canWrite = hasProjectPermission("docs:write");
 	const qc = useQueryClient();
@@ -234,6 +236,42 @@ export function DocumentPane({
 		docFolderPathQueryOptions(projectId, doc?.folder_id),
 	);
 
+	// The same location as in Files (project > Documentation > folders >
+	// document), each folder opening in Files, when the caller may read files;
+	// otherwise just the docs folders.
+	const canReadFiles = hasProjectPermission("files:read");
+	const project = useQuery(projectQueryOptions(projectId));
+	const filePath = useQuery({
+		...fileNodePathQueryOptions({ projectId }, docId),
+		enabled: canReadFiles && !!doc,
+	});
+	const openInFiles = (folder?: string) =>
+		void navigate({
+			to: "/projects/$projectId/files",
+			params: { projectId },
+			search: { folder } as never,
+		});
+	const crumbs: PathCrumb[] =
+		canReadFiles && filePath.data
+			? [
+					{
+						key: "project",
+						label: project.data?.name ?? "",
+						onSelect: () => openInFiles(),
+					},
+					// The path ends with the document itself, shown by its title.
+					...filePath.data.slice(0, -1).map((n) => ({
+						key: n.id,
+						label: n.name,
+						onSelect: () => openInFiles(n.id),
+					})),
+					{ key: "doc", label: doc?.title ?? "" },
+				]
+			: [
+					...folderPath.map((f) => ({ key: f.id, label: f.name })),
+					{ key: "doc", label: doc?.title ?? "" },
+				];
+
 	if (isError) {
 		if (isForbiddenError(docError)) {
 			return (
@@ -287,6 +325,25 @@ export function DocumentPane({
 			<Button
 				variant="ghost"
 				size="icon"
+				className="size-7 text-muted-foreground/90 hover:text-foreground hover:bg-muted/60 transition-all duration-150"
+				title={t("docs.editorPage.downloadMarkdown")}
+				aria-label={t("docs.editorPage.downloadMarkdown")}
+				// The file is named after the title, which is not known until the
+				// document has loaded.
+				disabled={!doc}
+				onClick={() =>
+					void downloadDocMarkdown(
+						projectId,
+						docId,
+						`${doc?.title || "Untitled"}.md`,
+					).catch((error) => notifyError(error))
+				}
+			>
+				<Download className="size-3.5" />
+			</Button>
+			<Button
+				variant="ghost"
+				size="icon"
 				className={cn(
 					"size-7 text-muted-foreground/90 hover:text-foreground hover:bg-muted/60 transition-all duration-150",
 					rightPanel === "activity" && "bg-muted/40 text-foreground",
@@ -305,28 +362,7 @@ export function DocumentPane({
 			{/* ── Header bar ───────────────────────────────────────────────── */}
 			{headerSlot === undefined && (
 				<div className="flex items-center justify-between px-4 py-2 bg-muted/20 border-b border-border/50 shrink-0 gap-3 min-w-0">
-					{/* Breadcrumb path */}
-					<Breadcrumb className="min-w-0">
-						<BreadcrumbList className="flex-nowrap gap-1 text-xs sm:gap-1">
-							{folderPath.map((folder) => (
-								<Fragment key={folder.id}>
-									<BreadcrumbItem className="min-w-0">
-										<span className="max-w-32 truncate">{folder.name}</span>
-									</BreadcrumbItem>
-									<BreadcrumbSeparator />
-								</Fragment>
-							))}
-							<BreadcrumbItem className="min-w-0">
-								{doc?.title ? (
-									<BreadcrumbPage className="max-w-60 truncate font-medium">
-										{doc.title}
-									</BreadcrumbPage>
-								) : !doc ? (
-									<Skeleton className="h-3 w-28" />
-								) : null}
-							</BreadcrumbItem>
-						</BreadcrumbList>
-					</Breadcrumb>
+					<PathBreadcrumb crumbs={crumbs} loading={!doc} />
 
 					{headerActions}
 				</div>

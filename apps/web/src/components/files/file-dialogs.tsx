@@ -1,4 +1,5 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { ChevronRight, FolderInput } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -36,6 +37,7 @@ import {
 	fileCategory,
 	fileNodePathQueryOptions,
 	fileNodesQueryOptions,
+	fileRelationsQueryOptions,
 	formatFileSize,
 } from "@/lib/files-api";
 import { FileTypeIcon } from "./file-icon";
@@ -151,11 +153,14 @@ export function MoveDialog({
 	// The default folders take nothing in; a folder cannot go into itself.
 	const here = path.data?.at(-1);
 	const blocked =
-		(here && (here.system || here.locked)) ||
+		(here && (here.system || here.locked) && here.area !== "docs") ||
 		(path.data ?? []).some((p) => movingIds.has(p.id));
 	const unchanged = nodes.every((n) => (n.parent_id ?? null) === folderId);
 	const folders = (children.data ?? []).filter(
-		(n) => n.kind === "folder" && !movingIds.has(n.id) && !n.system,
+		(n) =>
+			n.kind === "folder" &&
+			!movingIds.has(n.id) &&
+			(!n.system || n.area === "docs"),
 	);
 
 	return (
@@ -315,6 +320,10 @@ export function DetailsSheet({
 		...fileNodePathQueryOptions(scope, node?.id ?? ""),
 		enabled: !!node,
 	});
+	const relations = useQuery({
+		...fileRelationsQueryOptions(scope, node?.id ?? ""),
+		enabled: node?.kind === "file" && !!scope.projectId,
+	});
 	const date = (iso: string) =>
 		new Intl.DateTimeFormat(i18n.language, {
 			dateStyle: "medium",
@@ -371,6 +380,54 @@ export function DetailsSheet({
 								</div>
 							))}
 						</dl>
+						{scope.projectId && relations.data && (
+							<dl className="space-y-3 border-t pt-3 text-sm">
+								<div>
+									<dt className="text-xs text-muted-foreground">
+										{t("docFolder.task")}
+									</dt>
+									<dd className="break-words">
+										{relations.data.task ? (
+											<Link
+												to="/projects/$projectId/tasks/$taskId"
+												params={{
+													projectId: scope.projectId,
+													taskId: relations.data.task.id,
+												}}
+												className="text-primary hover:underline"
+											>
+												{relations.data.task.key} · {relations.data.task.title}
+											</Link>
+										) : (
+											"—"
+										)}
+									</dd>
+								</div>
+								<div>
+									<dt className="text-xs text-muted-foreground">
+										{t("docFolder.documents")}
+									</dt>
+									<dd className="space-y-0.5 break-words">
+										{relations.data.documents.length > 0
+											? relations.data.documents.map((d) => (
+													<div key={d.id}>
+														<Link
+															to="/projects/$projectId/docs/$docId"
+															params={{
+																projectId: scope.projectId as string,
+																docId: d.id,
+															}}
+															className="text-primary hover:underline"
+														>
+															{d.title}
+														</Link>
+													</div>
+												))
+											: "—"}
+									</dd>
+								</div>
+							</dl>
+						)}
 					</div>
 				)}
 			</SheetContent>

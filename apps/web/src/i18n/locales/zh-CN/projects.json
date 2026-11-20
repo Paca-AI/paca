@@ -994,7 +994,8 @@
 			"unsaved": "未保存",
 			"saving": "正在保存…",
 			"saved": "已保存",
-			"commentsAndActivity": "评论和动态"
+			"commentsAndActivity": "评论和动态",
+			"downloadMarkdown": "下载为 Markdown"
 		},
 		"activity": {
 			"created": "创建了此文档",

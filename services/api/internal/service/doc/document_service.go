@@ -109,7 +109,7 @@ func (s *Service) CreateFolder(ctx context.Context, in docdom.CreateFolderInput)
 
 func (s *Service) createFolder(ctx context.Context, in docdom.CreateFolderInput) (*docdom.DocFolder, error) {
 	name := strings.TrimSpace(in.Name)
-	if name == "" || strings.Contains(name, "/") {
+	if !docdom.ValidFolderName(name) {
 		return nil, docdom.ErrFolderNameInvalid
 	}
 
@@ -159,7 +159,7 @@ func (s *Service) updateFolder(ctx context.Context, id uuid.UUID, in docdom.Upda
 		}
 
 		if name := strings.TrimSpace(in.Name); name != "" && name != f.Name {
-			if strings.Contains(name, "/") {
+			if !docdom.ValidFolderName(name) {
 				return docdom.ErrFolderNameInvalid
 			}
 			f.Name = name

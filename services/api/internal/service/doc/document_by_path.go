@@ -43,6 +43,13 @@ func (s *Service) UpsertDocumentByPath(ctx context.Context, in docdom.UpsertByPa
 	if err != nil {
 		return nil, docdom.DocChange{}, false, err
 	}
+	// A write may create the folders on the path, so they need names a folder
+	// can have (the same rule as creating one directly).
+	for _, f := range folders {
+		if !docdom.ValidFolderName(f) {
+			return nil, docdom.DocChange{}, false, docdom.ErrFolderNameInvalid
+		}
+	}
 	src, err := docdom.ValidateSource(in.Source)
 	if err != nil {
 		return nil, docdom.DocChange{}, false, err

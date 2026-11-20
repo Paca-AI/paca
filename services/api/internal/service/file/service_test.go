@@ -84,6 +84,9 @@ func (r *fakeRepo) SetStarred(_ context.Context, _, item uuid.UUID, on bool) err
 	r.starred[item] = on
 	return nil
 }
+func (r *fakeRepo) Relations(context.Context, uuid.UUID, uuid.UUID) (*filedom.Relations, error) {
+	return &filedom.Relations{}, nil
+}
 func (r *fakeRepo) Touch(context.Context, uuid.UUID, uuid.UUID) error { r.touched++; return nil }
 
 type fakeFiles struct {

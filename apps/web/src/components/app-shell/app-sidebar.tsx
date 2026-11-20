@@ -60,6 +60,11 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { FilesSidebarSection } from "@/components/files/files-sidebar-section";
+import {
+	DocFolderFileRows,
+	useDocFolderFileAdd,
+	useDocFolderFilesQuery,
+} from "@/components/projects/docs/doc-folder-files";
 import { useManagedCopyLabel } from "@/components/projects/docs/managed-copy-banner";
 import { EntityAvatar } from "@/components/shared/entity-avatar";
 import { LoadMoreSentinel } from "@/components/shared/load-more-sentinel";
@@ -622,6 +627,12 @@ function DocsFolderNode({
 	const [renameAttempt, setRenameAttempt] = useState(0);
 	const [addingDoc, setAddingDoc] = useState(false);
 	const navigate = useNavigate();
+	// Files shown in a folder stay in the file manager, so reading them needs
+	// files:read and adding needs files:read (link) or files:write (upload).
+	const { hasProjectPermission } = useProjectPermissions(projectId);
+	const canReadFiles = hasProjectPermission("files:read");
+	const folderFileCount = useDocFolderFilesQuery(projectId, folder.id, false)
+		.files.length;
 
 	const isExpanded = expandedFolders.has(folder.id);
 	const moveMutation = useMoveDocNode(projectId);
@@ -658,6 +669,15 @@ function DocsFolderNode({
 		() => docsQuery.data?.pages.flatMap((p) => p.items) ?? [],
 		[docsQuery.data],
 	);
+	const fileAdd = useDocFolderFileAdd({
+		projectId,
+		folderId: folder.id,
+		canUpload: canReadFiles && hasProjectPermission("files:write"),
+		canPick: canReadFiles && hasProjectPermission("files:write"),
+		onAdded: () => {
+			if (!expandedFolders.has(folder.id)) onToggle(folder.id);
+		},
+	});
 	const renameMutation = useMutation({
 		meta: { success: "renamed", subject: "folder" },
 		mutationFn: (name: string) => updateFolder(projectId, folder.id, { name }),
@@ -881,8 +901,16 @@ function DocsFolderNode({
 							onLoadMore={() => void docsQuery.fetchNextPage()}
 						/>
 					</div>
+					<DocFolderFileRows
+						projectId={projectId}
+						folderId={folder.id}
+						depth={depth + 1}
+						canWrite={canWrite && hasProjectPermission("files:write")}
+						enabled={isExpanded && canReadFiles}
+					/>
 					{folderDocs.length === 0 &&
 						childFolders.length === 0 &&
+						!folderFileCount &&
 						!addingDoc && (
 							<div
 								className="text-xs text-sidebar-foreground/60 italic py-1"
@@ -921,8 +949,11 @@ function DocsFolderNode({
 										<FolderOpen className="size-3.5 mr-2" />
 										{t("docs.newSubfolder")}
 									</DropdownMenuItem>
+									{fileAdd.hasActions && <DropdownMenuSeparator />}
+									{fileAdd.items}
 								</DropdownMenuContent>
 							</DropdownMenu>
+							{fileAdd.dialogs}
 						</div>
 					)}
 				</div>

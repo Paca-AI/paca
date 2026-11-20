@@ -1,13 +1,9 @@
 package exportsvc
 
 import (
-	"encoding/json"
-	"regexp"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
-	"github.com/Paca-AI/go-blocknote2md"
 	"github.com/google/uuid"
 
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
@@ -26,28 +22,10 @@ type docFile struct {
 	Body string
 }
 
-var unsafeNameChars = regexp.MustCompile(`[\x00-\x1f\x7f/\\:*?"<>|]+`)
-
-// safeSegment turns a folder or document title into one safe path segment: no
-// separators or control characters, never "." / "..", never empty, bounded in
-// length. This is what keeps a hostile title from escaping docs/ when the zip
-// is extracted.
-func safeSegment(name string) string {
-	s := strings.TrimSpace(unsafeNameChars.ReplaceAllString(name, " "))
-	s = strings.Join(strings.Fields(s), " ")
-	s = strings.Trim(s, ". ")
-	if len(s) > maxNameBytes {
-		s = s[:maxNameBytes]
-		for !utf8.ValidString(s) {
-			s = s[:len(s)-1]
-		}
-		s = strings.TrimSpace(s)
-	}
-	if s == "" {
-		return "untitled"
-	}
-	return s
-}
+// safeSegment turns a folder or document title into one safe path segment (see
+// docdom.SafeFileSegment): what keeps a hostile title from escaping docs/ when
+// the zip is extracted.
+func safeSegment(name string) string { return docdom.SafeFileSegment(name) }
 
 // buildDocFiles lays the project's documents out as Markdown files in the same
 // folder tree they have in the app. Two documents that would land on the same
@@ -85,33 +63,7 @@ func buildDocFiles(folders []*docdom.DocFolder, docs []*docdom.Document, origin 
 		}
 		used[strings.ToLower(path)] = true
 
-		body := titleHeading(d.Title, origin)
-		if md := docMarkdown(d.Content, origin); md != "" {
-			body += "\n" + md
-		}
-		out = append(out, docFile{Path: path, Body: body})
+		out = append(out, docFile{Path: path, Body: docdom.RenderMarkdown(d.Title, d.Content, origin)})
 	}
 	return out
-}
-
-// docMarkdown converts a document body with BlockNote's own Markdown
-// algorithm (github.com/Paca-AI/go-blocknote2md). A body that isn't a block
-// array exports as empty, so one odd document never fails a whole export.
-func docMarkdown(content []byte, origin string) string {
-	md, err := blocknote2md.Convert(content, blocknote2md.WithOrigin(origin))
-	if err != nil {
-		return ""
-	}
-	return md
-}
-
-// titleHeading renders a document's title as the level-1 heading its file
-// starts with, through the same converter as the body.
-func titleHeading(title, origin string) string {
-	block, _ := json.Marshal([]any{map[string]any{
-		"type":    "heading",
-		"props":   map[string]any{"level": 1},
-		"content": []any{map[string]any{"type": "text", "text": title, "styles": map[string]any{}}},
-	}})
-	return docMarkdown(block, origin)
 }

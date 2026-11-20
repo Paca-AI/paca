@@ -22,7 +22,9 @@
 			"list": "リスト表示"
 		},
 		"typeFilter": "種類",
-		"allTypes": "すべての種類"
+		"allTypes": "すべての種類",
+		"newDocument": "新しいドキュメント",
+		"untitledDocument": "無題"
 	},
 	"types": {
 		"document": "ドキュメント",
@@ -89,7 +91,8 @@
 		"delete": "削除",
 		"restore": "復元",
 		"deleteForever": "完全に削除",
-		"more": "その他の操作"
+		"more": "その他の操作",
+		"openDocument": "ドキュメントを開く"
 	},
 	"system": {
 		"task_attachments": "このプロジェクトのタスクに添付されたファイルです。",
@@ -189,7 +192,8 @@
 		"FILE_NODE_NOT_TRASHED": "その項目はゴミ箱にありません。",
 		"FILE_UPLOAD_INCOMPLETE": "アップロードが完了しませんでした。",
 		"FILE_TOO_LARGE": "ファイルが大きすぎてアップロードできません。",
-		"FILE_TYPE_INVALID": "不明なファイル種類のフィルターです。"
+		"FILE_TYPE_INVALID": "不明なファイル種類のフィルターです。",
+		"docOutsideDocumentation": "ドキュメントはドキュメンテーション内でのみ移動できます。"
 	},
 	"noAccess": {
 		"title": "これらのファイルを表示できません",
@@ -234,6 +238,35 @@
 				"audio": "音声を埋め込む",
 				"file": "ファイルを埋め込む"
 			}
+		}
+	},
+	"docFolder": {
+		"actions": "ファイルの操作",
+		"preview": "プレビュー",
+		"download": "ダウンロード",
+		"details": "詳細",
+		"showInFiles": "ファイルで表示",
+		"moveTo": "移動先…",
+		"remove": "ゴミ箱に移動",
+		"upload": "ファイルをアップロード",
+		"fromFiles": "プロジェクトのファイルから追加",
+		"pickTitle": "プロジェクトのファイルを追加",
+		"pickHint": "このフォルダに移動するファイルをファイルから選びます。ファイルは1つのフォルダにだけ置かれるため、現在のフォルダからは移動します。",
+		"task": "タスク",
+		"documents": "使用されているドキュメント",
+		"moveTitle": "フォルダへ移動",
+		"moveHint": "ファイルは選択したフォルダへ移動します。",
+		"root": "ドキュメント",
+		"noSubfolders": "サブフォルダはありません",
+		"current": "現在",
+		"moveHere": "ここへ移動",
+		"toast": {
+			"failed": "フォルダのファイルを更新できませんでした",
+			"removed": "ゴミ箱に移動しました",
+			"removedHint": "30日以内ならファイルのゴミ箱から復元できます。",
+			"moved": "フォルダへ移動しました",
+			"added": "ファイルをこのフォルダに移動しました",
+			"uploaded": "ファイルをアップロードしました"
 		}
 	}
 }

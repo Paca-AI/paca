@@ -774,8 +774,11 @@ func (r *DocumentRepository) DeleteDocument(ctx context.Context, id uuid.UUID) e
 			}
 			return err
 		}
-		// An already deleted document keeps the time of its deletion.
-		_, err := tx.ExecContext(ctx, `UPDATE documents SET deleted_at = $1 WHERE id = $2 AND deleted_at IS NULL`, time.Now(), id.String())
+		// An already deleted document keeps the time of its deletion. A deletion
+		// from the app is also a trash entry (trashed_at, migration 000096), which
+		// the file manager can restore.
+		now := time.Now()
+		_, err := tx.ExecContext(ctx, `UPDATE documents SET deleted_at = $1, trashed_at = $1 WHERE id = $2 AND deleted_at IS NULL`, now, id.String())
 		return err
 	})
 }

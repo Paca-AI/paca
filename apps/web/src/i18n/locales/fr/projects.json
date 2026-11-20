@@ -994,7 +994,8 @@
 			"unsaved": "Non enregistré",
 			"saving": "Enregistrement…",
 			"saved": "Enregistré",
-			"commentsAndActivity": "Commentaires et activité"
+			"commentsAndActivity": "Commentaires et activité",
+			"downloadMarkdown": "Télécharger en Markdown"
 		},
 		"activity": {
 			"created": "a créé ce document",

@@ -7,6 +7,7 @@ import {
 	UploadAbortedError,
 	uploadFile,
 } from "./files-api";
+import { importMarkdownFile, isMarkdownFile } from "./markdown-import";
 import { showErrorToast } from "./notify";
 
 /** A file picked or dropped, with the folders it sits in below the drop target. */
@@ -32,6 +33,14 @@ export function enqueueUploads(
 	parentId: string | null,
 	entries: UploadEntry[],
 	onSettled: () => void,
+	opts: {
+		/**
+		 * Uploading into Documentation: a Markdown file becomes a document in
+		 * its folder instead of a stored file. `rootFolderId` is the
+		 * Documentation folder itself, which the docs API calls "no folder".
+		 */
+		markdownToDocs?: { rootFolderId: string };
+	} = {},
 ) {
 	if (entries.length === 0) return;
 	const total = entries.length;
@@ -95,6 +104,19 @@ export function enqueueUploads(
 			const entry = entries[index];
 			try {
 				const folder = await folderFor(entry.dirPath);
+				if (
+					opts.markdownToDocs &&
+					scope.projectId &&
+					isMarkdownFile(entry.file)
+				) {
+					await importMarkdownFile(
+						scope.projectId,
+						folder === opts.markdownToDocs.rootFolderId ? null : folder,
+						entry.file,
+					);
+					loaded[index] = entry.file.size;
+					continue;
+				}
 				await uploadFile(scope, folder, entry.file, {
 					signal: controller.signal,
 					onProgress: (sent) => {

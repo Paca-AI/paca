@@ -22,7 +22,9 @@
 			"list": "Vue en liste"
 		},
 		"typeFilter": "Type",
-		"allTypes": "Tous les types"
+		"allTypes": "Tous les types",
+		"newDocument": "Nouveau document",
+		"untitledDocument": "Sans titre"
 	},
 	"types": {
 		"document": "Documents",
@@ -89,7 +91,8 @@
 		"delete": "Supprimer",
 		"restore": "Restaurer",
 		"deleteForever": "Supprimer définitivement",
-		"more": "Plus d’actions"
+		"more": "Plus d’actions",
+		"openDocument": "Ouvrir le document"
 	},
 	"system": {
 		"task_attachments": "Fichiers joints aux tâches de ce projet.",
@@ -190,7 +193,8 @@
 		"FILE_NODE_NOT_TRASHED": "Cet élément n’est pas dans la corbeille.",
 		"FILE_UPLOAD_INCOMPLETE": "L’importation ne s’est pas terminée.",
 		"FILE_TOO_LARGE": "Ce fichier est trop volumineux pour être importé.",
-		"FILE_TYPE_INVALID": "Filtre de type de fichier inconnu."
+		"FILE_TYPE_INVALID": "Filtre de type de fichier inconnu.",
+		"docOutsideDocumentation": "Les documents ne peuvent être déplacés que dans Documentation."
 	},
 	"noAccess": {
 		"title": "Vous ne pouvez pas voir ces fichiers",
@@ -235,6 +239,35 @@
 				"audio": "Intégrer l’audio",
 				"file": "Intégrer le fichier"
 			}
+		}
+	},
+	"docFolder": {
+		"actions": "Actions sur le fichier",
+		"preview": "Aperçu",
+		"download": "Télécharger",
+		"details": "Détails",
+		"showInFiles": "Afficher dans Fichiers",
+		"moveTo": "Déplacer vers…",
+		"remove": "Mettre à la corbeille",
+		"upload": "Téléverser un fichier",
+		"fromFiles": "Ajouter depuis les fichiers du projet",
+		"pickTitle": "Ajouter un fichier du projet",
+		"pickHint": "Choisissez un fichier dans Fichiers à déplacer dans ce dossier. Un fichier n'est que dans un dossier : il quitte l'actuel.",
+		"task": "Tâche",
+		"documents": "Utilisé dans les documents",
+		"moveTitle": "Déplacer vers un dossier",
+		"moveHint": "Le fichier est déplacé vers le dossier choisi.",
+		"root": "Documentation",
+		"noSubfolders": "Aucun sous-dossier",
+		"current": "Actuel",
+		"moveHere": "Déplacer ici",
+		"toast": {
+			"failed": "Impossible de mettre à jour les fichiers du dossier",
+			"removed": "Mis à la corbeille",
+			"removedHint": "Restaurez-le depuis la corbeille de Fichiers sous 30 jours.",
+			"moved": "Déplacé vers le dossier",
+			"added": "Fichier déplacé dans ce dossier",
+			"uploaded": "Fichier téléversé"
 		}
 	}
 }

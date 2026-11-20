@@ -25,12 +25,15 @@ import { FileTypeIcon } from "./file-icon";
 export function FilePicker({
 	projectId,
 	categories,
+	accept,
 	onPick,
 	className,
 }: {
 	projectId: string;
 	/** Only files of these categories are offered; all files when empty. */
 	categories?: readonly FileCategory[];
+	/** Narrows the files offered further (folders are always shown). */
+	accept?: (file: FileNode) => boolean;
 	onPick: (file: FileNode) => void;
 	className?: string;
 }) {
@@ -57,10 +60,12 @@ export function FilePicker({
 	});
 
 	const accepted = (n: FileNode) =>
-		n.kind === "folder" ||
-		!categories ||
-		categories.length === 0 ||
-		categories.includes(fileCategory(n) as FileCategory);
+		n.kind !== "doc" &&
+		(n.kind === "folder" || !accept || accept(n)) &&
+		(n.kind === "folder" ||
+			!categories ||
+			categories.length === 0 ||
+			categories.includes(fileCategory(n) as FileCategory));
 	const nodes = (list.data?.pages.flatMap((p) => p.items) ?? []).filter(
 		(n) => accepted(n) && !(query && n.kind === "folder"),
 	);

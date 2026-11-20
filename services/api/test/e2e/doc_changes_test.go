@@ -318,12 +318,13 @@ func TestChanges_FolderRenameSendsTree(t *testing.T) {
 		t.Fatalf("folders = %+v, want the full tree with the new name", got.Folders)
 	}
 
-	// Deleting a folder: its documents come back at the root, and the tree
-	// is sent without the folder (and without the child it took with it).
+	// Deleting a folder trashes it with its documents: they come back as
+	// deletions, and the tree is sent without the folder (and without the child
+	// it took with it).
 	owner.must(http.StatusNoContent, http.MethodDelete, "/folders/"+sub, nil)
 	after := owner.pull(got.Cursor)
-	if after.Reset || !sameIDs(after.ids(), []string{inSub}) || after.doc(inSub).FolderID != nil || after.doc(inSub).Deleted {
-		t.Fatalf("after a folder delete: %s; want the document, live, with folder_id null", after.raw)
+	if after.Reset || !sameIDs(after.ids(), []string{inSub}) || !after.doc(inSub).Deleted {
+		t.Fatalf("after a folder delete: %s; want the document as a deletion", after.raw)
 	}
 	if len(after.Folders) != 1 || after.Folders[0].ID != plans {
 		t.Fatalf("folders = %+v, want only %s", after.Folders, plans)

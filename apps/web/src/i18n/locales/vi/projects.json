@@ -994,7 +994,8 @@
 			"unsaved": "Chưa lưu",
 			"saving": "Đang lưu…",
 			"saved": "Đã lưu",
-			"commentsAndActivity": "Bình luận & hoạt động"
+			"commentsAndActivity": "Bình luận & hoạt động",
+			"downloadMarkdown": "Tải xuống dạng Markdown"
 		},
 		"activity": {
 			"created": "đã tạo tài liệu này",

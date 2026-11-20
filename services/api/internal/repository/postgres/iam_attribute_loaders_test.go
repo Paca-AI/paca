@@ -172,6 +172,23 @@ func TestIAMAttributeLoaders(t *testing.T) {
 		}
 	})
 
+	// A document in the trash still resolves, so restoring or purging it from
+	// Files can be authorized on the document; a plain soft-delete does not.
+	t.Run("doc in the trash", func(t *testing.T) {
+		folder, trashed, deleted := uuid.New(), uuid.New(), uuid.New()
+		pgExec(t, db, `INSERT INTO doc_folders (id, project_id, name) VALUES ($1,$2,'F')`, folder, p)
+		pgExec(t, db, `INSERT INTO documents (id, project_id, folder_id, deleted_at, trashed_at) VALUES ($1,$2,$3, now(), now())`, trashed, p, folder)
+		pgExec(t, db, `INSERT INTO documents (id, project_id, folder_id, deleted_at) VALUES ($1,$2,$3, now())`, deleted, p, folder)
+		l := loaders["doc"]
+		got := loadSorted(t, l, trashed.String(), p.String(), "doc.folder_id", "doc.ancestor_folder_ids")
+		if !reflect.DeepEqual(got["doc.folder_id"], []string{folder.String()}) || !reflect.DeepEqual(got["doc.ancestor_folder_ids"], []string{folder.String()}) {
+			t.Fatalf("trashed doc: %v", got)
+		}
+		if _, err := l.Load(context.Background(), deleted.String(), p.String(), []string{"doc.folder_id"}); !errors.Is(err, iam.ErrResourceNotInProject) {
+			t.Fatalf("a deleted (not trashed) document must not resolve: %v", err)
+		}
+	})
+
 	t.Run("agent environment conversation", func(t *testing.T) {
 		env := uuid.New()
 		pgExec(t, db, `INSERT INTO environments (id, project_id, name, slug, backend, secret_key_encrypted) VALUES ($1,$2,'E','e','docker','x')`, env, p)

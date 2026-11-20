@@ -59,6 +59,7 @@ func coverageDeps(iamAuth *iam.Authorizer) Deps {
 		IAM:                 iamAuth,
 		AgentEnvironments:   noEnvironment{},
 		Conversations:       noConversations{},
+		FileAreas:           noFileAreas{},
 		TaskNumbers:         noTaskNumbers{},
 		SessionEnvironments: noEnvironment{},
 		Health:              handler.NewHealthHandler(),
@@ -389,11 +390,19 @@ func (noRoleAttachments) MemberRoleIDs(context.Context, uuid.UUID, uuid.UUID) ([
 	return nil, nil
 }
 
+// noFileAreas places every node outside Documentation.
+type noFileAreas struct{}
+
+func (noFileAreas) FileNodeArea(context.Context, uuid.UUID) (string, bool, error) {
+	return "", false, nil
+}
+
 // isAttrsGate reports whether resource names a request-attribute gate, which
 // sits after the route's action gate and authorizes what the request names.
 func isAttrsGate(resource string) bool {
 	return resource == resTaskAttrs || resource == resDocAttrs || resource == resTaskPositionItems ||
-		resource == resViewAttrs || resource == resViewReorderItems || resource == resDocView
+		resource == resViewAttrs || resource == resViewReorderItems || resource == resDocView ||
+		resource == resFileDocsArea
 }
 
 func isAssignGate(resource string) bool {
@@ -1039,6 +1048,48 @@ func TestRouteCoverage_TaskAttrGates(t *testing.T) {
 		}
 	}
 	for k := range taskAttrGateRoutes {
+		if !seen[k] {
+			t.Errorf("%q is not a registered route", k)
+		}
+	}
+}
+
+// Every project file route that names a node or a destination also carries the
+// docs-area gate (the general scope has none, there is no Documentation there).
+var fileDocsGates = map[string]int{
+	"GET /api/v1/projects/{projectId}/files/nodes":                       1,
+	"GET /api/v1/projects/{projectId}/files/nodes/{nodeId}":              1,
+	"GET /api/v1/projects/{projectId}/files/nodes/{nodeId}/path":         1,
+	"GET /api/v1/projects/{projectId}/files/nodes/{nodeId}/download-url": 1,
+	"GET /api/v1/projects/{projectId}/files/nodes/{nodeId}/relations":    1,
+	"POST /api/v1/projects/{projectId}/files/nodes/{nodeId}/open":        1,
+	"PUT /api/v1/projects/{projectId}/files/nodes/{nodeId}/star":         1,
+	"POST /api/v1/projects/{projectId}/files/folders":                    1,
+	"PATCH /api/v1/projects/{projectId}/files/nodes/{nodeId}":            1,
+	"DELETE /api/v1/projects/{projectId}/files/nodes/{nodeId}":           1,
+	"POST /api/v1/projects/{projectId}/files/nodes/{nodeId}/restore":     1,
+	"DELETE /api/v1/projects/{projectId}/files/nodes/{nodeId}/permanent": 1,
+	"POST /api/v1/projects/{projectId}/files/uploads/initiate":           1,
+	"POST /api/v1/projects/{projectId}/files/uploads/complete":           1,
+}
+
+func TestRouteCoverage_FileDocsGates(t *testing.T) {
+	seen := map[string]bool{}
+	for _, rt := range walkGates(t, coverageDeps(newTestIAM(&iamUserStore{}))) {
+		got := 0
+		for _, g := range rt.gates {
+			if g.resource == resFileDocsArea {
+				got++
+			}
+		}
+		if want := fileDocsGates[rt.key()]; got != want {
+			t.Errorf("%s: %d docs-area gates, want %d", rt.key(), got, want)
+		}
+		if _, ok := fileDocsGates[rt.key()]; ok {
+			seen[rt.key()] = true
+		}
+	}
+	for k := range fileDocsGates {
 		if !seen[k] {
 			t.Errorf("%q is not a registered route", k)
 		}

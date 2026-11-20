@@ -1,6 +1,6 @@
 # File management (Drive-style)
 
-Status: implemented — migration `000093`, the API, IAM, the trash purge worker and the web UI (Files pages, preview, task and description integrations).
+Status: implemented — migration `000093`, the API, IAM, the trash purge worker and the web UI (Files pages, preview, task and description integrations). Documentation is part of this tree since `000096`; see [unified-documentation-files.md](unified-documentation-files.md).
 
 ## Goals
 
@@ -49,7 +49,7 @@ ALTER TABLE files ADD COLUMN project_id UUID REFERENCES projects ON DELETE CASCA
 
 New actions: `files:read`, `files:write` (write covers upload, create folder, rename, move, trash, restore and permanent delete; starring is per-user and needs only read). Default roles: project Viewer and Analyst get `files:read`; Editor and Admin get both; platform `ADMIN` gets both on the general scope. Platform `USER` gets neither: `files:read`/`files:write` apply to every file in a scope, so general-scope access is granted to a role deliberately. The same migration adds the actions to existing roles (seeding never rewrites the policy of a role that already exists): `ADMIN` by name, and any other role that grants `docs:read` / `docs:write` in an Allow statement **confined to projects** (every resource under `project/`) gets the matching files action in that statement. A statement that can match `file/*`, such as resource `*`, is left alone, so the general scope is never derived from a docs grant.
 
-- **Project scope**: `require.Project(files:read|write)` on `project/{projectId}` for every `/projects/{projectId}/files/...` route. Limiting a role to one folder (a per-folder resource kind with a parent attribute, like docs) is not supported.
+- **Project scope**: `require.Project(files:read|write)` on `project/{projectId}` for every `/projects/{projectId}/files/...` route. Limiting a role to one folder (a per-folder resource kind with a parent attribute, like docs) is not supported. Routes that name a node in the Documentation subtree also require `docs:read|write` on the project (`RequireFileDocsArea`).
 - **General scope**: `files:read|write` on the platform root `file/*` (`iam.PlatformRootFor`, mirrored in the web `PLATFORM_ROOTS`, which a test keeps in sync), for the `/files/...` routes.
 - **Global listing**: `GET /files/roots` is open to any signed-in caller and returns the general folder (when the caller holds `files:read` on `file/*`) plus one entry per project where they hold `files:read`, filtered in the handler like `GET /projects`.
 - A node of another scope is reported as not found by the service, so an id from one project cannot be read through another project's route.
@@ -110,6 +110,16 @@ The UI follows Google Drive, not the docs tree. There is **no folder tree** in a
 
 - **Task detail.** Clicking a task attachment, an inline image or a file block in the description opens the preview instead of downloading, with previous/next across the description's media. Files from the project's Files are stored in a block as `files://{projectId}/{fileId}` and resolved to a fresh URL when shown (`attachment://` is the existing scheme for task attachments).
 - **Description editor.** The file panel of image, video, audio and file blocks is replaced by one that matches the app: **Upload**, **From files** (a compact browser of the project's Files, narrowed to the block's type; shown only with `files:read`) and **Embed link**.
+
+## Files in Documentation folders
+
+Documentation is a folder of the project's Files, so a file in a documentation folder is simply a file whose folder is that folder (see [unified-documentation-files.md](unified-documentation-files.md)).
+
+- **One file, one folder.** Upload from a folder's **Add** menu in the docs sidebar (it goes straight into that folder), or **Add from project files** to move an unmanaged file in. Task attachments, document files and annotation screenshots are managed and stay where they are.
+- **Delete and move** follow the Files rules: **Move to trash** sends the file to the Files trash (30 days), **Move to…** picks another documentation folder.
+- **Relationships.** `GET /projects/{projectId}/files/nodes/{nodeId}/relations` returns the task the file is attached to and the documents of the docs tree that mention it (`files://{projectId}/{fileId}`) or own it. The Files details sheet shows both as links.
+- **Documents.** A document is the Markdown file `<title>.md`: it downloads as Markdown, is renamed and moved through the docs API, and is trashed and restored like a file (migration `000096`).
+- **Permissions.** Anything in Documentation needs `docs:read|write` as well as `files:read|write`.
 
 ## Not included
 

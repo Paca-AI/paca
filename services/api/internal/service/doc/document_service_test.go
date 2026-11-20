@@ -545,6 +545,25 @@ func TestCreateFolder_NameWithSlash(t *testing.T) {
 	}
 }
 
+func TestCreateFolder_NameWithBackslash(t *testing.T) {
+	svc := docsvc.New(newFakeDocRepo(), nil)
+	_, err := svc.CreateFolder(context.Background(), docdom.CreateFolderInput{ProjectID: uuid.New(), Name: `Design\Docs`})
+	if err != docdom.ErrFolderNameInvalid {
+		t.Errorf("expected ErrFolderNameInvalid, got %v", err)
+	}
+}
+
+func TestUpdateFolder_NameWithBackslash(t *testing.T) {
+	ctx := context.Background()
+	svc := docsvc.New(newFakeDocRepo(), nil)
+	projectID := uuid.New()
+	f, _ := svc.CreateFolder(ctx, docdom.CreateFolderInput{ProjectID: projectID, Name: "Old Name"})
+	_, err := svc.UpdateFolder(ctx, f.ID, docdom.UpdateFolderInput{ProjectID: projectID, Name: `New\Name`})
+	if err != docdom.ErrFolderNameInvalid {
+		t.Errorf("expected ErrFolderNameInvalid, got %v", err)
+	}
+}
+
 func TestCreateFolder_WithParent_OK(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeDocRepo()

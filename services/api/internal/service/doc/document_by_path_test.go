@@ -87,6 +87,11 @@ func TestUpsertDocumentByPath_Errors(t *testing.T) {
 	if _, _, err := svc.ResolveDocPath(ctx, p, "Nope/x"); !errors.Is(err, docdom.ErrDocNotFound) {
 		t.Errorf("resolve missing: err = %v", err)
 	}
+	// A folder on the path takes the same names as one created directly (no
+	// backslash), checked before anything is written.
+	if _, _, _, err := svc.UpsertDocumentByPath(ctx, docdom.UpsertByPathInput{ProjectID: p, Path: `Back\slash/doc`, Content: json.RawMessage(`[]`)}); !errors.Is(err, docdom.ErrFolderNameInvalid) {
+		t.Errorf("folder name with a backslash: err = %v", err)
+	}
 	bad := &docdom.DocSource{Repository: "", Path: "x"}
 	if _, _, _, err := svc.UpsertDocumentByPath(ctx, docdom.UpsertByPathInput{ProjectID: p, Path: "a", Content: json.RawMessage(`[]`), Source: bad}); !errors.Is(err, docdom.ErrDocSourceInvalid) {
 		t.Errorf("bad source: err = %v", err)

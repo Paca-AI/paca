@@ -37,8 +37,9 @@ type DocFolderRepository interface {
 	// transaction. decide's error aborts the write and is returned as is.
 	// Returns ErrFolderNotFound when the folder doesn't exist.
 	UpdateFolderAtomic(ctx context.Context, id uuid.UUID, decide func(current *DocFolder, find func(id uuid.UUID) (*DocFolder, error)) error) (*DocFolder, error)
-	// DeleteFolder permanently deletes a folder and cascades to child folders
-	// and documents (folder_id is set to NULL on documents, not deleted).
+	// DeleteFolder moves a folder to the trash with everything below it (its
+	// subfolders, documents and files, one shared timestamp); the file manager
+	// restores it.
 	DeleteFolder(ctx context.Context, id uuid.UUID) error
 }
 

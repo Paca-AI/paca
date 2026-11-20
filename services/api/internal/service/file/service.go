@@ -101,8 +101,8 @@ func (s *Service) destination(ctx context.Context, scope filedom.Scope, actor uu
 		return nil, filedom.ErrNotFolder
 	}
 	// Nothing is created or moved into the task attachment tree: it mirrors
-	// the tasks' own attachments.
-	if p.SystemKey != "" {
+	// the tasks' own attachments. Documentation takes new folders and files.
+	if p.SystemKey != "" && p.SystemKey != filedom.SystemKeyDocumentation {
 		return nil, filedom.ErrNodeLocked
 	}
 	return p, nil
@@ -275,6 +275,8 @@ func (s *Service) Trash(ctx context.Context, scope filedom.Scope, actor, id uuid
 	if err != nil {
 		return err
 	}
+	// The default folders (Documentation included) cannot go. A document or a
+	// documentation folder goes to the trash like a file, with its contents.
 	if n.SystemKey != "" {
 		return filedom.ErrNodeLocked
 	}
@@ -505,7 +507,7 @@ func (s *Service) DownloadURL(ctx context.Context, scope filedom.Scope, actor, i
 	if err != nil {
 		return "", nil, err
 	}
-	if n.IsFolder() {
+	if n.Kind != filedom.KindFile {
 		return "", nil, filedom.ErrNotFile
 	}
 	disposition := ""
@@ -566,4 +568,32 @@ func parentIDIf(move bool, to, current *uuid.UUID) *uuid.UUID {
 		return to
 	}
 	return current
+}
+
+// Relations returns the task a file is attached to and the documents that
+// reference it. Only project files have any.
+func (s *Service) Relations(ctx context.Context, scope filedom.Scope, actor, id uuid.UUID) (*filedom.Relations, error) {
+	n, err := s.liveNode(ctx, scope, actor, id)
+	if err != nil {
+		return nil, err
+	}
+	if n.Kind != filedom.KindFile {
+		return nil, filedom.ErrNotFile
+	}
+	if scope.ProjectID == nil {
+		return &filedom.Relations{}, nil
+	}
+	return s.repo.Relations(ctx, *scope.ProjectID, id)
+}
+
+// RecordOpen puts a document (or file) in the caller's recents.
+func (s *Service) RecordOpen(ctx context.Context, scope filedom.Scope, actor, id uuid.UUID) error {
+	n, err := s.liveNode(ctx, scope, actor, id)
+	if err != nil {
+		return err
+	}
+	if n.IsFolder() {
+		return filedom.ErrNotFile
+	}
+	return s.repo.Touch(ctx, actor, id)
 }

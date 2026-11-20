@@ -28,7 +28,7 @@ type DocFolderService interface {
 	CreateFolder(ctx context.Context, in CreateFolderInput) (*DocFolder, error)
 	// UpdateFolder updates the mutable fields of an existing folder.
 	UpdateFolder(ctx context.Context, id uuid.UUID, in UpdateFolderInput) (*DocFolder, error)
-	// DeleteFolder deletes a folder. Child documents have their folder_id set to NULL.
+	// DeleteFolder moves a folder and everything in it to the trash.
 	// projectID is used to verify the folder belongs to the expected project.
 	DeleteFolder(ctx context.Context, id uuid.UUID, projectID uuid.UUID) error
 }

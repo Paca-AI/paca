@@ -32,3 +32,26 @@ export function useFileWriteAccess(
 			? hasAction(byProject.get(scope.projectId) ?? [], "files:write")
 			: general.has("files:write");
 }
+
+/**
+ * Whether the caller may change documentation in a project: docs:write on it.
+ * Files in the Documentation folder need this as well as files:write.
+ */
+export function useDocsWriteAccess(
+	scopes: readonly FileScope[],
+): (scope: FileScope) => boolean {
+	const projectIds = [
+		...new Set(
+			scopes.map((s) => s.projectId).filter((id): id is string => !!id),
+		),
+	];
+	const results = useQueries({
+		queries: projectIds.map((id) => myProjectPermissionsQueryOptions(id)),
+	});
+	const byProject = new Map(
+		projectIds.map((id, i) => [id, results[i]?.data ?? []] as const),
+	);
+	return (scope) =>
+		!!scope.projectId &&
+		hasAction(byProject.get(scope.projectId) ?? [], "docs:write");
+}
