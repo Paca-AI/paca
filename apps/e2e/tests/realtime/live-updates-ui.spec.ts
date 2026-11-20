@@ -480,7 +480,7 @@ test.describe("The session and the socket", () => {
 		await expect(page.getByText(missed)).toHaveCount(0);
 		await context.setOffline(false);
 
-		// The socket reconnects on its own, rejoins the project and, once the
+		// When the socket does reconnect, it rejoins the project and, once the
 		// join is acknowledged, the project's queries are refetched.
 		await expect(page.getByText(missed).first()).toBeVisible({
 			timeout: 60_000,

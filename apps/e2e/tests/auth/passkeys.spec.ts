@@ -215,6 +215,8 @@ test.describe("When policy requires two-step verification", () => {
 		request,
 		playwright,
 	}) => {
+		// Two 20 s heading waits below must fit inside the test timeout.
+		test.setTimeout(60_000);
 		const role = `E2E_PASSKEY_ROLE_${RUN_ID}`;
 		await authRequest(request);
 		await createGlobalRole(request, role, allowPolicy([]));
