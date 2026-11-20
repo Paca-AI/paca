@@ -15,7 +15,15 @@ const ref = { kind: "task" as const, projectId: P, id: T };
 const v = (userId: string): Viewer => ({ userId, rawToken: "t" });
 
 function setup(
-	opts: { write?: boolean; read?: boolean; replica?: string } = {},
+	opts: {
+		write?: boolean;
+		read?: boolean;
+		replica?: string;
+		entityCheck?: (
+			v: Viewer,
+			r: { kind: string; projectId: string; id: string },
+		) => Promise<boolean>;
+	} = {},
 ) {
 	const emitted: PresenceSnapshot[] = [];
 	const published: PresenceSummary[] = [];
@@ -26,6 +34,7 @@ function setup(
 	} as unknown as AccessDecider;
 	const hub = new PresenceHub({
 		decider,
+		entityCheck: opts.entityCheck ?? (async () => true),
 		replica: opts.replica ?? "a",
 		bus: { publish: (s) => published.push(s) },
 		transport: { emit: (_r, s) => emitted.push(s) },
@@ -168,6 +177,7 @@ describe("PresenceHub", () => {
 					return true;
 				},
 			} as unknown as AccessDecider,
+			entityCheck: async () => true,
 			replica: "a",
 			transport: { emit: () => {} },
 		});
@@ -190,6 +200,7 @@ describe("PresenceHub", () => {
 				can: async (_v: Viewer, _p: string, q: { action: string }) =>
 					q.action === "tasks:read" ? true : write,
 			} as unknown as AccessDecider,
+			entityCheck: async () => true,
 			replica: "a",
 			transport: { emit: (_r, s) => emitted.push(s) },
 		});
@@ -234,6 +245,7 @@ describe("PresenceHub kinds", () => {
 		} as unknown as AccessDecider;
 		const hub = new PresenceHub({
 			decider,
+			entityCheck: async () => true,
 			replica: "a",
 			transport: { emit: (_r, s) => emitted.push(s) },
 		});
@@ -289,5 +301,28 @@ describe("PresenceHub kinds", () => {
 			hub.leaveAll("s1");
 			hub.leaveAll("s2");
 		}
+	});
+});
+
+describe("PresenceHub project scoping", () => {
+	it("refuses a room whose entity is not in the claimed project", async () => {
+		const asked: string[] = [];
+		const { hub } = setup({
+			entityCheck: async (
+				_v: Viewer,
+				r: { kind: string; projectId: string; id: string },
+			) => {
+				asked.push(`${r.kind}:${r.projectId}:${r.id}`);
+				return false; // the project-scoped lookup does not find it
+			},
+		});
+		// The IAM checks pass (a grant on project/<p>/*), but the entity is
+		// elsewhere: no room, no viewers, no typing.
+		expect(await hub.join("s1", v("u1"), ref)).toEqual({
+			ok: false,
+			reason: "forbidden",
+		});
+		expect(asked).toEqual([`task:${P}:${T}`]);
+		hub.typing("s1", "task", T, true);
 	});
 });

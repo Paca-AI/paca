@@ -15,6 +15,7 @@
 
 import type { Logger } from "pino";
 import type { AccessDecider, Viewer } from "./access.ts";
+import { entityReadable } from "./api-client.ts";
 
 export type LiveKind = "task" | "doc" | "channel";
 
@@ -80,6 +81,25 @@ const ACTIONS: Record<LiveKind, { read: string; write: string; seg: string }> =
 		doc: { read: "docs:read", write: "docs:write", seg: "doc" },
 		channel: { read: "channels:read", write: "messages:write", seg: "channel" },
 	};
+
+// lookupPath is the REST route that serves one entity inside its project (a
+// direct message, which has no project, has its own). Joining a room requires
+// that route to answer 200 for the viewer's token, which proves the entity is in
+// the project the client claimed: the IAM check alone would accept any entity
+// id under a project the viewer can read.
+function lookupPath(ref: LiveRef): string {
+	const id = encodeURIComponent(ref.id);
+	if (ref.kind === "channel" && !ref.projectId) return `/chat/dms/${id}`;
+	const p = encodeURIComponent(ref.projectId);
+	switch (ref.kind) {
+		case "task":
+			return `/projects/${p}/tasks/${id}`;
+		case "doc":
+			return `/projects/${p}/docs/${id}`;
+		case "channel":
+			return `/projects/${p}/channels/${id}`;
+	}
+}
 
 export function isLiveKind(v: unknown): v is LiveKind {
 	return v === "task" || v === "doc" || v === "channel";
@@ -157,6 +177,10 @@ export class PresenceHub {
 			bus?: PresenceBus;
 			logger?: Logger;
 			now?: () => number;
+			// apiUrl is where the entity lookup goes; omit it (tests) and pass
+			// `entityCheck` instead.
+			apiUrl?: string;
+			entityCheck?: (viewer: Viewer, ref: LiveRef) => Promise<boolean>;
 		},
 	) {}
 
@@ -194,8 +218,9 @@ export class PresenceHub {
 		this.pending.set(key, ticket);
 		let canRead: boolean;
 		let canType: boolean;
+		let inProject: boolean;
 		try {
-			[canRead, canType] = await Promise.all([
+			[canRead, canType, inProject] = await Promise.all([
 				this.opts.decider.can(viewer, ref.projectId, {
 					action: a.read,
 					resource,
@@ -204,6 +229,7 @@ export class PresenceHub {
 					action: a.write,
 					resource,
 				}),
+				this.entityCheck(viewer, ref),
 			]);
 		} catch (err) {
 			if (this.pending.get(key) === ticket) this.pending.delete(key);
@@ -214,7 +240,7 @@ export class PresenceHub {
 			return { ok: false, reason: "superseded" };
 		}
 		this.pending.delete(key);
-		if (!canRead) return { ok: false, reason: "forbidden" };
+		if (!canRead || !inProject) return { ok: false, reason: "forbidden" };
 		if (!stillConnected()) return { ok: false, reason: "unavailable" };
 
 		let room = this.rooms.get(name);
@@ -242,6 +268,17 @@ export class PresenceHub {
 		this.byRoom.set(socketId, set);
 		this.changed(room, fresh);
 		return { ok: true, snapshot: this.snapshot(room), canType };
+	}
+
+	// entityCheck says whether the entity is in the project the client named and
+	// readable by the viewer (see lookupPath).
+	private entityCheck(viewer: Viewer, ref: LiveRef): Promise<boolean> {
+		if (this.opts.entityCheck) return this.opts.entityCheck(viewer, ref);
+		return entityReadable(
+			this.opts.apiUrl ?? "",
+			viewer.rawToken,
+			lookupPath(ref),
+		);
 	}
 
 	leave(socketId: string, ref: LiveRef): void {

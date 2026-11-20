@@ -318,6 +318,7 @@ export function createSocketServer(
 	// Presence: viewers and typing in a task (see presence.ts).
 	const presence = new PresenceHub({
 		decider,
+		apiUrl: config.apiUrl,
 		replica: config.replicaId,
 		bus: presenceBus,
 		logger,

@@ -98,6 +98,35 @@ test.describe("Presence in docs and chat", () => {
 		await cleanupUsersByPrefix(request, TEST_PREFIX);
 	});
 
+	test.describe("Project scoping", () => {
+		test("A room cannot be joined by naming a project the entity is not in", async ({
+			request,
+			playwright,
+		}) => {
+			// The member may read docs and tasks in project P; the entities are in Q.
+			const other = await createProject(request, uniqueName("OTHER"));
+			const otherDoc = await createDoc(request, other, uniqueName("DOC"));
+			const task = await request.post(`${API_URL}/projects/${other}/tasks`, {
+				data: { title: uniqueName("TASK") },
+			});
+			const otherTask = (await task.json()).data.id as string;
+
+			const api = track(await loginContext(playwright, member));
+			const probe = track(
+				await Probe.connect({ token: await accessTokenOf(api) }),
+			);
+			for (const ref of [
+				{ kind: "doc", projectId, id: otherDoc },
+				{ kind: "task", projectId, id: otherTask },
+			]) {
+				expect(await liveJoin(probe, ref)).toEqual({
+					ok: false,
+					reason: "forbidden",
+				});
+			}
+		});
+	});
+
 	test.describe("Documents", () => {
 		let docId: string;
 
