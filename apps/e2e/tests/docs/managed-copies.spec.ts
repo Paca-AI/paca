@@ -135,9 +135,11 @@ async function openSidebarOnPhone(page: Page) {
 			.getByRole("button", { name: "Toggle Sidebar" })
 			.click();
 		// The Sheet's contents mount after the click, so wait for the tree.
-		// The page breadcrumb also reads "Documentation", so target the tree's button.
+		// The page breadcrumb also has a "Documentation" button, so scope to the Sheet.
 		await expect(
-			page.getByRole("button", { name: "Documentation", exact: true }),
+			page
+				.getByRole("dialog", { name: "Sidebar" })
+				.getByRole("button", { name: "Documentation", exact: true }),
 		).toBeVisible({ timeout: 10_000 });
 	}
 }
