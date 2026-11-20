@@ -292,6 +292,7 @@ export function DocumentPane({
 					rightPanel === "activity" && "bg-muted/40 text-foreground",
 				)}
 				title={t("docs.editorPage.commentsAndActivity")}
+				aria-label={t("docs.editorPage.commentsAndActivity")}
 				onClick={() => togglePanel("activity")}
 			>
 				<MessageSquare className="size-3.5" />

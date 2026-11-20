@@ -190,13 +190,10 @@ async function writeViewNote(
 			isError: true,
 		};
 	}
-	const existing = (
-		await clients.apiClient.listDocuments(projectId, {
-			viewId,
-			pageSize: 1,
-		})
-	).items[0];
-	if (existing) {
+	const findExisting = async () =>
+		(await clients.apiClient.listDocuments(projectId, { viewId, pageSize: 1 }))
+			.items[0];
+	const update = async (existing: { id: string; title: string }) => {
 		await clients.docClient.patchDocument(projectId, existing.id, {
 			content: content ? markdownToBlocknote(content) : [],
 			...writeNote(note, task),
@@ -209,14 +206,25 @@ async function writeViewNote(
 				},
 			],
 		};
+	};
+	const existing = await findExisting();
+	if (existing) return update(existing);
+	let created: Awaited<ReturnType<PacaAPIClient["createDocument"]>>;
+	try {
+		created = await clients.apiClient.createDocument({
+			project_id: projectId,
+			title: name,
+			content,
+			view_id: viewId,
+			...writeNote(note, task),
+		});
+	} catch (err) {
+		// Another writer created the view's document first (409
+		// DOC_NOTE_VIEW_TAKEN): write to theirs instead of failing.
+		const winner = await findExisting();
+		if (winner) return update(winner);
+		throw err;
 	}
-	const created = await clients.apiClient.createDocument({
-		project_id: projectId,
-		title: name,
-		content,
-		view_id: viewId,
-		...writeNote(note, task),
-	});
 	return {
 		content: [
 			{

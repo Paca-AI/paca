@@ -16,6 +16,14 @@
 -- table. A writer holding a counter and waiting for the table lock would
 -- otherwise deadlock with the counter taken after it.
 --
+-- The keeper is chosen by (position, created_at, id) while the API lists a
+-- view by (position, title, id); the two cannot disagree afterwards because
+-- the extras are soft-deleted and a list shows only live rows.
+--
+-- LOCK TABLE blocks every writer of documents until COMMIT: the dedupe and the
+-- index build are short at current table sizes, but run this off-peak on a
+-- very large documents table.
+--
 -- Rerunnable: the dedupe finds nothing the second time and the index is
 -- created IF NOT EXISTS.
 

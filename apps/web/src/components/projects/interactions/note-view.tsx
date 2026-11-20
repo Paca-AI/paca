@@ -27,8 +27,8 @@ interface NoteViewProps {
 /**
  * A note view: one editable document that belongs to the view (sprint goals,
  * meeting minutes, a checklist), opened in the same editor and comments and
- * activity pane as the project's docs, with no title and no list of notes. Its save status and activity toggle
- * sit in the view header.
+ * activity pane as the project's docs, with no title and no list of notes. Its
+ * save status and activity toggle sit in the view header.
  * The document is created the first time someone who can write opens the
  * view. Reading it needs docs:read and changing it docs:write.
  */
@@ -40,14 +40,14 @@ export function NoteView({ projectId, viewId, headerSlot }: NoteViewProps) {
 	const canRead = hasProjectPermission("docs:read");
 	const canWrite = hasProjectPermission("docs:write");
 
-	const notesKey = docQueryKeys.viewNotes(projectId, viewId);
-	const notesQuery = useQuery({
+	const docKey = docQueryKeys.viewNotes(projectId, viewId);
+	const docQuery = useQuery({
 		...viewNotesQueryOptions(projectId, viewId),
 		enabled: canRead,
 	});
 	// A view holds one document; extras from before migration 000095 stay
 	// stored but are not shown.
-	const doc = notesQuery.data?.[0];
+	const doc = docQuery.data?.[0];
 
 	const createMutation = useMutation({
 		mutationFn: () =>
@@ -56,15 +56,15 @@ export function NoteView({ projectId, viewId, headerSlot }: NoteViewProps) {
 				view_id: viewId,
 			}),
 		onSuccess: (created) => {
-			qc.setQueryData<Document[]>(notesKey, (prev) =>
+			qc.setQueryData<Document[]>(docKey, (prev) =>
 				prev?.length ? prev : [created],
 			);
-			qc.invalidateQueries({ queryKey: notesKey });
+			qc.invalidateQueries({ queryKey: docKey });
 		},
 		// Someone else created the view's document first: show theirs.
 		onError: (err: unknown) => {
 			if (getApiErrorCode(err) === ApiErrorCode.DocNoteViewTaken) {
-				qc.invalidateQueries({ queryKey: notesKey });
+				qc.invalidateQueries({ queryKey: docKey });
 			}
 		},
 	});
@@ -72,7 +72,7 @@ export function NoteView({ projectId, viewId, headerSlot }: NoteViewProps) {
 	// Create the document on first open, once per view: a failed attempt is
 	// retried from the button below, not in a loop.
 	const attemptedRef = useRef<string | null>(null);
-	const empty = notesQuery.isSuccess && !doc;
+	const empty = docQuery.isSuccess && !doc;
 	useEffect(() => {
 		if (!empty || !canWrite || attemptedRef.current === viewId) return;
 		attemptedRef.current = viewId;
@@ -108,11 +108,11 @@ export function NoteView({ projectId, viewId, headerSlot }: NoteViewProps) {
 	const createFailed =
 		createMutation.isError &&
 		getApiErrorCode(createMutation.error) !== ApiErrorCode.DocNoteViewTaken;
-	if (notesQuery.isError || createFailed) {
+	if (docQuery.isError || createFailed) {
 		return (
 			<div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
 				<p role="alert" className="text-sm text-destructive">
-					{notesQuery.isError
+					{docQuery.isError
 						? t("layout.noteView.errors.loadFailed")
 						: t("layout.noteView.errors.createFailed")}
 				</p>
@@ -120,7 +120,7 @@ export function NoteView({ projectId, viewId, headerSlot }: NoteViewProps) {
 					size="sm"
 					variant="outline"
 					onClick={() =>
-						notesQuery.isError ? notesQuery.refetch() : createMutation.mutate()
+						docQuery.isError ? docQuery.refetch() : createMutation.mutate()
 					}
 				>
 					{t("layout.noteView.retry")}
