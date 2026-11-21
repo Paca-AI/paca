@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -17,8 +18,17 @@ import (
 // contextMessages is how many earlier messages an agent is shown with a mention.
 const contextMessages = 8
 
-// linkAttempts is how often the run link is written before it is given up on.
+// linkAttempts is how often the run link is written before it is given up on,
+// pausing linkBackoff (doubling) between tries.
 const linkAttempts = 3
+const linkBackoff = 100 * time.Millisecond
+
+// maxRunsPerWindow caps the runs one person can start with mentions in
+// runWindow, so a loop of mentions cannot run up the agents' cost.
+const (
+	maxRunsPerWindow = 10
+	runWindow        = time.Minute
+)
 
 // WithAgentTrigger lets an @mention of an agent in a project channel start a
 // run of that agent (see chat_agent_runs).
@@ -33,10 +43,12 @@ func (s *Service) WithAgentTrigger(t chatdom.AgentTrigger) *Service {
 // agent, the agent is not in the project) is logged and skipped, as comment
 // mentions are.
 //
+// Only public channels start runs: a private channel's messages are not for
+// whoever may later read a run, and automations skip them for the same reason.
 // Only people and service accounts start runs. An agent's own message never
 // does, so two agents cannot call each other in a loop.
 func (s *Service) triggerMentionedAgents(ctx context.Context, projectID uuid.UUID, ch *chatdom.Channel, m *chatdom.Message, mentioned []uuid.UUID) {
-	if s.trigger == nil || projectID == uuid.Nil || len(mentioned) == 0 || ch.ArchivedAt != nil {
+	if s.trigger == nil || projectID == uuid.Nil || len(mentioned) == 0 || ch.ArchivedAt != nil || ch.Kind != chatdom.KindPublic {
 		return
 	}
 	if kind, ok, err := s.repo.AccountKind(ctx, m.AuthorID); err != nil || !ok || kind == chatdom.AccountAgent {
@@ -46,12 +58,18 @@ func (s *Service) triggerMentionedAgents(ctx context.Context, projectID uuid.UUI
 	if err != nil || !ok {
 		return
 	}
+	recent, err := s.repo.CountRecentAgentRuns(ctx, m.AuthorID, time.Now().Add(-runWindow))
+	if err != nil {
+		return
+	}
 	var transcript []*chatdom.Message
 	loaded := false
+	seen := map[uuid.UUID]bool{}
 	for _, id := range mentioned {
-		if id == m.AuthorID {
+		if id == m.AuthorID || seen[id] {
 			continue
 		}
+		seen[id] = true
 		if kind, ok, err := s.repo.AccountKind(ctx, id); err != nil || !ok || kind != chatdom.AccountAgent {
 			continue
 		}
@@ -62,11 +80,16 @@ func (s *Service) triggerMentionedAgents(ctx context.Context, projectID uuid.UUI
 		if !loaded {
 			transcript, loaded = s.contextFor(ctx, ch, m), true
 		}
+		if recent >= maxRunsPerWindow {
+			slog.WarnContext(ctx, "chat: agent mention not run: too many runs", "channel_id", ch.ID, "agent_id", id, "author_id", m.AuthorID)
+			break
+		}
 		convID, err := s.trigger.TriggerChannelMention(ctx, projectID, id, authorMember, channelMentionPrompt(ch, projectID, m, transcript))
 		if err != nil {
 			slog.WarnContext(ctx, "chat: agent mention not run", "channel_id", ch.ID, "agent_id", id, "err", err)
 			continue
 		}
+		recent++
 		root := m.ID
 		if m.ThreadRootID != nil {
 			root = *m.ThreadRootID
@@ -77,9 +100,14 @@ func (s *Service) triggerMentionedAgents(ctx context.Context, projectID uuid.UUI
 		// Without this row the run's answer is never posted, so a failed write
 		// is retried before it is given up on.
 		var linkErr error
-		for attempt := 0; attempt < linkAttempts; attempt++ {
+		for attempt, wait := 0, linkBackoff; attempt < linkAttempts; attempt, wait = attempt+1, wait*2 {
 			if linkErr = s.repo.CreateAgentRun(ctx, link); linkErr == nil {
 				break
+			}
+			select {
+			case <-ctx.Done():
+				attempt = linkAttempts
+			case <-time.After(wait):
 			}
 		}
 		if linkErr != nil {
@@ -89,8 +117,8 @@ func (s *Service) triggerMentionedAgents(ctx context.Context, projectID uuid.UUI
 }
 
 // contextFor returns the messages just before m, oldest first, for the agent to
-// read with the mention. A private channel gets none: the agent has not been
-// let into it, and the person only chose to share the message they wrote.
+// read with the mention. Only a public channel gets any (a defensive check:
+// triggerMentionedAgents already refuses the others).
 func (s *Service) contextFor(ctx context.Context, ch *chatdom.Channel, m *chatdom.Message) []*chatdom.Message {
 	if ch.Kind != chatdom.KindPublic {
 		return nil
@@ -155,6 +183,13 @@ func (s *Service) OnChannelRunEnd(ctx context.Context, conversationID uuid.UUID,
 		if rerr := s.repo.ReleaseAgentRunPost(ctx, conversationID); rerr != nil {
 			slog.Error("chat: release agent run post", "conversation_id", conversationID, "err", rerr)
 		}
+	}
+	if stored, err := s.repo.AgentReplyStored(ctx, run.ChannelID, conversationID); err != nil {
+		release()
+		return err
+	} else if stored {
+		// An earlier delivery stored the reply but could not mark it: do not post it twice.
+		return s.repo.MarkAgentRunPosted(ctx, conversationID)
 	}
 	text, err := s.repo.AgentReply(ctx, conversationID, -1, turnEnd)
 	if err != nil {

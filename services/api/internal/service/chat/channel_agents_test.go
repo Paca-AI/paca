@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -14,13 +15,14 @@ import (
 // channelRepo is an in-memory stand-in for the channel-mention parts of the repository.
 type channelRepo struct {
 	chatdom.Repository
-	channel  *chatdom.Channel
-	kinds    map[uuid.UUID]string
-	members  map[uuid.UUID]uuid.UUID // account -> project_members id
-	messages []*chatdom.Message
-	runs     map[uuid.UUID]*chatdom.ChannelAgentRun
-	claimed  map[uuid.UUID]bool
-	reply    string
+	channel    *chatdom.Channel
+	kinds      map[uuid.UUID]string
+	members    map[uuid.UUID]uuid.UUID // account -> project_members id
+	messages   []*chatdom.Message
+	runs       map[uuid.UUID]*chatdom.ChannelAgentRun
+	claimed    map[uuid.UUID]bool
+	reply      string
+	recentRuns int
 }
 
 func (r *channelRepo) FindChannel(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (*chatdom.Channel, error) {
@@ -89,6 +91,17 @@ func (r *channelRepo) MarkAgentRunPosted(_ context.Context, id uuid.UUID) error 
 	r.runs[id].Posted = true
 	return nil
 }
+func (r *channelRepo) AgentReplyStored(_ context.Context, _, id uuid.UUID) (bool, error) {
+	for _, m := range r.messages {
+		if m.RunID != nil && *m.RunID == id {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+func (r *channelRepo) CountRecentAgentRuns(context.Context, uuid.UUID, time.Time) (int, error) {
+	return r.recentRuns, nil
+}
 func (r *channelRepo) AgentReply(context.Context, uuid.UUID, int, int) (string, error) {
 	return r.reply, nil
 }
@@ -156,12 +169,20 @@ func TestMention_StartsARunAsThePersonAndLinksIt(t *testing.T) {
 	}
 }
 
-func TestMention_PrivateChannelSharesOnlyTheMessage(t *testing.T) {
+func TestMention_PrivateChannelStartsNoRun(t *testing.T) {
 	f := setupChannel(chatdom.KindPrivate)
-	_, _ = f.svc.PostMessage(context.Background(), f.project, f.ch, f.person, []byte(`[{"type":"paragraph","content":[{"type":"text","text":"secret earlier"}]}]`), nil)
 	_, _ = f.svc.PostMessage(context.Background(), f.project, f.ch, f.person, mentionOf(f.agent, "Atlas"), nil)
-	if len(f.trig.calls) != 1 || strings.Contains(f.trig.calls[0], "secret earlier") {
-		t.Errorf("a private channel's history is not handed to the agent: %v", f.trig.calls)
+	if len(f.trig.calls) != 0 {
+		t.Errorf("a private channel's messages are not handed to an agent: %v", f.trig.calls)
+	}
+}
+
+func TestMention_RateLimited(t *testing.T) {
+	f := setupChannel(chatdom.KindPublic)
+	f.repo.recentRuns = maxRunsPerWindow
+	_, _ = f.svc.PostMessage(context.Background(), f.project, f.ch, f.person, mentionOf(f.agent, "Atlas"), nil)
+	if len(f.trig.calls) != 0 {
+		t.Errorf("a person over the limit starts no run: %v", f.trig.calls)
 	}
 }
 
@@ -265,5 +286,23 @@ func TestRunEnd_ADeadWorkersClaimDoesNotLoseTheAnswer(t *testing.T) {
 	delete(f.repo.claimed, f.trig.conv)
 	if err := f.svc.OnChannelRunEnd(context.Background(), f.trig.conv, 7); err != nil || len(f.repo.messages) != n+1 {
 		t.Fatalf("the retry posts it: %v", err)
+	}
+}
+
+func TestRunEnd_AStoredReplyIsNotPostedAgain(t *testing.T) {
+	f := setupChannel(chatdom.KindPublic)
+	if _, err := f.svc.PostMessage(context.Background(), f.project, f.ch, f.person, mentionOf(f.agent, "Atlas"), nil); err != nil {
+		t.Fatal(err)
+	}
+	f.repo.reply = "Done."
+	if err := f.svc.OnChannelRunEnd(context.Background(), f.trig.conv, 7); err != nil {
+		t.Fatal(err)
+	}
+	// The mark was lost: the retry must find the stored reply, not add another.
+	f.repo.runs[f.trig.conv].Posted = false
+	delete(f.repo.claimed, f.trig.conv)
+	n := len(f.repo.messages)
+	if err := f.svc.OnChannelRunEnd(context.Background(), f.trig.conv, 7); err != nil || len(f.repo.messages) != n {
+		t.Fatalf("no second reply: %v", err)
 	}
 }

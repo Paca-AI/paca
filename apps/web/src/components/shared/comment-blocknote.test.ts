@@ -216,6 +216,20 @@ describe("stripUnsafeLinks", () => {
 		]);
 	});
 
+	it("strips a script link inside a table cell", () => {
+		const out = stripUnsafeLinks([
+			{
+				type: "table",
+				content: {
+					type: "tableContent",
+					rows: [{ cells: [[link("javascript:alert(1)", "x")]] }],
+				},
+			},
+		]);
+		expect(JSON.stringify(out)).not.toContain("javascript:");
+		expect(JSON.stringify(out)).toContain('"text":"x"');
+	});
+
 	it("returns the same array when every link is safe", () => {
 		const blocks = [
 			{ type: "paragraph", content: [link("mailto:a@b.test", "a")] },

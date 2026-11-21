@@ -189,3 +189,28 @@ func (s gatedService) TriggerDescriptionWrite(ctx context.Context, projectID, ag
 func (g *Gate) WrapService(svc agentdom.Service) agentdom.Service {
 	return gatedService{Service: svc, gate: g}
 }
+
+// ChatPostGuard is the gate for chat.send_message: the agent an automation
+// posts as must itself be allowed to read and write messages in the channel,
+// as it would be if it posted through the route.
+type ChatPostGuard struct{ authz iam.Checker }
+
+// NewChatPostGuard returns the guard over authz.
+func NewChatPostGuard(authz iam.Checker) *ChatPostGuard { return &ChatPostGuard{authz: authz} }
+
+// AllowAgentPost implements chatsvc.PostGuard.
+func (g *ChatPostGuard) AllowAgentPost(ctx context.Context, projectID, agentAccountID, channelID uuid.UUID) error {
+	if g == nil || g.authz == nil {
+		return fmt.Errorf("chat post guard: not configured")
+	}
+	resource := iam.ProjectResource(projectID.String()) + "/channel/" + channelID.String()
+	ok, err := iam.AllowedAll(ctx, g.authz, iam.Principal{Type: iam.PrincipalAgent, ID: agentAccountID.String()}, resource,
+		iam.ActionChannelsRead, iam.ActionMessagesWrite)
+	if err != nil {
+		return fmt.Errorf("chat post guard: %w", err)
+	}
+	if !ok {
+		return apierr.New(apierr.CodeForbidden, "the agent may not post in this channel")
+	}
+	return nil
+}

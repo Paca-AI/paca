@@ -2,6 +2,7 @@ package chatdom
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -152,6 +153,12 @@ type Repository interface {
 	ClaimAgentRunPost(ctx context.Context, conversationID uuid.UUID) (bool, error)
 	ReleaseAgentRunPost(ctx context.Context, conversationID uuid.UUID) error
 	MarkAgentRunPosted(ctx context.Context, conversationID uuid.UUID) error
+	// AgentReplyStored reports whether the run's reply message already exists
+	// in the channel (a delivery that stored it but could not mark it posted).
+	AgentReplyStored(ctx context.Context, channelID, conversationID uuid.UUID) (bool, error)
+	// CountRecentAgentRuns counts the channel-mention runs the person started
+	// since the given time, for rate limiting.
+	CountRecentAgentRuns(ctx context.Context, requesterID uuid.UUID, since time.Time) (int, error)
 	// IsGlobalAgent reports whether the account is an agent that answers direct
 	// messages (a global agent).
 	IsGlobalAgent(ctx context.Context, accountID uuid.UUID) (bool, error)

@@ -279,12 +279,38 @@ export function stripUnsafeLinks(blocks: unknown[]): unknown[] {
 			return [n];
 		});
 	};
+	// A table's content is {type:"tableContent", rows:[{cells:[inline[]|cell]}]},
+	// not an inline array: its cells hold inline content too.
+	const cleanCell = (cell: unknown): unknown => {
+		if (Array.isArray(cell)) return cleanInline(cell);
+		if (cell && typeof cell === "object") {
+			const c = cell as { content?: unknown };
+			return { ...c, content: cleanInline(c.content) };
+		}
+		return cell;
+	};
+	const cleanBlockContent = (content: unknown): unknown => {
+		if (Array.isArray(content)) return cleanInline(content);
+		const table = content as { type?: string; rows?: unknown } | null;
+		if (table && table.type === "tableContent" && Array.isArray(table.rows)) {
+			return {
+				...table,
+				rows: table.rows.map((row) => {
+					const r = row as { cells?: unknown };
+					return Array.isArray(r.cells)
+						? { ...r, cells: r.cells.map(cleanCell) }
+						: row;
+				}),
+			};
+		}
+		return content;
+	};
 	const cleanBlock = (b: unknown): unknown => {
 		if (!b || typeof b !== "object") return b;
 		const block = b as { content?: unknown; children?: unknown };
 		return {
 			...block,
-			content: cleanInline(block.content),
+			content: cleanBlockContent(block.content),
 			children: Array.isArray(block.children)
 				? block.children.map(cleanBlock)
 				: block.children,

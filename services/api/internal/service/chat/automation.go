@@ -33,6 +33,19 @@ const (
 	AutomationOwner = "core.chat"
 )
 
+// PostGuard decides whether an agent may post in a channel from an automation
+// (no HTTP route stands in front of that path, so the check is injected, like
+// the agent trigger gate). A nil guard allows it.
+type PostGuard interface {
+	AllowAgentPost(ctx context.Context, projectID, agentAccountID, channelID uuid.UUID) error
+}
+
+// WithPostGuard makes chat.send_message check the agent's permission first.
+func (s *Service) WithPostGuard(g PostGuard) *Service {
+	s.postGuard = g
+	return s
+}
+
 // AutomationEmitter hands a chat event to the automation engine.
 type AutomationEmitter interface {
 	EmitAutomationEvent(ctx context.Context, topic string, payload map[string]any) error
@@ -188,6 +201,11 @@ func (s *Service) sendAsAgent(ctx context.Context, nodeType string, projectID uu
 	// The channel must be one of this project's, whatever id the template gave.
 	if _, err := s.repo.FindChannel(ctx, projectID, channelID, agent); err != nil {
 		return err
+	}
+	if s.postGuard != nil {
+		if err := s.postGuard.AllowAgentPost(ctx, projectID, agent, channelID); err != nil {
+			return err
+		}
 	}
 	if _, err := s.PostMessage(ctx, projectID, channelID, agent, blocksOf(text), thread); err != nil {
 		return err

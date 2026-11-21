@@ -1488,8 +1488,10 @@ func (r *ChatRepository) ListAgentRuns(ctx context.Context, link *chatdom.AgentL
 			UNION ALL
 			SELECT ac.id::text, COALESCE(ac.title, ''), ch.name, ac.status, ac.created_at, ac.updated_at
 			FROM chat_agent_runs r JOIN agent_conversations ac ON ac.id = r.conversation_id AND ac.deleted_at IS NULL
-			JOIN channels ch ON ch.id = r.channel_id
+			JOIN channels ch ON ch.id = r.channel_id AND ch.archived_at IS NULL
 			WHERE r.agent_id = $2::uuid AND r.requester_id = $3::uuid
+			  AND (ch.kind = 'public' OR EXISTS (SELECT 1 FROM channel_members cm WHERE cm.channel_id = ch.id AND cm.account_id = $3::uuid))
+			  AND EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = ch.project_id AND pm.account_id = $3::uuid AND pm.deleted_at IS NULL)
 		) runs ORDER BY created_at DESC, id LIMIT $4`,
 		session, link.AgentID.String(), link.AccountID.String(), limit); err != nil {
 		return nil, fmt.Errorf("chat: list agent runs: %w", err)
@@ -1611,6 +1613,26 @@ func (r *ChatRepository) MarkAgentRunPosted(ctx context.Context, conversationID 
 		return fmt.Errorf("chat: mark agent run posted: %w", err)
 	}
 	return nil
+}
+
+// AgentReplyStored implements chatdom.Repository.
+func (r *ChatRepository) AgentReplyStored(ctx context.Context, channelID, conversationID uuid.UUID) (bool, error) {
+	var ok bool
+	if err := r.db.GetContext(ctx, &ok, `SELECT EXISTS (SELECT 1 FROM messages WHERE channel_id = $1::uuid AND run_id = $2::uuid AND deleted_at IS NULL)`,
+		channelID.String(), conversationID.String()); err != nil {
+		return false, fmt.Errorf("chat: agent reply stored: %w", err)
+	}
+	return ok, nil
+}
+
+// CountRecentAgentRuns implements chatdom.Repository.
+func (r *ChatRepository) CountRecentAgentRuns(ctx context.Context, requesterID uuid.UUID, since time.Time) (int, error) {
+	var n int
+	if err := r.db.GetContext(ctx, &n, `SELECT COUNT(*) FROM chat_agent_runs WHERE requester_id = $1::uuid AND created_at >= $2`,
+		requesterID.String(), since); err != nil {
+		return 0, fmt.Errorf("chat: count agent runs: %w", err)
+	}
+	return n, nil
 }
 
 // IsGlobalAgent implements chatdom.Repository.

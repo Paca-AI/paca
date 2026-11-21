@@ -3,6 +3,7 @@ package chatsvc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -96,5 +97,24 @@ func TestAutomation_SendMessageAsAgent(t *testing.T) {
 	res = run(map[string]any{"member_id": agentMember.String(), "channel_id": "{{event.channel_id}}", "text": "x"})
 	if res["applied"] != false {
 		t.Errorf("an unrendered channel id is refused: %v", res)
+	}
+}
+
+type denyGuard struct{}
+
+func (denyGuard) AllowAgentPost(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error {
+	return errors.New("forbidden")
+}
+
+func TestAutomation_SendMessageNeedsThePostGuard(t *testing.T) {
+	f := setupChannel("public")
+	f.svc.WithPostGuard(denyGuard{})
+	b, _ := json.Marshal(map[string]any{"member_id": f.repo.members[f.agent].String(), "channel_id": f.ch.String(), "text": "hi"})
+	raw, _ := json.Marshal(map[string]any{"node_type": ActionSendMessage, "project_id": f.project, "config": json.RawMessage(b)})
+	out, _ := f.svc.RunAutomationAction(context.Background(), raw)
+	var res map[string]any
+	_ = json.Unmarshal(out, &res)
+	if res["applied"] != false || len(f.repo.messages) != 0 {
+		t.Errorf("a denied agent posts nothing: %v", res)
 	}
 }

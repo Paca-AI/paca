@@ -26,6 +26,7 @@ type Service struct {
 	agents     chatdom.AgentResponder
 	trigger    chatdom.AgentTrigger
 	automation AutomationEmitter
+	postGuard  PostGuard
 }
 
 var _ chatdom.Service = (*Service)(nil)
