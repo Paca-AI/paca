@@ -1031,23 +1031,11 @@ func (h *TaskHandler) ListAssignedToMe(w http.ResponseWriter, r *http.Request) {
 
 	// Each project the caller has an assignment in contributes the scope of the
 	// tasks they may read there, applied by the repository inside the query.
-	listCtx := r.Context()
-	if h.listScoper != nil {
-		principal, perr := middleware.IAMPrincipalFrom(r)
-		if perr != nil {
-			presenter.Error(w, r, perr)
-			return
-		}
-		byProject := map[string]*iam.Node{}
-		for _, pid := range memberProjects {
-			n, serr := h.listScoper.ListScope(r.Context(), principal, string(iam.ActionTasksRead), pid.String(), "task")
-			if serr != nil {
-				presenter.Error(w, r, serr)
-				return
-			}
-			byProject[pid.String()] = n
-		}
-		listCtx = iam.WithProjectScopes(listCtx, "task", byProject)
+	// One batched authorizer query instead of one per project.
+	listCtx, err := h.projectScopesContext(r, memberProjects)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
 	}
 	tasks, hasMore, err := h.svc.ListAssignedTasks(listCtx, memberIDs, pageSize, cursor)
 	if err != nil {
@@ -1129,24 +1117,12 @@ func (h *TaskHandler) ListWaitingTasks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Each accessible project contributes the scope of the tasks the caller
-	// may read there, applied by the repository inside the query.
-	listCtx := r.Context()
-	if h.listScoper != nil {
-		principal, perr := middleware.IAMPrincipalFrom(r)
-		if perr != nil {
-			presenter.Error(w, r, perr)
-			return
-		}
-		byProject := map[string]*iam.Node{}
-		for _, pid := range projectIDs {
-			n, serr := h.listScoper.ListScope(r.Context(), principal, string(iam.ActionTasksRead), pid.String(), "task")
-			if serr != nil {
-				presenter.Error(w, r, serr)
-				return
-			}
-			byProject[pid.String()] = n
-		}
-		listCtx = iam.WithProjectScopes(listCtx, "task", byProject)
+	// may read there, applied by the repository inside the query. One batched
+	// authorizer query instead of one per project.
+	listCtx, err := h.projectScopesContext(r, projectIDs)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
 	}
 	tasks, hasMore, err := h.svc.ListWaitingTasks(listCtx, projectIDs, pageSize)
 	if err != nil {

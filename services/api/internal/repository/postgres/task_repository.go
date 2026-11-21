@@ -1477,6 +1477,9 @@ func (r *TaskRepository) ListWaitingTasks(ctx context.Context, projectIDs []uuid
 		}
 		tasks = append(tasks, t)
 	}
+	if err := r.attachAssigneeIDs(ctx, tasks); err != nil {
+		return nil, false, err
+	}
 	return tasks, hasMore, nil
 }
 

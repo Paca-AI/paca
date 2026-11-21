@@ -79,8 +79,12 @@ function readStoredFields(): string[] {
 }
 
 function readStoredPageSize(): number {
-	const n = Number.parseInt(localStorage.getItem(SIZE_STORAGE_KEY) ?? "", 10);
-	return PAGE_SIZES.includes(n) ? n : WAITING_TASKS_PAGE_SIZE;
+	try {
+		const n = Number.parseInt(localStorage.getItem(SIZE_STORAGE_KEY) ?? "", 10);
+		return PAGE_SIZES.includes(n) ? n : WAITING_TASKS_PAGE_SIZE;
+	} catch {
+		return WAITING_TASKS_PAGE_SIZE;
+	}
 }
 
 export function WaitingTasksList() {
