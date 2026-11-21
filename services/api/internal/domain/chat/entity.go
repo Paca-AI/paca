@@ -220,6 +220,13 @@ type MessageRef struct {
 // MaxMessageRefs bounds a Mentions, Threads or Saved page.
 const MaxMessageRefs = 50
 
+// Search limits: the shortest query (the trigram index serves three characters
+// and up) and the longest.
+const (
+	MinSearchLen = 3
+	MaxSearchLen = 100
+)
+
 // InboxFilter narrows the Inbox.
 type InboxFilter struct {
 	UnreadOnly bool
@@ -251,13 +258,27 @@ type AgentLink struct {
 	BridgedIndex   int
 }
 
+// ChannelAgentRun links an agent run to the channel message that started it.
+type ChannelAgentRun struct {
+	ConversationID  uuid.UUID
+	ProjectID       uuid.UUID // of the channel; read, not stored
+	ChannelID       uuid.UUID
+	SourceMessageID uuid.UUID
+	ThreadRootID    uuid.UUID
+	AgentID         uuid.UUID
+	RequesterID     uuid.UUID
+	Posted          bool
+}
+
 // AgentRun is one run (conversation) of the agent in a direct message.
 type AgentRun struct {
-	ID        uuid.UUID
-	Title     string
-	Status    string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID    uuid.UUID
+	Title string
+	// ChannelName is set for a run an @mention in that channel started.
+	ChannelName string
+	Status      string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // AgentRuns is the agent's side of a direct message: who it is and what it did.

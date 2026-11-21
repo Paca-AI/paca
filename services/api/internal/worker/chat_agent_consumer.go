@@ -30,6 +30,8 @@ type chatAgentConversations interface {
 // chatAgentBridge turns a finished agent turn into a chat message.
 type chatAgentBridge interface {
 	OnAgentTurnEnd(ctx context.Context, sessionID, conversationID uuid.UUID, turnEnd int) error
+	// OnChannelRunEnd posts the answer of a run a channel mention started.
+	OnChannelRunEnd(ctx context.Context, conversationID uuid.UUID, turnEnd int) error
 }
 
 // ChatAgentConsumer posts the agent's reply into the direct message that talks to
@@ -159,6 +161,12 @@ func (c *ChatAgentConsumer) handle(msg redis.XMessage) {
 	if conv.ChatSessionID != nil {
 		if err := c.bridge.OnAgentTurnEnd(ctx, *conv.ChatSessionID, convID, turnEnd); err != nil {
 			c.log.Error("chat agent consumer: post reply", "conversation_id", convID, "err", err)
+			return
+		}
+	} else if conv.ProjectID != uuid.Nil {
+		// A run with no chat session may be one a channel mention started.
+		if err := c.bridge.OnChannelRunEnd(ctx, convID, turnEnd); err != nil {
+			c.log.Error("chat agent consumer: post channel reply", "conversation_id", convID, "err", err)
 			return
 		}
 	}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -999,5 +1000,122 @@ func TestChatAgentDirectMessage(t *testing.T) {
 	got, err := repo.FindMessage(ctx, dm.ID, m.ID, alice)
 	if err != nil || got.RunID == nil || *got.RunID != conv || got.AuthorName == "" {
 		t.Fatalf("message with run: %+v %v", got, err)
+	}
+}
+
+// SearchMessages matches message text with a trigram ILIKE. The query argument
+// is $2 (the account is $1) and the optional project is $3, so a project
+// filter, the LIKE escape and the LIMIT must all line up.
+func TestChatSearchMessages(t *testing.T) {
+	db := newIAMPGTestDB(t)
+	fx := newIAMFx(t, db)
+	ctx := context.Background()
+	p1, p2 := fx.project(), fx.project()
+	alice := fx.user(false)
+	repo := NewChatRepository(db)
+	svc := chatsvc.New(repo)
+	var chans [2]*chatdom.Channel
+	for i, p := range []uuid.UUID{p1, p2} {
+		fx.member(p, alice, false)
+		list, err := svc.ListChannels(ctx, p, alice, chatdom.ChannelFilter{})
+		if err != nil || len(list) != 1 {
+			t.Fatalf("project %d channels: %v %v", i, list, err)
+		}
+		chans[i] = list[0]
+	}
+	post := func(p uuid.UUID, ch *chatdom.Channel, s string) {
+		t.Helper()
+		if _, err := svc.PostMessage(ctx, p, ch.ID, alice, text(s), nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	post(p1, chans[0], "the rollback plan for the migration")
+	post(p1, chans[0], "we are 100% sure about it")
+	post(p1, chans[0], "we are 1000 sure about it")
+	post(p2, chans[1], "another rollback plan elsewhere")
+
+	all, err := repo.SearchMessages(ctx, alice, "rollback", nil, 10)
+	if err != nil || len(all) != 2 {
+		t.Fatalf("without a project filter both rollback messages match: %d %v", len(all), err)
+	}
+	one, err := repo.SearchMessages(ctx, alice, "rollback", &p1, 10)
+	if err != nil || len(one) != 1 || one[0].ProjectID == nil || *one[0].ProjectID != p1 {
+		t.Fatalf("a project filter keeps that project's match: %v %v", one, err)
+	}
+	limited, err := repo.SearchMessages(ctx, alice, "rollback", nil, 1)
+	if err != nil || len(limited) != 1 {
+		t.Fatalf("the limit applies: %d %v", len(limited), err)
+	}
+	// "%" in the query is text, not a wildcard.
+	pct, err := repo.SearchMessages(ctx, alice, "100%", nil, 10)
+	if err != nil || len(pct) != 1 {
+		t.Fatalf("100%% matches only the literal text: %d %v", len(pct), err)
+	}
+}
+
+// The channel-mention run helpers: the per-person count behind the rate limit,
+// the reply-already-stored check, and who may see a run in their run list.
+func TestChatChannelAgentRuns(t *testing.T) {
+	db := newIAMPGTestDB(t)
+	fx := newIAMFx(t, db)
+	ctx := context.Background()
+	p := fx.project()
+	alice := fx.user(false)
+	fx.member(p, alice, false)
+	repo := NewChatRepository(db)
+	svc := chatsvc.New(repo)
+	list, err := svc.ListChannels(ctx, p, alice, chatdom.ChannelFilter{})
+	if err != nil || len(list) != 1 {
+		t.Fatalf("channels: %v %v", list, err)
+	}
+	ch := list[0]
+	msg, err := svc.PostMessage(ctx, p, ch.ID, alice, text("@agent look"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db.SetMaxOpenConns(1)
+	pgExec(t, db, `SET session_replication_role = replica`)
+	agent, conv := uuid.New(), uuid.New()
+	pgExec(t, db, `INSERT INTO agent_conversations (id, agent_id, project_id, trigger_type, triggered_by_member_id, status, title)
+		VALUES ($1, $2, $3, 'chat_message', $4, 'running', 'Mention run')`, conv, agent, p, alice)
+	if err := repo.CreateAgentRun(ctx, &chatdom.ChannelAgentRun{
+		ConversationID: conv, ChannelID: ch.ID, SourceMessageID: msg.ID, ThreadRootID: msg.ID, AgentID: agent, RequesterID: alice,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if n, err := repo.CountRecentAgentRuns(ctx, alice, time.Now().Add(-time.Minute)); err != nil || n != 1 {
+		t.Fatalf("recent runs: %d %v", n, err)
+	}
+	if n, _ := repo.CountRecentAgentRuns(ctx, alice, time.Now().Add(time.Minute)); n != 0 {
+		t.Fatalf("a window in the future holds none: %d", n)
+	}
+	if n, _ := repo.CountRecentAgentRuns(ctx, uuid.New(), time.Now().Add(-time.Minute)); n != 0 {
+		t.Fatalf("another person's runs are not counted: %d", n)
+	}
+
+	link := &chatdom.AgentLink{ChannelID: ch.ID, AgentID: agent, AccountID: alice}
+	if runs, err := repo.ListAgentRuns(ctx, link, 10); err != nil || len(runs) != 1 || runs[0].ChannelName != ch.Name {
+		t.Fatalf("the requester sees the run with its channel: %+v %v", runs, err)
+	}
+	if runs, _ := repo.ListAgentRuns(ctx, &chatdom.AgentLink{ChannelID: ch.ID, AgentID: agent, AccountID: uuid.New()}, 10); len(runs) != 0 {
+		t.Fatalf("someone else does not see it: %+v", runs)
+	}
+
+	if ok, err := repo.AgentReplyStored(ctx, ch.ID, conv); err != nil || ok {
+		t.Fatalf("no reply yet: %v %v", ok, err)
+	}
+	reply := &chatdom.Message{ChannelID: ch.ID, AuthorID: alice, Content: text("done"), ContentText: "done", ThreadRootID: &msg.ID, RunID: &conv}
+	if err := repo.CreateMessage(ctx, reply); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := repo.AgentReplyStored(ctx, ch.ID, conv); err != nil || !ok {
+		t.Fatalf("reply stored: %v %v", ok, err)
+	}
+
+	pgExec(t, db, `UPDATE project_members SET deleted_at = NOW() WHERE project_id = $1 AND account_id = $2`, p, alice)
+	if runs, _ := repo.ListAgentRuns(ctx, link, 10); len(runs) != 0 {
+		t.Fatalf("a person who left the project no longer sees the run: %+v", runs)
 	}
 }

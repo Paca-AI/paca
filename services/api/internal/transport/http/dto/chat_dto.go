@@ -230,11 +230,13 @@ func MessageRefFromEntity(r chatdom.MessageRef) MessageRefResponse {
 
 // AgentRunResponse is one run of an agent in a direct message.
 type AgentRunResponse struct {
-	ID        uuid.UUID `json:"id"`
-	Title     string    `json:"title"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID    uuid.UUID `json:"id"`
+	Title string    `json:"title"`
+	// ChannelName is the channel whose @mention started the run, empty otherwise.
+	ChannelName string    `json:"channel_name"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // AgentRunsResponse is the agent side of a direct message.
@@ -248,7 +250,7 @@ type AgentRunsResponse struct {
 func AgentRunsFromEntity(a *chatdom.AgentRuns) AgentRunsResponse {
 	out := AgentRunsResponse{Replies: a.Replies, Working: a.Working, Runs: make([]AgentRunResponse, len(a.Runs))}
 	for i, r := range a.Runs {
-		out.Runs[i] = AgentRunResponse{ID: r.ID, Title: r.Title, Status: r.Status, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
+		out.Runs[i] = AgentRunResponse{ID: r.ID, Title: r.Title, ChannelName: r.ChannelName, Status: r.Status, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
 	}
 	return out
 }

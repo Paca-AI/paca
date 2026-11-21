@@ -204,9 +204,11 @@ export function ThreadPane({
 					canModerate={false}
 					canReply={false}
 					actions={{ ...actions, openThread: undefined }}
+					mentionProjectId={mentionProjectId}
 				/>
 			</div>
 			<MessageList
+				mentionProjectId={mentionProjectId}
 				items={allReplies}
 				hasOlder={replies.data?.hasOlder ?? false}
 				loadingOlder={loadOlder.isPending}

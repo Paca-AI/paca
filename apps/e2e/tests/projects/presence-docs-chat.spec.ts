@@ -231,7 +231,7 @@ test.describe("Presence in docs and chat", () => {
 
 		async function openChannel(page: Page) {
 			await page.goto(`${BASE_URL}/projects/${projectId}/chat/${channelId}`);
-			await expect(page.locator("textarea").first()).toBeVisible({
+			await expect(page.locator('fieldset [contenteditable="true"]').first()).toBeVisible({
 				timeout: 15_000,
 			});
 		}
@@ -278,7 +278,7 @@ test.describe("Presence in docs and chat", () => {
 			await openChannel(other.page);
 			await expect(page.getByTestId("channel-viewers")).toBeVisible();
 
-			const box = other.page.locator("textarea").first();
+			const box = other.page.locator('fieldset [contenteditable="true"]').first();
 			await box.fill("");
 			await box.pressSequentially("hello there");
 			await expect(typing(page)).toHaveText(
@@ -353,12 +353,12 @@ test.describe("Presence in docs and chat", () => {
 
 			await signIn(page);
 			await page.goto(`${BASE_URL}/chat/dm/${channelId}`);
-			await expect(page.locator("textarea").first()).toBeVisible({
+			await expect(page.locator('fieldset [contenteditable="true"]').first()).toBeVisible({
 				timeout: 15_000,
 			});
 			const other = await newSignedInPage(browser, member);
 			await other.page.goto(`${BASE_URL}/chat/dm/${channelId}`);
-			const box = other.page.locator("textarea").first();
+			const box = other.page.locator('fieldset [contenteditable="true"]').first();
 			await expect(box).toBeVisible({ timeout: 15_000 });
 			await expect(page.getByTestId("channel-viewers")).toBeVisible();
 

@@ -8,7 +8,7 @@ import {
 	getDefaultReactSlashMenuItems,
 	SuggestionMenuController,
 } from "@blocknote/react";
-import { Workflow } from "lucide-react";
+import { Terminal, Workflow } from "lucide-react";
 import { EntityAvatar } from "@/components/shared/entity-avatar";
 import { useDebouncedAsyncCallback } from "@/hooks/use-debounced-callback";
 import { useStableCallback } from "@/hooks/use-stable-callback";
@@ -17,6 +17,7 @@ import {
 	searchMentionableMembers,
 	searchMentionableTasks,
 } from "@/lib/mention-api";
+import type { SlashCommand } from "@/lib/slash-commands";
 import type { customSchema } from "./blocknote-schema";
 
 /** BlockNote calls getItems on every keystroke after "#" — debounce the
@@ -42,6 +43,11 @@ interface MentionSuggestionMenuProps {
 	 *  queried on demand instead of being preloaded in full (see
 	 *  mention-api.ts). */
 	projectId?: string | null;
+	/** Commands (`/task`, `/doc`…) listed in the "/" menu above the block
+	 *  types. The same list is offered in chat and in comments. */
+	commands?: SlashCommand[];
+	/** A command that needs no arguments was picked: run it now. */
+	onCommand?: (command: SlashCommand) => void;
 }
 
 /**
@@ -62,9 +68,59 @@ export function groupContiguously<T extends { group?: string }>(
 	return order.flatMap((group) => items.filter((item) => item.group === group));
 }
 
+/** The tallest a menu grows before it scrolls. */
+const MENU_MAX_HEIGHT = 360;
+const MENU_GAP = 10;
+const MENU_EDGE = 10;
+
+/**
+ * Where a menu opens: below the caret when there is room (or more room than
+ * above), otherwise above it, with its height capped to the room on that side.
+ *
+ * BlockNote's own middleware (autoPlacement, then a size cap) never flips a
+ * menu that opened near the bottom: the cap shrinks it to the room below, so
+ * it no longer overflows and stays there as a sliver. Choosing the side from
+ * the room, before capping, avoids that. It runs with the "fixed" strategy so
+ * an ancestor with `overflow` (the chat page, the comment pane's scroll area)
+ * cannot clip the menu either.
+ */
+const pickSide = {
+	name: "pickSide",
+	fn({
+		y,
+		placement,
+		rects,
+		elements,
+	}: {
+		y: number;
+		placement: string;
+		rects: { reference: { y: number; height: number } };
+		elements: { floating: HTMLElement };
+	}) {
+		const below =
+			window.innerHeight - (rects.reference.y + rects.reference.height);
+		const above = rects.reference.y;
+		const want =
+			below >= MENU_MAX_HEIGHT || below >= above ? "bottom-start" : "top-start";
+		if (want !== placement) return { reset: { placement: want } };
+		const room = (want === "top-start" ? above : below) - MENU_GAP - MENU_EDGE;
+		elements.floating.style.maxHeight = `${Math.max(
+			0,
+			Math.min(MENU_MAX_HEIGHT, room),
+		)}px`;
+		return { y: y + (want === "top-start" ? -MENU_GAP : MENU_GAP) };
+	},
+};
+
+const MENU_FLOATING = {
+	useFloatingOptions: { strategy: "fixed", middleware: [pickSide] },
+} as never;
+
 export function MentionSuggestionMenus({
 	editor,
 	projectId,
+	commands,
+	onCommand,
 }: MentionSuggestionMenuProps) {
 	const debouncedSearchMentionableTasks = useDebouncedAsyncCallback(
 		searchMentionableTasks,
@@ -138,6 +194,8 @@ export function MentionSuggestionMenus({
 							id: task.id,
 							title: task.title,
 							status: "open",
+							projectId,
+							number: task.task_number,
 						},
 					},
 					" ",
@@ -166,6 +224,7 @@ export function MentionSuggestionMenus({
 						props: {
 							id: doc.id,
 							title: doc.title,
+							projectId,
 						},
 					},
 					" ",
@@ -174,8 +233,26 @@ export function MentionSuggestionMenus({
 		}));
 	};
 
+	const getCommandItems = (): DefaultReactSuggestionItem[] =>
+		(commands ?? []).map((c) => ({
+			title: c.title ?? `/${c.name}`,
+			subtext: `/${c.name}${c.hint ? ` ${c.hint}` : ""} · ${c.description}`,
+			aliases: [c.name, `/${c.name}`],
+			group: "Commands",
+			icon: <Terminal size={18} />,
+			onItemClick: () => {
+				if (c.requiresArgs) {
+					// Type the name so the author can add the arguments.
+					editor.insertInlineContent([`/${c.name} `]);
+				} else {
+					onCommand?.(c);
+				}
+			},
+		}));
+
 	const getSlashMenuItems = (): DefaultReactSuggestionItem[] =>
 		groupContiguously([
+			...getCommandItems(),
 			...getDefaultReactSlashMenuItems(editor),
 			{
 				title: "Mermaid Diagram",
@@ -213,14 +290,17 @@ export function MentionSuggestionMenus({
 	return (
 		<>
 			<SuggestionMenuController
+				floatingUIOptions={MENU_FLOATING}
 				triggerCharacter="/"
 				getItems={loadSlashItems}
 			/>
 			<SuggestionMenuController
+				floatingUIOptions={MENU_FLOATING}
 				triggerCharacter="@"
 				getItems={loadMentionItems}
 			/>
 			<SuggestionMenuController
+				floatingUIOptions={MENU_FLOATING}
 				triggerCharacter="#"
 				getItems={loadReferenceItems}
 			/>

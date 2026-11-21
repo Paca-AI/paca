@@ -518,7 +518,7 @@ func New(cfg *config.Config) (*App, error) {
 	// A direct message with a global agent is answered by it: the service hands
 	// the person's words to the agent's global chat and the consumer next line posts
 	// the reply when its turn ends.
-	chatService := chatsvc.New(chatRepo).WithNotifier(chatsvc.NewPubSubNotifier(publisher)).WithAgentResponder(chatsvc.NewGlobalAgentResponder(agentService))
+	chatService := chatsvc.New(chatRepo).WithNotifier(chatsvc.NewPubSubNotifier(publisher)).WithAgentResponder(chatsvc.NewGlobalAgentResponder(agentService)).WithAgentTrigger(chatsvc.NewMentionTrigger(triggerGate)).WithPostGuard(triggergate.NewChatPostGuard(authorizer))
 	chatAgentConsumer := worker.NewChatAgentConsumer(redisClient, agentRepo, chatService, log)
 
 	// Forward every recorded activity (task created/updated/deleted, comments,
@@ -557,7 +557,8 @@ func New(cfg *config.Config) (*App, error) {
 	// The Git automation nodes (pull request triggers, state condition, merge
 	// and comment actions) are core's, so they work the same on every Git
 	// platform; the automation engine reaches them next to the plugins' own.
-	automationNodes := gitsvc.NewAutomationRuntime(pluginRuntime, gitService)
+	automationNodes := chatsvc.NewAutomationRuntime(gitsvc.NewAutomationRuntime(pluginRuntime, gitService), chatService)
+	chatService.WithAutomationEmitter(gitAutomationEmitter{pub: publisher})
 	automationService.WithPluginNodeResolver(automationNodes)
 	automationConsumer.WithPluginRuntime(automationNodes)
 	// A deleted project takes its own Git connections with it.

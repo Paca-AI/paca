@@ -90,6 +90,7 @@ var openRouteGroups = []struct {
 			"GET /api/v1/users/me/chat/mentions",
 			"GET /api/v1/users/me/chat/threads",
 			"GET /api/v1/users/me/chat/saved",
+			"GET /api/v1/users/me/chat/search",
 			"POST /api/v1/users/me/permissions/check",
 			"POST /api/v1/users/me/chat/read-all",
 			"GET /api/v1/users/me/notifications",

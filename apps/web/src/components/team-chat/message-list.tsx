@@ -47,6 +47,7 @@ export function MessageList({
 	readSeq,
 	footer,
 	peer,
+	mentionProjectId,
 }: {
 	items: ChatMessage[];
 	hasOlder: boolean;
@@ -61,6 +62,8 @@ export function MessageList({
 	readSeq?: number;
 	footer?: React.ReactNode;
 	peer?: ChatPeer | null;
+	/** Offers "@" and "#" suggestions when a message is edited. */
+	mentionProjectId?: string;
 }) {
 	const { t } = useTranslation("chat");
 	// The reader's own messages are never "new" to them.
@@ -105,6 +108,7 @@ export function MessageList({
 							canReply={canReply}
 							actions={actions}
 							peer={peer}
+							mentionProjectId={mentionProjectId}
 						/>
 					</Fragment>
 				);

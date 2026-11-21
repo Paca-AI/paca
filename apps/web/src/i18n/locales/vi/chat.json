@@ -44,7 +44,13 @@
 		"readOnly": "Bạn có thể đọc kênh này nhưng không thể đăng tin.",
 		"archived": "Kênh này đã được lưu trữ.",
 		"tooLong": "Tin nhắn quá dài.",
-		"mentionList": "Người để nhắc đến"
+		"mentionList": "Người để nhắc đến",
+		"commandList": "Lệnh",
+		"referenceList": "Công việc và tài liệu",
+		"commandUsage": "Cách dùng: {{usage}}",
+		"hintCommands": "Enter để gửi, Shift+Enter để xuống dòng, / để dùng lệnh, # để chọn công việc và tài liệu",
+		"commandTaskDescription": "Tạo công việc từ nội dung này và liên kết tại đây",
+		"commandNewDescription": "Bắt đầu cuộc trò chuyện mới với tác nhân"
 	},
 	"message": {
 		"edited": "(đã chỉnh sửa)",
@@ -59,7 +65,8 @@
 		"viewThread": "Xem luồng ({{count}})",
 		"bookmark": "Lưu tin nhắn",
 		"unbookmark": "Bỏ khỏi mục đã lưu",
-		"viewRun": "Xem lượt chạy"
+		"viewRun": "Xem lượt chạy",
+		"createTask": "Tạo công việc từ tin nhắn"
 	},
 	"thread": {
 		"title": "Luồng",
@@ -136,7 +143,12 @@
 			"threadsBody": "Bạn theo dõi một luồng khi trả lời trong đó, được nhắc đến trong đó hoặc chọn Theo dõi.",
 			"savedTitle": "Chưa lưu gì",
 			"savedBody": "Lưu một tin nhắn từ thanh công cụ của nó để tìm lại ở đây."
-		}
+		},
+		"search": "Tìm tin nhắn",
+		"searchClear": "Xóa tìm kiếm",
+		"searchShort": "Nhập ít nhất 3 ký tự để tìm kiếm.",
+		"searchEmptyTitle": "Không tìm thấy tin nhắn",
+		"searchEmptyBody": "Không có kết quả khớp \"{{q}}\" trong các kênh bạn có thể đọc."
 	},
 	"browse": {
 		"title": "Duyệt kênh",
@@ -205,6 +217,14 @@
 			"failed": "Lỗi",
 			"stopped": "Đã dừng"
 		},
-		"isWorking": "đang làm việc…"
+		"isWorking": "đang làm việc…",
+		"fromChannel": "từ #{{channel}}"
+	},
+	"reference": {
+		"doc": "Tài liệu",
+		"locked": "Bạn không có quyền truy cập mục này"
+	},
+	"tasks": {
+		"created": "Đã tạo công việc:"
 	}
 }

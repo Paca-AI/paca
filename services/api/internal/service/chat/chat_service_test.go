@@ -153,3 +153,13 @@ func TestAMentionAloneIsAMessage(t *testing.T) {
 		t.Errorf("text = %q err = %v", text, err)
 	}
 }
+
+func TestContentText_References(t *testing.T) {
+	text, err := ContentText([]byte(`[{"type":"paragraph","content":[{"type":"text","text":"see"},{"type":"taskReference","props":{"id":"x","projectId":"p","number":42}},{"type":"docReference","props":{"id":"d","projectId":"p"}}]}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text != "see #42 #doc" {
+		t.Errorf("references keep a label, never a title: %q", text)
+	}
+}

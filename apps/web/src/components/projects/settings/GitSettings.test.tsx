@@ -1084,7 +1084,9 @@ describe("GitSettings", () => {
 				"acme/web",
 			);
 			expect(screen.getByRole("button", { name: "Link" })).toBeEnabled();
-		});
+			// Its own waits allow 5s each for a slow dialog exit under CI load, so
+			// the test needs a longer limit than vitest's default 5s.
+		}, 20_000);
 
 		it("needs a connection to browse when several can see it", async () => {
 			connections = [

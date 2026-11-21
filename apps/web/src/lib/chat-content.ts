@@ -7,71 +7,85 @@ import type { ChatBlock, ChatInline } from "./chat-api";
 
 export const MAX_MESSAGE_LENGTH = 20_000;
 
-/** Someone a message mentions: an account id and the name shown. */
+/**
+ * Something a message links to, written in the text as a token: `@Name` for a
+ * person, `#…` for a task or a document. `name` is the text after the prefix.
+ *
+ * A task or document chip stores only ids, never the title: the title is read
+ * when the message is shown, with the reader's own access, so a person who may
+ * not open the task sees a locked chip instead of its name.
+ */
 export interface ChatMention {
 	id: string;
 	name: string;
+	/** Defaults to a person. */
+	kind?: "user" | "task" | "doc";
+	/** The project a task or document belongs to. */
+	projectId?: string;
+	/** A task's number, which is its stored and edited label. */
+	number?: number;
 }
 
-/** The inline node of a mention, in the format comments use, so one renderer
- * and one server-side parser serve both. */
+/** The label a stored reference is written as when a message is edited as text. */
+export function referenceLabel(
+	kind: "task" | "doc",
+	id: string,
+	num?: number,
+): string {
+	return kind === "task" && num ? String(num) : `doc:${id.slice(0, 8)}`;
+}
+
+/** The inline node of a mention or reference. A person mention uses the format
+ * comments use, so one renderer and one server-side parser serve both. */
 export function mentionNode(m: ChatMention): ChatInline {
+	if (m.kind === "task") {
+		return {
+			type: "taskReference",
+			props: { id: m.id, projectId: m.projectId ?? "", number: m.number ?? 0 },
+		};
+	}
+	if (m.kind === "doc") {
+		return {
+			type: "docReference",
+			props: { id: m.id, projectId: m.projectId ?? "" },
+		};
+	}
 	return { type: "teamMention", props: { id: m.id, name: m.name } };
 }
 
-/**
- * One paragraph per line; blank lines are dropped. `@Name` for each mention
- * becomes a mention node (a name no longer in the text is simply not one).
- * Returns [] for no text.
- */
-export function textToBlocks(
-	text: string,
-	mentions: ChatMention[] = [],
-): ChatBlock[] {
-	// Longest names first, so "@Ann Lee" wins over "@Ann".
-	const named = [...mentions].sort((a, b) => b.name.length - a.name.length);
-	const lineToInline = (line: string): ChatInline[] => {
-		const out: ChatInline[] = [];
-		let rest = line;
-		while (rest.length > 0) {
-			let at = -1;
-			let hit: ChatMention | undefined;
-			for (const m of named) {
-				const i = rest.indexOf(`@${m.name}`);
-				// A mention ends at the end of the text or before a non-name character.
-				const end = i + m.name.length + 1;
-				const boundary =
-					end >= rest.length || /[\s.,;:!?)\]]/.test(rest[end] ?? "");
-				if (i !== -1 && boundary && (at === -1 || i < at)) {
-					at = i;
-					hit = m;
-				}
-			}
-			if (!hit || at === -1) {
-				out.push({ type: "text", text: rest, styles: {} });
-				break;
-			}
-			if (at > 0)
-				out.push({ type: "text", text: rest.slice(0, at), styles: {} });
-			out.push(mentionNode(hit));
-			rest = rest.slice(at + hit.name.length + 1);
-		}
-		return out;
-	};
-	return text
-		.split("\n")
-		.map((line) => line.trimEnd())
-		.filter((line) => line.trim() !== "")
-		.map((line) => ({ type: "paragraph", content: lineToInline(line) }));
+function referenceOf(n: ChatInline): ChatMention | null {
+	const id = n.props?.id;
+	if (typeof id !== "string") return null;
+	const projectId = String(n.props?.projectId ?? "");
+	if (n.type === "taskReference") {
+		const num = Number(n.props?.number ?? 0);
+		return {
+			id,
+			kind: "task",
+			projectId,
+			number: num,
+			name: referenceLabel("task", id, num),
+		};
+	}
+	if (n.type === "docReference") {
+		return {
+			id,
+			kind: "doc",
+			projectId,
+			name: referenceLabel("doc", id),
+		};
+	}
+	return null;
 }
 
 function inlineText(nodes: ChatInline[] | undefined): string {
 	return (nodes ?? [])
-		.map((n) =>
-			n.type === "teamMention"
-				? `@${String(n.props?.name ?? "")}`
-				: (n.text ?? inlineText(n.content)),
-		)
+		.map((n) => {
+			if (n.type === "teamMention") return `@${String(n.props?.name ?? "")}`;
+			const ref = referenceOf(n);
+			if (ref) return `#${ref.name}`;
+			return n.text ?? inlineText(n.content);
+		})
 		.join("");
 }
 
@@ -81,30 +95,6 @@ export function blocksToText(blocks: ChatBlock[] | undefined): string {
 		.flatMap((b) => [inlineText(b.content), blocksToText(b.children)])
 		.filter((s) => s !== "")
 		.join("\n");
-}
-
-/** The mentions a block list holds, so an edit keeps them linked. */
-export function mentionsOf(blocks: ChatBlock[] | undefined): ChatMention[] {
-	const found = new Map<string, ChatMention>();
-	const walk = (nodes: ChatInline[] | undefined) => {
-		for (const n of nodes ?? []) {
-			if (n.type === "teamMention" && typeof n.props?.id === "string") {
-				found.set(n.props.id, {
-					id: n.props.id,
-					name: String(n.props.name ?? ""),
-				});
-			}
-			walk(n.content);
-		}
-	};
-	const visit = (bs: ChatBlock[] | undefined) => {
-		for (const b of bs ?? []) {
-			walk(b.content);
-			visit(b.children);
-		}
-	};
-	visit(blocks);
-	return [...found.values()];
 }
 
 const SAFE_HREF = /^(https?:|mailto:)/i;

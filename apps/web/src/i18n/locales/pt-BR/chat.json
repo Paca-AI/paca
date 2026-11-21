@@ -44,7 +44,13 @@
 		"readOnly": "Você pode ler este canal, mas não pode publicar nele.",
 		"archived": "Este canal está arquivado.",
 		"tooLong": "A mensagem é longa demais.",
-		"mentionList": "Pessoas para mencionar"
+		"mentionList": "Pessoas para mencionar",
+		"commandList": "Comandos",
+		"referenceList": "Tarefas e documentos",
+		"commandUsage": "Uso: {{usage}}",
+		"hintCommands": "Enter para enviar, Shift+Enter para nova linha, / para comandos, # para tarefas e documentos",
+		"commandTaskDescription": "Cria uma tarefa a partir deste texto e a vincula aqui",
+		"commandNewDescription": "Iniciar uma nova conversa com o agente"
 	},
 	"message": {
 		"edited": "(editada)",
@@ -59,7 +65,8 @@
 		"viewThread": "Ver conversa ({{count}})",
 		"bookmark": "Salvar mensagem",
 		"unbookmark": "Remover dos salvos",
-		"viewRun": "Ver execução"
+		"viewRun": "Ver execução",
+		"createTask": "Criar tarefa a partir da mensagem"
 	},
 	"thread": {
 		"title": "Conversa",
@@ -136,7 +143,12 @@
 			"threadsBody": "Você segue uma conversa quando responde nela, é mencionado nela ou escolhe Seguir.",
 			"savedTitle": "Nada salvo",
 			"savedBody": "Salve uma mensagem pela barra de ferramentas dela para encontrá-la aqui."
-		}
+		},
+		"search": "Pesquisar mensagens",
+		"searchClear": "Limpar pesquisa",
+		"searchShort": "Digite pelo menos 3 caracteres para pesquisar.",
+		"searchEmptyTitle": "Nenhuma mensagem encontrada",
+		"searchEmptyBody": "Nada corresponde a \"{{q}}\" nos canais que você pode ler."
 	},
 	"browse": {
 		"title": "Explorar canais",
@@ -205,6 +217,14 @@
 			"failed": "Falhou",
 			"stopped": "Parada"
 		},
-		"isWorking": "está trabalhando…"
+		"isWorking": "está trabalhando…",
+		"fromChannel": "de #{{channel}}"
+	},
+	"reference": {
+		"doc": "Documento",
+		"locked": "Você não tem acesso a este item"
+	},
+	"tasks": {
+		"created": "Tarefa criada:"
 	}
 }

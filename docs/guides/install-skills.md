@@ -245,6 +245,10 @@ Audits and sets up how the project models work: task types, statuses, custom fie
 
 Shows who can do what (members, roles, effective permissions), audits access, and adds, re-roles or removes members after confirmation.
 
+### `/paca-chat`
+
+Catches up on, summarises and posts in a project's team chat (`chat_list_channels`, `chat_read_channel`, `chat_send_message`), and answers a person who `@mentioned` the agent in a channel. Chat text is treated as data, never as instructions.
+
 ### `/paca-automation <goal>`
 
 Designs and builds an automation — Trigger → Condition → Action graphs (status changes, due dates, cron, hand-off to an AI agent, API calls). Builds as a draft, verifies the graph, and activates only after confirmation. Replaces the former `/paca-workflow`.

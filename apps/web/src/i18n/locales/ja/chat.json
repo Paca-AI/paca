@@ -44,7 +44,13 @@
 		"readOnly": "このチャンネルは閲覧のみで、投稿はできません。",
 		"archived": "このチャンネルはアーカイブされています。",
 		"tooLong": "メッセージが長すぎます。",
-		"mentionList": "メンションする相手"
+		"mentionList": "メンションする相手",
+		"commandList": "コマンド",
+		"referenceList": "タスクとドキュメント",
+		"commandUsage": "使い方: {{usage}}",
+		"hintCommands": "Enterで送信、Shift+Enterで改行、/でコマンド、#でタスクとドキュメント",
+		"commandTaskDescription": "このテキストからタスクを作成し、ここにリンクします",
+		"commandNewDescription": "エージェントとの新しい会話を始めます"
 	},
 	"message": {
 		"edited": "（編集済み）",
@@ -59,7 +65,8 @@
 		"viewThread": "スレッドを表示（{{count}}）",
 		"bookmark": "メッセージを保存",
 		"unbookmark": "保存から外す",
-		"viewRun": "実行を表示"
+		"viewRun": "実行を表示",
+		"createTask": "メッセージからタスクを作成"
 	},
 	"thread": {
 		"title": "スレッド",
@@ -136,7 +143,12 @@
 			"threadsBody": "スレッドに返信する、メンションされる、またはフォローを選ぶと、そのスレッドをフォローします。",
 			"savedTitle": "保存したものはありません",
 			"savedBody": "メッセージのツールバーから保存すると、ここで見つかります。"
-		}
+		},
+		"search": "メッセージを検索",
+		"searchClear": "検索をクリア",
+		"searchShort": "検索するには3文字以上入力してください。",
+		"searchEmptyTitle": "メッセージが見つかりません",
+		"searchEmptyBody": "閲覧できるチャンネルに「{{q}}」に一致するものはありません。"
 	},
 	"browse": {
 		"title": "チャンネルを探す",
@@ -205,6 +217,14 @@
 			"failed": "失敗",
 			"stopped": "停止"
 		},
-		"isWorking": "が作業中…"
+		"isWorking": "が作業中…",
+		"fromChannel": "#{{channel}} から"
+	},
+	"reference": {
+		"doc": "ドキュメント",
+		"locked": "この項目へのアクセス権がありません"
+	},
+	"tasks": {
+		"created": "タスクを作成しました:"
 	}
 }

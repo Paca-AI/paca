@@ -223,6 +223,48 @@ const ref = (o: Partial<MessageRef>): MessageRef => ({
 	...o,
 });
 
+describe("Inbox search", () => {
+	it("searches messages after a pause, within the chosen project, and opens a hit in its channel", async () => {
+		serve({
+			"/users/me/chat/inbox": [item({})],
+			"/users/me/chat/search": [
+				ref({ preview: "rollback plan for the release", message_id: "hit1" }),
+			],
+		});
+		const user = userEvent.setup();
+		wrap(<InboxPage tab="all" projectId="p1" />);
+		await screen.findAllByRole("listitem");
+		await user.type(screen.getByLabelText("Search messages"), "ro");
+		expect(
+			screen.getByText("Type at least 3 characters to search."),
+		).toBeInTheDocument();
+		expect(mocks.get).not.toHaveBeenCalledWith(
+			"/users/me/chat/search",
+			expect.anything(),
+		);
+		await user.type(screen.getByLabelText("Search messages"), "llback");
+		expect(await screen.findByText(/rollback plan/)).toBeInTheDocument();
+		expect(mocks.get).toHaveBeenCalledWith("/users/me/chat/search", {
+			params: { q: "rollback", project_id: "p1" },
+		});
+		expect(screen.getByRole("link")).toHaveAttribute(
+			"href",
+			"/projects/p1/chat/c1",
+		);
+	});
+
+	it("says when nothing matches and returns to the tab when cleared", async () => {
+		serve({ "/users/me/chat/inbox": [item({})], "/users/me/chat/search": [] });
+		const user = userEvent.setup();
+		wrap(<InboxPage tab="all" />);
+		await screen.findAllByRole("listitem");
+		await user.type(screen.getByLabelText("Search messages"), "nothing");
+		expect(await screen.findByText("No messages found")).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Clear search" }));
+		expect(await screen.findAllByRole("listitem")).toHaveLength(1);
+	});
+});
+
 describe("Inbox Mentions, Threads and Saved tabs", () => {
 	it("lists mentions with the project, author and an unread dot; a reply opens its thread", async () => {
 		serve({

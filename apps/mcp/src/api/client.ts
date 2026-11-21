@@ -471,6 +471,33 @@ export class PacaAPIClient {
 		);
 	}
 
+	/**
+	 * Calls one of the project's team-chat endpoints
+	 * (`/projects/{id}/channels…`): list channels, read and post messages. The
+	 * API judges every call by the calling agent's own roles.
+	 */
+	async chat(
+		method: "GET" | "POST",
+		projectId: string,
+		path: string,
+		opts: {
+			query?: Record<string, string | number | undefined>;
+			body?: any;
+		} = {},
+	): Promise<any> {
+		const params = new URLSearchParams();
+		for (const [k, v] of Object.entries(opts.query ?? {})) {
+			if (v !== undefined && v !== "") params.set(k, String(v));
+		}
+		const qs = params.toString();
+		const url = `/api/v1/projects/${encodeURIComponent(projectId)}${path}${qs ? `?${qs}` : ""}`;
+		return this.request(
+			method,
+			url,
+			method === "GET" ? undefined : (opts.body ?? {}),
+		);
+	}
+
 	/** Mints a short-lived credential for ONE git command; a write credential needs git:write. */
 	async getGitCredential(
 		projectId: string,

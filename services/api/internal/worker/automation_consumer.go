@@ -2127,6 +2127,13 @@ func (c *AutomationConsumer) runAction(ctx context.Context, projectID uuid.UUID,
 		return applied, nil, err
 	}
 
+	// chat.send_message posts text in a channel and touches no task, so it runs
+	// whether or not the walk has one. Its text may use the walk's placeholders.
+	if actionType == automationdom.ActionChatSendMessage {
+		applied, err := c.runPluginActionRendered(ctx, projectID, node, task, runID, vars)
+		return applied, nil, err
+	}
+
 	// trigger_ai_agent's task-less direct-message path doesn't involve any
 	// task at all either — retargeting doesn't apply there.
 	if actionType == automationdom.ActionTriggerAIAgent && task == nil {
@@ -2445,6 +2452,23 @@ func (c *AutomationConsumer) runPluginAction(ctx context.Context, projectID uuid
 	return result.Applied, nil
 }
 
+// runPluginActionRendered is runPluginAction for a node that may run with no
+// task, its string config values rendered with the walk's placeholders first.
+func (c *AutomationConsumer) runPluginActionRendered(ctx context.Context, projectID uuid.UUID, node *automationdom.Node, task *taskdom.Task, runID uuid.UUID, vars map[string]string) (bool, error) {
+	rendered := *node
+	var cfg map[string]any
+	if err := json.Unmarshal(node.Config, &cfg); err != nil {
+		return false, fmt.Errorf("decode action config: %w", err)
+	}
+	for k, v := range cfg {
+		if s, ok := v.(string); ok {
+			cfg[k] = vartemplate.Render(s, vars)
+		}
+	}
+	rendered.Config, _ = json.Marshal(cfg)
+	return c.runPluginAction(ctx, projectID, &rendered, task, runID)
+}
+
 // evaluatePluginCondition dispatches a plugin-contributed condition node via
 // the plugin runtime's EvaluateCondition bridge.
 func (c *AutomationConsumer) evaluatePluginCondition(ctx context.Context, node *automationdom.Node, payload []byte) (bool, error) {
@@ -2517,14 +2541,17 @@ func pluginNodePayload(nodeType string, config json.RawMessage, projectID uuid.U
 		"node_type":  nodeType,
 		"config":     json.RawMessage(config),
 		"project_id": projectID,
-		"task": map[string]any{
+	}
+	// A node that runs with no task (chat.send_message) gets none.
+	if task != nil {
+		payload["task"] = map[string]any{
 			"id":            task.ID,
 			"status_id":     task.StatusID,
 			"assignee_ids":  task.AssigneeIDs,
 			"importance":    task.Importance,
 			"tags":          task.Tags,
 			"custom_fields": task.CustomFields,
-		},
+		}
 	}
 	if idempotencyKey != "" {
 		payload["idempotency_key"] = idempotencyKey

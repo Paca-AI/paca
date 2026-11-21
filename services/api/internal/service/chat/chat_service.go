@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -20,9 +21,12 @@ import (
 
 // Service is the chat use-case implementation.
 type Service struct {
-	repo     chatdom.Repository
-	notifier chatdom.Notifier
-	agents   chatdom.AgentResponder
+	repo       chatdom.Repository
+	notifier   chatdom.Notifier
+	agents     chatdom.AgentResponder
+	trigger    chatdom.AgentTrigger
+	automation AutomationEmitter
+	postGuard  PostGuard
 }
 
 var _ chatdom.Service = (*Service)(nil)
@@ -262,6 +266,20 @@ func ContentText(content []byte) (string, error) {
 					}
 				}
 			}
+			// A task or document chip stores ids only; its label is "#<number>"
+			// (a task) or "#doc" so a preview or a search hit still shows one.
+			switch n["type"] {
+			case "taskReference":
+				if props, ok := n["props"].(map[string]any); ok {
+					if num, ok := props["number"].(float64); ok && num > 0 {
+						parts = append(parts, "#"+strconv.FormatInt(int64(num), 10))
+					} else {
+						parts = append(parts, "#task")
+					}
+				}
+			case "docReference":
+				parts = append(parts, "#doc")
+			}
 			walk(n["content"])
 			walk(n["children"])
 		}
@@ -320,12 +338,15 @@ func (s *Service) PostMessage(ctx context.Context, projectID, channelID, authorI
 	}
 	// Mentions and follows are what the Inbox lists are built from; a failure to
 	// record them must not lose the message, which is already stored.
-	_ = s.repo.RecordMessageEffects(ctx, m, mentionedAccounts(content))
+	mentioned := mentionedAccounts(content)
+	_ = s.repo.RecordMessageEffects(ctx, m, mentioned)
 	full, err := s.repo.FindMessage(ctx, channelID, m.ID, authorID)
 	if err != nil {
 		return nil, err
 	}
 	s.notifyMessage(ctx, chatdom.EventMessageNew, projectID, full, authorID)
+	s.triggerMentionedAgents(ctx, projectID, channel, full, mentioned)
+	s.emitAutomation(ctx, projectID, channel, full, mentioned)
 	if threadRootID == nil {
 		s.forwardToAgent(ctx, channel, authorID)
 	}
@@ -561,6 +582,18 @@ func (s *Service) Threads(ctx context.Context, accountID uuid.UUID) ([]chatdom.M
 // Saved implements chatdom.Service.
 func (s *Service) Saved(ctx context.Context, accountID uuid.UUID) ([]chatdom.MessageRef, error) {
 	return s.repo.ListSaved(ctx, accountID, chatdom.MaxMessageRefs)
+}
+
+// Search implements chatdom.Service.
+func (s *Service) Search(ctx context.Context, accountID uuid.UUID, query string, projectID *uuid.UUID) ([]chatdom.MessageRef, error) {
+	query = strings.TrimSpace(query)
+	if utf8.RuneCountInString(query) < chatdom.MinSearchLen {
+		return []chatdom.MessageRef{}, nil
+	}
+	if r := []rune(query); len(r) > chatdom.MaxSearchLen {
+		query = string(r[:chatdom.MaxSearchLen])
+	}
+	return s.repo.SearchMessages(ctx, accountID, query, projectID, chatdom.MaxMessageRefs)
 }
 
 // StarChannel implements chatdom.Service.

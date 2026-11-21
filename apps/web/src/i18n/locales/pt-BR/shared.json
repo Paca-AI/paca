@@ -209,5 +209,19 @@
 	"paneResize": {
 		"sidebar": "Redimensionar barra lateral",
 		"taskColumn": "Redimensionar coluna de tarefas"
+	},
+	"commands": {
+		"task": {
+			"title": "Criar tarefa",
+			"description": "Cria uma tarefa a partir deste texto e a vincula aqui",
+			"created": "Tarefa criada:"
+		},
+		"doc": {
+			"title": "Criar documento",
+			"description": "Cria um documento a partir deste texto e o vincula aqui",
+			"created": "Documento criado:"
+		},
+		"usage": "Uso: {{usage}}",
+		"failed": "O comando falhou. Tente novamente."
 	}
 }

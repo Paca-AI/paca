@@ -109,6 +109,11 @@ export function AgentRunsPanel({
 										<RunStatusIcon status={r.status} />
 										<span className="min-w-0 flex-1 truncate">
 											{r.title || t("agent.untitled")}
+											{r.channel_name ? (
+												<span className="ml-1.5 rounded bg-muted px-1 text-[10px] text-muted-foreground">
+													{t("agent.fromChannel", { channel: r.channel_name })}
+												</span>
+											) : null}
 										</span>
 										<span className="shrink-0 text-xs text-muted-foreground">
 											{timeAgo(r.created_at, tCommon)}

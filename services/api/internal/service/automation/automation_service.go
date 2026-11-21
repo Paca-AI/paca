@@ -974,6 +974,10 @@ func (s *Service) validateActionConfig(ctx context.Context, projectID uuid.UUID,
 	case automationdom.ActionCompleteSprint:
 		// MoveToSprintID is optional (nil = move to backlog, mirroring
 		// sprintdom.CompleteSprintInput) — nothing to require.
+	case automationdom.ActionChatSendMessage:
+		// Not a built-in action, so it never gets here (the guard above hands
+		// it to the plugin resolver, which validates its own config); listed
+		// so this switch stays exhaustive.
 	}
 	return nil
 }

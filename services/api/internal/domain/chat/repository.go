@@ -2,6 +2,7 @@ package chatdom
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -86,6 +87,10 @@ type Repository interface {
 	ListMentions(ctx context.Context, accountID uuid.UUID, limit int) ([]MessageRef, error)
 	ListThreads(ctx context.Context, accountID uuid.UUID, limit int) ([]MessageRef, error)
 	ListSaved(ctx context.Context, accountID uuid.UUID, limit int) ([]MessageRef, error)
+	// SearchMessages returns the messages whose text contains query, newest
+	// first, in the channels the caller may read (the IAM scopes attached to ctx,
+	// as for the lists above); projectID narrows to one project.
+	SearchMessages(ctx context.Context, accountID uuid.UUID, query string, projectID *uuid.UUID, limit int) ([]MessageRef, error)
 	// ChannelRecipients returns the members of a channel that are still active
 	// members of its project: whoever should hear about its activity.
 	ChannelRecipients(ctx context.Context, channelID uuid.UUID) ([]uuid.UUID, error)
@@ -123,11 +128,47 @@ type Repository interface {
 	// AgentReply returns the text the agent wrote in a run in the events with
 	// index after < i <= upTo.
 	AgentReply(ctx context.Context, conversationID uuid.UUID, after, upTo int) (string, error)
-	// ListAgentRuns returns the runs of the link's session, newest first.
+	// ResetAgentRun detaches the channel from its agent session, so the next
+	// message starts a new conversation.
+	ResetAgentRun(ctx context.Context, channelID uuid.UUID) error
+	// ListAgentRuns returns the runs of the link's session, and the ones the
+	// person's channel mentions of the agent started, newest first.
 	ListAgentRuns(ctx context.Context, link *AgentLink, limit int) ([]AgentRun, error)
+	// ProjectMemberID returns the project_members id of an active member of the
+	// project, and false when the account is not one.
+	ProjectMemberID(ctx context.Context, projectID, accountID uuid.UUID) (uuid.UUID, bool, error)
+	// AgentAccountOfMember returns the agent account behind a project member, and
+	// false when the member is not an active agent of the project.
+	AgentAccountOfMember(ctx context.Context, projectID, memberID uuid.UUID) (uuid.UUID, bool, error)
+	// CreateAgentRun links an agent run to the message that started it.
+	CreateAgentRun(ctx context.Context, r *ChannelAgentRun) error
+	// FindAgentRun returns the link of a run, or nil when no channel started it.
+	FindAgentRun(ctx context.Context, conversationID uuid.UUID) (*ChannelAgentRun, error)
+	// ClaimAgentRunPost takes the right to post the run's reply and reports
+	// whether this call got it: of two deliveries of one turn_end, one wins. The
+	// claim is a lease, so a worker that dies before posting does not lose the
+	// answer: a later delivery takes it over once the lease has run out.
+	// ReleaseAgentRunPost gives a claim back when the post failed, and
+	// MarkAgentRunPosted records that the reply is stored (after it is).
+	ClaimAgentRunPost(ctx context.Context, conversationID uuid.UUID) (bool, error)
+	ReleaseAgentRunPost(ctx context.Context, conversationID uuid.UUID) error
+	MarkAgentRunPosted(ctx context.Context, conversationID uuid.UUID) error
+	// AgentReplyStored reports whether the run's reply message already exists
+	// in the channel (a delivery that stored it but could not mark it posted).
+	AgentReplyStored(ctx context.Context, channelID, conversationID uuid.UUID) (bool, error)
+	// CountRecentAgentRuns counts the channel-mention runs the person started
+	// since the given time, for rate limiting.
+	CountRecentAgentRuns(ctx context.Context, requesterID uuid.UUID, since time.Time) (int, error)
 	// IsGlobalAgent reports whether the account is an agent that answers direct
 	// messages (a global agent).
 	IsGlobalAgent(ctx context.Context, accountID uuid.UUID) (bool, error)
+}
+
+// AgentTrigger starts an agent run for a message that mentions the agent. It
+// is gated like every other non-HTTP trigger: memberID must be allowed to use
+// the agent and its environment.
+type AgentTrigger interface {
+	TriggerChannelMention(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string) (conversationID uuid.UUID, err error)
 }
 
 // Service is the chat use-case contract.
@@ -154,6 +195,9 @@ type Service interface {
 	// StartDM opens (or finds) the direct message with another account.
 	// AgentRuns returns the agent side of a direct message the caller reads.
 	AgentRuns(ctx context.Context, channelID, accountID uuid.UUID) (*AgentRuns, error)
+	// NewAgentConversation makes the next message to the agent start a fresh
+	// conversation instead of continuing the current one.
+	NewAgentConversation(ctx context.Context, channelID, accountID uuid.UUID) error
 	StartDM(ctx context.Context, accountID, peerID uuid.UUID) (*Channel, error)
 	// ListDMs lists the caller's direct messages; ctx carries their IAM scope
 	// for kind "channel".
@@ -169,6 +213,10 @@ type Service interface {
 	Mentions(ctx context.Context, accountID uuid.UUID) ([]MessageRef, error)
 	Threads(ctx context.Context, accountID uuid.UUID) ([]MessageRef, error)
 	Saved(ctx context.Context, accountID uuid.UUID) ([]MessageRef, error)
+	// Search finds messages by their text across the caller's channels; ctx
+	// carries their IAM scopes as for Inbox. A query shorter than MinSearchLen
+	// finds nothing.
+	Search(ctx context.Context, accountID uuid.UUID, query string, projectID *uuid.UUID) ([]MessageRef, error)
 	// Inbox lists the caller's followed channels across projects. ctx carries
 	// the caller's per-project IAM scopes (see ListInbox).
 	Inbox(ctx context.Context, accountID uuid.UUID, f InboxFilter) ([]InboxItem, error)

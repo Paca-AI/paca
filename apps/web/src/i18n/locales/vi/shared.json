@@ -209,5 +209,19 @@
 	"paneResize": {
 		"sidebar": "Thay đổi kích thước thanh bên",
 		"taskColumn": "Thay đổi kích thước cột công việc"
+	},
+	"commands": {
+		"task": {
+			"title": "Tạo công việc",
+			"description": "Tạo công việc từ văn bản này và liên kết tại đây",
+			"created": "Đã tạo công việc:"
+		},
+		"doc": {
+			"title": "Tạo tài liệu",
+			"description": "Tạo tài liệu từ văn bản này và liên kết tại đây",
+			"created": "Đã tạo tài liệu:"
+		},
+		"usage": "Cách dùng: {{usage}}",
+		"failed": "Lệnh thất bại. Vui lòng thử lại."
 	}
 }

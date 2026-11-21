@@ -2,11 +2,14 @@ import "@blocknote/core/fonts/inter.css";
 import "@blocknote/shadcn/style.css";
 
 import type { PartialBlock } from "@blocknote/core";
+import { SuggestionMenu } from "@blocknote/core/extensions";
 import { SideMenuController, useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { useThemeMode } from "@/hooks/use-theme-mode";
 import { matchAnnotationLinkOnly } from "@/lib/annotation-link";
+import { safeHref } from "@/lib/chat-content";
+import type { SlashCommand } from "@/lib/slash-commands";
 import { createAnnotationPasteHandler } from "./blocknote-annotation-paste-handler";
 import { CustomSideMenu } from "./blocknote-custom-side-menu";
 import { customSchema } from "./blocknote-schema";
@@ -18,40 +21,98 @@ export interface CommentEditorHandle {
 	clear: () => void;
 }
 
-interface CommentEditorProps {
+export type { SlashCommand } from "@/lib/slash-commands";
+
+export interface CommentEditorProps {
 	initialBlocks?: unknown[];
 	onSubmit?: () => void;
 	/** Called after every change to the document (typing, paste, clear). */
 	onChange?: (blocks: unknown[]) => void;
 	projectId?: string | null;
+	placeholder?: string;
+	autoFocus?: boolean;
+	/**
+	 * Which key submits. Comments use "mod-enter" (Enter is a new block); chat
+	 * uses "enter" (Shift+Enter is a new line, and Mod+Enter still submits from
+	 * a code block, where Enter is a newline).
+	 */
+	submitKey?: "mod-enter" | "enter";
+	/** Escape pressed with no suggestion menu open (cancels an edit). */
+	onEscape?: () => void;
+	/** Listed in the "/" menu above the block types (see useSlashCommands). */
+	commands?: SlashCommand[];
+	/** A command that needs no arguments was picked from the "/" menu. */
+	onCommand?: (command: SlashCommand) => void;
 }
 
 export const CommentEditor = forwardRef<
 	CommentEditorHandle,
 	CommentEditorProps
 >(function CommentEditor(
-	{ initialBlocks, onSubmit, onChange, projectId },
+	{
+		initialBlocks,
+		onSubmit,
+		onChange,
+		projectId,
+		placeholder,
+		autoFocus,
+		submitKey = "mod-enter",
+		onEscape,
+		commands,
+		onCommand,
+	},
 	ref,
 ) {
 	const { resolvedMode } = useThemeMode();
 	const initializedRef = useRef(false);
+	const live = useRef({ onSubmit, onEscape, submitKey });
+	live.current = { onSubmit, onEscape, submitKey };
 
 	const editor = useCreateBlockNote({
 		schema: customSchema,
 		pasteHandler: createAnnotationPasteHandler(),
+		placeholders: placeholder
+			? { default: placeholder, emptyDocument: placeholder }
+			: undefined,
 		initialContent:
 			initialBlocks && initialBlocks.length > 0
 				? (initialBlocks as PartialBlock[])
 				: undefined,
 		_tiptapOptions: {
 			editorProps: {
-				handleKeyDown: (_view, event) => {
-					if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-						event.preventDefault();
-						onSubmit?.();
-						return true;
+				handleKeyDown: (view, event) => {
+					if (event.isComposing) return false;
+					const menuOpen = () => {
+						try {
+							return editor?.getExtension(SuggestionMenu)?.shown() ?? false;
+						} catch {
+							return false;
+						}
+					};
+					if (event.key === "Escape") {
+						if (live.current.onEscape && !menuOpen()) {
+							event.preventDefault();
+							live.current.onEscape();
+							return true;
+						}
+						return false;
 					}
-					return false;
+					if (event.key !== "Enter") return false;
+					const mod = event.ctrlKey || event.metaKey;
+					if (live.current.submitKey === "mod-enter") {
+						if (!mod) return false;
+					} else {
+						if (event.shiftKey || event.altKey) return false;
+						// Enter picks a suggestion while a menu is open.
+						if (menuOpen()) return false;
+						const inCode = view.state.selection.$from.parent.type.name
+							.toLowerCase()
+							.includes("code");
+						if (inCode && !mod) return false;
+					}
+					event.preventDefault();
+					live.current.onSubmit?.();
+					return true;
 				},
 			},
 		},
@@ -66,6 +127,10 @@ export const CommentEditor = forwardRef<
 			}),
 		[editor],
 	);
+
+	useEffect(() => {
+		if (autoFocus) editor.focus();
+	}, [autoFocus, editor]);
 
 	useImperativeHandle(ref, () => ({
 		getBlocks: () => {
@@ -96,7 +161,12 @@ export const CommentEditor = forwardRef<
 			slashMenu={false}
 		>
 			<SideMenuController sideMenu={CustomSideMenu} />
-			<MentionSuggestionMenus editor={editor} projectId={projectId} />
+			<MentionSuggestionMenus
+				editor={editor}
+				projectId={projectId}
+				commands={commands}
+				onCommand={onCommand}
+			/>
 		</BlockNoteView>
 	);
 });
@@ -111,6 +181,8 @@ export function CommentDisplay({ blocks }: CommentDisplayProps) {
 	const editor = useCreateBlockNote({
 		schema: customSchema,
 		trailingBlock: false,
+		initialContent:
+			blocks && blocks.length > 0 ? (blocks as PartialBlock[]) : undefined,
 	});
 
 	useEffect(() => {
@@ -175,12 +247,78 @@ export function isBlocksContent(content: unknown): content is unknown[] {
  */
 export function normalizeBlockContent(content: unknown): unknown[] {
 	if (Array.isArray(content)) {
-		return convertAnnotationLinks(convertMermaidCodeBlocks(content));
+		return convertAnnotationLinks(
+			convertMermaidCodeBlocks(stripUnsafeLinks(content)),
+		);
 	}
 	if (typeof content === "string" && content.trim().length > 0) {
 		return textToBlocks(content);
 	}
 	return [];
+}
+
+/**
+ * Replaces a link whose target is not http(s) or mailto (`javascript:` and
+ * the like) with its plain text, so stored content can never render as a
+ * script link. Recurses into children; returns the input when nothing changed.
+ */
+export function stripUnsafeLinks(blocks: unknown[]): unknown[] {
+	let changed = false;
+	const cleanInline = (nodes: unknown): unknown => {
+		if (!Array.isArray(nodes)) return nodes;
+		return nodes.flatMap((n) => {
+			const node = n as { type?: string; href?: string; content?: unknown };
+			if (node && node.type === "link") {
+				const inner = cleanInline(node.content) as unknown[];
+				if (!safeHref(node.href)) {
+					changed = true;
+					return inner;
+				}
+				return [{ ...node, content: inner }];
+			}
+			return [n];
+		});
+	};
+	// A table's content is {type:"tableContent", rows:[{cells:[inline[]|cell]}]},
+	// not an inline array: its cells hold inline content too.
+	const cleanCell = (cell: unknown): unknown => {
+		if (Array.isArray(cell)) return cleanInline(cell);
+		if (cell && typeof cell === "object") {
+			const c = cell as { content?: unknown };
+			return { ...c, content: cleanInline(c.content) };
+		}
+		return cell;
+	};
+	const cleanBlockContent = (content: unknown): unknown => {
+		if (Array.isArray(content)) return cleanInline(content);
+		const table = content as { type?: string; rows?: unknown } | null;
+		if (table && table.type === "tableContent" && Array.isArray(table.rows)) {
+			return {
+				...table,
+				rows: table.rows.map((row) => {
+					if (!row || typeof row !== "object") return row;
+					const r = row as { cells?: unknown };
+					return Array.isArray(r.cells)
+						? { ...r, cells: r.cells.map(cleanCell) }
+						: row;
+				}),
+			};
+		}
+		return content;
+	};
+	const cleanBlock = (b: unknown): unknown => {
+		if (!b || typeof b !== "object") return b;
+		const block = b as { content?: unknown; children?: unknown };
+		return {
+			...block,
+			content: cleanBlockContent(block.content),
+			children: Array.isArray(block.children)
+				? block.children.map(cleanBlock)
+				: block.children,
+		};
+	};
+	const out = blocks.map(cleanBlock);
+	return changed ? out : blocks;
 }
 
 /**

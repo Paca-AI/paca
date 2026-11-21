@@ -21,6 +21,8 @@ vi.mock("@/lib/auth-api", () => ({
 }));
 vi.mock("@/lib/mention-api", () => ({
 	searchMentionableMembers: vi.fn(async () => []),
+	searchMentionableTasks: vi.fn(async () => []),
+	searchMentionableDocuments: vi.fn(async () => []),
 }));
 vi.mock("@/hooks/use-chat-realtime", () => ({
 	useChatRealtime: () => undefined,

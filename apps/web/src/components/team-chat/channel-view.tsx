@@ -44,6 +44,7 @@ import {
 	listMessages,
 	markChannelRead,
 	moderateDeleteMessage,
+	newAgentConversation,
 	postMessage,
 	setChannelStarred,
 	setMessageSaved,
@@ -57,9 +58,12 @@ import {
 	withNewest,
 	withOlder,
 } from "@/lib/chat-cache";
+import { blocksToText } from "@/lib/chat-content";
 import { chatErrorKey } from "@/lib/chat-errors";
+import { taskCreatedBlocks, titleFromText } from "@/lib/chat-tasks";
+import { createTask } from "@/lib/interaction-api";
 import { AgentRunsPanel } from "./agent-runs-panel";
-import { Composer } from "./composer";
+import { Composer, type SlashCommand } from "./composer";
 import type { MessageActions } from "./message-item";
 import { MessageList } from "./message-list";
 import { PeerAvatar } from "./peer-avatar";
@@ -231,6 +235,32 @@ export function ChannelView({
 		onError: (e) => setActionError(t(`errors.${chatErrorKey(e)}`)),
 	});
 
+	// A task made from a message is reported as a reply in that message's thread,
+	// with a chip for the task: the link back to where it came from. The write is
+	// the person's own, judged by the normal task gates.
+	const createFromMessage = useMutation({
+		mutationFn: async (m: ChatMessage) => {
+			const title = titleFromText(blocksToText(m.content));
+			const task = await createTask(projectId, { title });
+			const root = m.thread_root_id ?? m.id;
+			await postMessage(
+				projectId,
+				channelId,
+				taskCreatedBlocks(t("tasks.created"), task),
+				root,
+			);
+			return root;
+		},
+		onSuccess: (root) => {
+			void queryClient.invalidateQueries({ queryKey: key });
+			void queryClient.invalidateQueries({
+				queryKey: ["projects", projectId, "tasks"],
+			});
+			setThreadRootId(root);
+		},
+		onError: (e) => setActionError(t(`errors.${chatErrorKey(e)}`)),
+	});
+
 	const starMutation = useMutation({
 		mutationFn: (on: boolean) => setChannelStarred(projectId, channelId, on),
 		onSettled: () => {
@@ -269,6 +299,24 @@ export function ChannelView({
 	const canModerate = !isDM && can("messages:moderate");
 	const canManage = !isDM && can("channels:write");
 	const archived = channel?.archived_at != null;
+	const canCreateTasks = !isDM && !archived && canWrite && can("tasks:write");
+
+	const commands = useMemo<SlashCommand[] | undefined>(() => {
+		const list: SlashCommand[] = [];
+		if (isAgentDM && agent?.replies) {
+			list.push({
+				name: "new",
+				description: t("composer.commandNewDescription"),
+				run: async () => {
+					await newAgentConversation(channelId);
+					void queryClient.invalidateQueries({
+						queryKey: chatKeys.agent(channelId),
+					});
+				},
+			});
+		}
+		return list.length > 0 ? list : undefined;
+	}, [isAgentDM, agent?.replies, channelId, queryClient, t]);
 
 	const actions: MessageActions = useMemo(
 		() => ({
@@ -279,8 +327,18 @@ export function ChannelView({
 			remove: (m) => remove.mutate(m),
 			openThread: (m) => setThreadRootId(m.id),
 			save: (m, saved) => save.mutate({ m, saved }),
+			createTask: canCreateTasks
+				? (m) => createFromMessage.mutate(m)
+				: undefined,
 		}),
-		[react, edit, remove, save.mutate],
+		[
+			react,
+			edit,
+			remove,
+			save.mutate,
+			canCreateTasks,
+			createFromMessage.mutate,
+		],
 	);
 
 	// The root of an opened thread may be older than the page loaded: fetch it.
@@ -364,6 +422,7 @@ export function ChannelView({
 						canReply={canWrite && !archived}
 						actions={actions}
 						peer={channel?.peer}
+						mentionProjectId={isDM ? undefined : projectId}
 						readSeq={arrivedAt.current?.seq}
 						footer={
 							agent?.working && channel?.peer ? (
@@ -399,6 +458,7 @@ export function ChannelView({
 				<TypingIndicator names={presence.typingNames} />
 				<Composer
 					mentionProjectId={isDM ? undefined : projectId}
+					extraCommands={commands}
 					onTyping={canWrite && !archived ? presence.setTyping : undefined}
 					draftId={`channel:${channelId}`}
 					placeholder={
