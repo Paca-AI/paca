@@ -677,7 +677,7 @@ func (s *GitRepository) FindTaskByRef(ctx context.Context, projectID uuid.UUID, 
 	var id string
 	err := s.db.GetContext(ctx, &id, `
 		SELECT t.id FROM tasks t JOIN projects p ON p.id = t.project_id
-		WHERE t.project_id = $1 AND upper(p.task_id_prefix) = upper($2) AND t.task_number = $3 AND t.deleted_at IS NULL`,
+		WHERE t.project_id = $1 AND upper(p.task_id_prefix) = upper($2) AND p.task_id_prefix <> '' AND p.deleted_at IS NULL AND t.task_number = $3 AND t.deleted_at IS NULL`,
 		projectID.String(), prefix, number)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

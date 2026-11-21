@@ -143,12 +143,12 @@ func (r *ProjectRepository) FindByID(ctx context.Context, id uuid.UUID) (*projec
 	return toProjectEntity(&record)
 }
 
-// FindByTaskIDPrefix returns the first project whose task_id_prefix matches
+// FindByTaskIDPrefix returns the active project whose non-empty task_id_prefix matches
 // the given prefix (case-insensitive).  Returns projectdom.ErrNotFound when
 // no match exists.
 func (r *ProjectRepository) FindByTaskIDPrefix(ctx context.Context, prefix string) (*projectdom.Project, error) {
 	var record projectRecord
-	err := r.db.GetContext(ctx, &record, `SELECT `+projectSelectCols+` FROM projects WHERE upper(task_id_prefix) = upper($1) AND deleted_at IS NULL`, prefix)
+	err := r.db.GetContext(ctx, &record, `SELECT `+projectSelectCols+` FROM projects WHERE upper(task_id_prefix) = upper($1) AND task_id_prefix <> '' AND deleted_at IS NULL`, prefix)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, projectdom.ErrNotFound
 	}
@@ -173,6 +173,9 @@ func (r *ProjectRepository) Create(ctx context.Context, p *projectdom.Project, s
 			rec.ID, rec.Name, rec.Description, rec.TaskIDPrefix,
 			rec.Settings, rec.CreatedBy, rec.CreatedAt,
 		); err != nil {
+			if constraint, ok := uniqueViolationConstraint(err); ok && constraint == "idx_projects_task_id_prefix" {
+				return projectdom.ErrPrefixTaken
+			}
 			if isUniqueViolation(err) {
 				return projectdom.ErrNameTaken
 			}
@@ -238,6 +241,9 @@ func (r *ProjectRepository) Update(ctx context.Context, p *projectdom.Project) e
 		p.AvatarKey, p.AvatarThumbKey, createdBy, p.ID.String(),
 	)
 	if err != nil {
+		if constraint, ok := uniqueViolationConstraint(err); ok && constraint == "idx_projects_task_id_prefix" {
+			return projectdom.ErrPrefixTaken
+		}
 		if isUniqueViolation(err) {
 			return projectdom.ErrNameTaken
 		}

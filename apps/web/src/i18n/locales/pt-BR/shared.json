@@ -159,6 +159,7 @@
 				"nameRequired": "O nome do projeto é obrigatório.",
 				"nameTaken": "Já existe um projeto com este nome.",
 				"nameInvalid": "O nome do projeto está vazio ou é inválido.",
+				"prefixTaken": "Este prefixo já é usado por outro projeto.",
 				"prefixInvalid": "O prefixo deve ter de 1 a 10 letras maiúsculas/dígitos (ex.: PACA).",
 				"generic": "Algo deu errado. Tente novamente."
 			}

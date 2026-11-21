@@ -51,6 +51,9 @@ export function GeneralSettings({
 			setPrefixError(null);
 		},
 		onError: (err: unknown) => {
+			setNameError(null);
+			setPrefixError(null);
+			setError(null);
 			const code = getApiErrorCode(err);
 			if (code === ApiErrorCode.ProjectNameTaken) {
 				setNameError(t("settings.general.errors.nameTaken"));
@@ -58,6 +61,10 @@ export function GeneralSettings({
 			}
 			if (code === ApiErrorCode.ProjectNameInvalid) {
 				setNameError(t("settings.general.errors.nameInvalid"));
+				return;
+			}
+			if (code === ApiErrorCode.ProjectPrefixTaken) {
+				setPrefixError(t("settings.general.errors.prefixTaken"));
 				return;
 			}
 			if (code === ApiErrorCode.ProjectPrefixInvalid) {

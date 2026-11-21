@@ -272,6 +272,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusConflict, apierr.CodeProjectNameTaken
 	case errors.Is(err, projectdom.ErrNameInvalid):
 		return http.StatusBadRequest, apierr.CodeProjectNameInvalid
+	case errors.Is(err, projectdom.ErrPrefixTaken):
+		return http.StatusConflict, apierr.CodeProjectPrefixTaken
 	case errors.Is(err, projectdom.ErrPrefixInvalid):
 		return http.StatusBadRequest, apierr.CodeProjectPrefixInvalid
 	case errors.Is(err, ssodom.ErrProviderNotFound):
@@ -746,7 +748,7 @@ func httpStatusForCode(code apierr.Code) int {
 		return http.StatusUnprocessableEntity
 	case apierr.CodeProjectNotFound:
 		return http.StatusNotFound
-	case apierr.CodeProjectNameTaken:
+	case apierr.CodeProjectNameTaken, apierr.CodeProjectPrefixTaken:
 		return http.StatusConflict
 	case apierr.CodeProjectNameInvalid,
 		apierr.CodeProjectPrefixInvalid:

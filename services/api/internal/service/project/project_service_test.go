@@ -551,6 +551,9 @@ func TestSuggestPrefix_Cases(t *testing.T) {
 	}{
 		{"PACA", "PACA"},
 		{"Platform v3", "PV"},
+		{"Payments-API", "PA"},
+		{"프로젝트", "PROJ"},
+		{"中文 Payments", "PAYM"},
 		{"my project roadmap design", "MPRD"},
 		{"", "PROJ"},
 		{"  ", "PROJ"},
@@ -673,5 +676,67 @@ func TestRemoveAvatar_ClearsKeysAndDeletesObjects(t *testing.T) {
 	defer avatarSvc.mu.Unlock()
 	if len(avatarSvc.deletedKeys) != 2 {
 		t.Errorf("expected both keys deleted, got %v", avatarSvc.deletedKeys)
+	}
+}
+
+// Simulate conflicts returned by the database, including a request that lost
+// the race after another request claimed its generated candidate.
+type prefixConflictRepo struct {
+	projectdom.Repository
+	attempts  []string
+	conflicts int
+	failure   error
+}
+
+func (r *prefixConflictRepo) Create(ctx context.Context, p *projectdom.Project, setup projectdom.ProjectSetup) error {
+	r.attempts = append(r.attempts, p.TaskIDPrefix)
+	if r.failure != nil {
+		return r.failure
+	}
+	if len(r.attempts) <= r.conflicts {
+		return projectdom.ErrPrefixTaken
+	}
+	return r.Repository.Create(ctx, p, setup)
+}
+
+func TestCreate_PrefixConflictRetries(t *testing.T) {
+	repo := &prefixConflictRepo{Repository: newFakeProjectRepo(), conflicts: 2}
+	tasks := &fakeTaskBootstrapper{}
+	svc := New(repo, tasks, nil)
+	p, err := svc.Create(t.Context(), projectdom.CreateProjectInput{Name: "Pay"})
+	if err != nil || p.TaskIDPrefix != "PAY3" {
+		t.Fatalf("result=%v err=%v", p, err)
+	}
+	if got := strings.Join(repo.attempts, ","); got != "PAY,PAY2,PAY3" {
+		t.Fatalf("attempts=%s", got)
+	}
+	if len(tasks.types) != 4 || len(tasks.statuses) != 5 {
+		t.Fatalf("bootstrap ran more than once: %d %d", len(tasks.types), len(tasks.statuses))
+	}
+}
+
+func TestCreate_PrefixRetryStops(t *testing.T) {
+	for _, tc := range []struct {
+		name, prefix string
+		err          error
+	}{
+		{"explicit conflict", "PAY", projectdom.ErrPrefixTaken},
+		{"name conflict", "", projectdom.ErrNameTaken},
+		{"database error", "", errors.New("database unavailable")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &prefixConflictRepo{Repository: newFakeProjectRepo(), failure: tc.err}
+			_, err := New(repo, nil, nil).Create(t.Context(), projectdom.CreateProjectInput{Name: "Pay", TaskIDPrefix: tc.prefix})
+			if !errors.Is(err, tc.err) || len(repo.attempts) != 1 {
+				t.Fatalf("err=%v attempts=%v", err, repo.attempts)
+			}
+		})
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	repo := &prefixConflictRepo{Repository: newFakeProjectRepo()}
+	_, err := New(repo, nil, nil).Create(ctx, projectdom.CreateProjectInput{Name: "Pay"})
+	if !errors.Is(err, context.Canceled) || len(repo.attempts) != 0 {
+		t.Fatalf("canceled: %v attempts=%v", err, repo.attempts)
 	}
 }

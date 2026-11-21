@@ -102,6 +102,8 @@ const (
 	CodeProjectNameTaken Code = "PROJECT_NAME_TAKEN"
 	// CodeProjectNameInvalid indicates the project name is empty or invalid.
 	CodeProjectNameInvalid Code = "PROJECT_NAME_INVALID"
+	// CodeProjectPrefixTaken indicates another active project uses the prefix.
+	CodeProjectPrefixTaken Code = "PROJECT_PREFIX_TAKEN"
 	// CodeProjectPrefixInvalid indicates the task ID prefix is not valid.
 	CodeProjectPrefixInvalid Code = "PROJECT_PREFIX_INVALID"
 

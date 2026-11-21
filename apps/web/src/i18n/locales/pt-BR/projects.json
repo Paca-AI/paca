@@ -1242,6 +1242,7 @@
 			"errors": {
 				"nameTaken": "Já existe um projeto com este nome.",
 				"nameInvalid": "O nome do projeto está vazio ou inválido.",
+				"prefixTaken": "Este prefixo já é usado por outro projeto.",
 				"prefixInvalid": "O prefixo deve ter de 1 a 10 letras/dígitos maiúsculos (ex.: PACA).",
 				"updateFailed": "Falha ao atualizar o projeto. Tente novamente."
 			}
