@@ -18,6 +18,9 @@ var (
 	ErrNotInCall = errors.New("participant is not in the call")
 	// ErrSelfModerate means a moderator tried to remove themselves.
 	ErrSelfModerate = errors.New("use leave to remove yourself from the call")
+	// ErrRemoved means a moderator removed the account from the call recently
+	// and it may not rejoin yet.
+	ErrRemoved = errors.New("you were removed from this call")
 )
 
 // Participant is an account connected to a call.
@@ -64,10 +67,19 @@ type Repository interface {
 	// SetRoomSID records LiveKit's id for the room of a channel's open session.
 	SetRoomSID(ctx context.Context, channelID uuid.UUID, sid string) error
 	// ParticipantJoined records an account in the channel's open call
-	// (idempotent), opening the session if needed.
-	ParticipantJoined(ctx context.Context, channelID, accountID uuid.UUID) error
-	// ParticipantLeft records an account leaving the channel's open call.
-	ParticipantLeft(ctx context.Context, channelID, accountID uuid.UUID) error
+	// (idempotent), opening the session if needed. sid is LiveKit's id of the
+	// connection; a newer connection of the same account replaces the old one.
+	// A channel that no longer exists is ignored.
+	ParticipantJoined(ctx context.Context, channelID, accountID uuid.UUID, sid string) error
+	// ParticipantLeft records a connection leaving the channel's open call. A
+	// non-empty sid closes the row only while it still belongs to that
+	// connection, so a late "left" of a replaced connection is a no-op; an
+	// empty sid closes the account's row whatever its connection.
+	ParticipantLeft(ctx context.Context, channelID, accountID uuid.UUID, sid string) error
+	// BanRemoved bars an account from the channel's call until the given time.
+	BanRemoved(ctx context.Context, channelID, accountID uuid.UUID, until time.Time) error
+	// IsRemoved reports whether the account is currently barred.
+	IsRemoved(ctx context.Context, channelID, accountID uuid.UUID) (bool, error)
 	// EndSession closes the channel's open session and every participant row.
 	EndSession(ctx context.Context, channelID uuid.UUID) error
 	// ListCall returns the open call of a channel, or nil.
@@ -80,7 +92,7 @@ type Repository interface {
 // Notifier announces that a channel's call changed. A lost announcement costs
 // a client one refetch.
 type Notifier interface {
-	CallChanged(ctx context.Context, projectID, channelID uuid.UUID)
+	CallChanged(ctx context.Context, channelID uuid.UUID)
 }
 
 // Service is the call use cases. None of them decides authorization: the

@@ -648,6 +648,9 @@ const (
 	CodeCallsDisabled Code = "CALLS_DISABLED"
 	// CodeCallNotInCall is the CALL_NOT_IN_CALL error code.
 	CodeCallNotInCall Code = "CALL_NOT_IN_CALL"
+	// CodeCallRemoved is the CALL_REMOVED error code: a moderator removed the
+	// account from the call and it may not rejoin yet.
+	CodeCallRemoved Code = "CALL_REMOVED"
 	// CodeCallSelfModerate is the CALL_SELF_MODERATE error code.
 	CodeCallSelfModerate Code = "CALL_SELF_MODERATE"
 	// CodeCallWebhookInvalid is the CALL_WEBHOOK_INVALID error code.

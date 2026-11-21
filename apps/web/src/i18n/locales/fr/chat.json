@@ -109,7 +109,8 @@
 		"dmNotSupported": "Cette action n'est pas disponible dans les messages privés.",
 		"callsDisabled": "Les appels ne sont pas configurés sur ce serveur.",
 		"callNotInCall": "Cette personne a déjà quitté l'appel.",
-		"callSelfModerate": "Pour quitter l'appel vous-même, utilisez Quitter l'appel."
+		"callSelfModerate": "Pour quitter l'appel vous-même, utilisez Quitter l'appel.",
+		"callRemoved": "Un modérateur vous a retiré de cet appel. Vous pourrez le rejoindre dans quelques minutes."
 	},
 	"noPermission": {
 		"title": "Vous n'avez pas l'autorisation d'utiliser la discussion dans ce projet",

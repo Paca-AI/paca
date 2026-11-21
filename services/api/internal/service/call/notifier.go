@@ -25,12 +25,8 @@ type PubSubNotifier struct{ pub publisher }
 func NewPubSubNotifier(pub publisher) *PubSubNotifier { return &PubSubNotifier{pub: pub} }
 
 // CallChanged implements calldom.Notifier.
-func (n *PubSubNotifier) CallChanged(ctx context.Context, projectID, channelID uuid.UUID) {
-	payload := map[string]any{"channel_id": channelID.String()}
-	if projectID != uuid.Nil {
-		payload["project_id"] = projectID.String()
-	}
-	msg := map[string]any{"type": EventCallChanged, "payload": payload}
+func (n *PubSubNotifier) CallChanged(ctx context.Context, channelID uuid.UUID) {
+	msg := map[string]any{"type": EventCallChanged, "payload": map[string]any{"channel_id": channelID.String()}}
 	if err := n.pub.Publish(ctx, events.ChannelRealtime, msg); err != nil {
 		slog.Warn("calls: publish realtime announcement", "channel_id", channelID, "err", err)
 	}

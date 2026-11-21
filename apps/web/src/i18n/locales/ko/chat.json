@@ -109,7 +109,8 @@
 		"dmNotSupported": "다이렉트 메시지에서는 사용할 수 없습니다.",
 		"callsDisabled": "이 서버에는 통화가 설정되어 있지 않습니다.",
 		"callNotInCall": "해당 사용자는 이미 통화에서 나갔습니다.",
-		"callSelfModerate": "직접 통화에서 나가려면 통화 나가기를 사용하세요."
+		"callSelfModerate": "직접 통화에서 나가려면 통화 나가기를 사용하세요.",
+		"callRemoved": "관리자가 이 통화에서 회원님을 내보냈습니다. 몇 분 후에 다시 참여할 수 있습니다."
 	},
 	"noPermission": {
 		"title": "이 프로젝트에서 채팅을 사용할 권한이 없습니다",

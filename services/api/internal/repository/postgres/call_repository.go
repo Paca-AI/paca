@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jmoiron/sqlx"
 
 	calldom "github.com/Paca-AI/api/internal/domain/call"
@@ -70,31 +71,65 @@ func (r *CallRepository) SetRoomSID(ctx context.Context, channelID uuid.UUID, si
 }
 
 // ParticipantJoined implements calldom.Repository.
-func (r *CallRepository) ParticipantJoined(ctx context.Context, channelID, accountID uuid.UUID) error {
-	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
-		var sid string
-		if err := tx.GetContext(ctx, &sid, `INSERT INTO call_sessions (channel_id, started_by) VALUES ($1::uuid, $2::uuid)
+func (r *CallRepository) ParticipantJoined(ctx context.Context, channelID, accountID uuid.UUID, sid string) error {
+	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		var sessionID string
+		if err := tx.GetContext(ctx, &sessionID, `INSERT INTO call_sessions (channel_id, started_by) VALUES ($1::uuid, $2::uuid)
 			ON CONFLICT (channel_id) WHERE ended_at IS NULL DO UPDATE SET channel_id = call_sessions.channel_id
 			RETURNING id`, channelID.String(), accountID.String()); err != nil {
 			return fmt.Errorf("calls: open session: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO call_participants (session_id, account_id) VALUES ($1::uuid, $2::uuid)
-			ON CONFLICT (session_id, account_id) WHERE left_at IS NULL DO NOTHING`, sid, accountID.String()); err != nil {
+		// A second connection of the same account (another tab) replaces the
+		// first, so the row follows the newest connection.
+		if _, err := tx.ExecContext(ctx, `INSERT INTO call_participants (session_id, account_id, sid) VALUES ($1::uuid, $2::uuid, $3)
+			ON CONFLICT (session_id, account_id) WHERE left_at IS NULL DO UPDATE SET sid = EXCLUDED.sid
+			WHERE EXCLUDED.sid <> ''`, sessionID, accountID.String(), sid); err != nil {
 			return fmt.Errorf("calls: participant joined: %w", err)
 		}
 		return nil
 	})
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+		// The channel (or account) is gone: nothing to record, and a retry
+		// would fail the same way.
+		return nil
+	}
+	return err
 }
 
 // ParticipantLeft implements calldom.Repository.
-func (r *CallRepository) ParticipantLeft(ctx context.Context, channelID, accountID uuid.UUID) error {
+func (r *CallRepository) ParticipantLeft(ctx context.Context, channelID, accountID uuid.UUID, sid string) error {
 	if _, err := r.db.ExecContext(ctx, `UPDATE call_participants SET left_at = NOW()
-		WHERE account_id = $2::uuid AND left_at IS NULL
+		WHERE account_id = $2::uuid AND left_at IS NULL AND ($3 = '' OR sid = $3 OR sid = '')
 		  AND session_id IN (SELECT id FROM call_sessions WHERE channel_id = $1::uuid AND ended_at IS NULL)`,
-		channelID.String(), accountID.String()); err != nil {
+		channelID.String(), accountID.String(), sid); err != nil {
 		return fmt.Errorf("calls: participant left: %w", err)
 	}
 	return nil
+}
+
+// BanRemoved implements calldom.Repository.
+func (r *CallRepository) BanRemoved(ctx context.Context, channelID, accountID uuid.UUID, until time.Time) error {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM call_removals WHERE expires_at < NOW()`); err != nil {
+		return fmt.Errorf("calls: prune removals: %w", err)
+	}
+	if _, err := r.db.ExecContext(ctx, `INSERT INTO call_removals (channel_id, account_id, expires_at) VALUES ($1::uuid, $2::uuid, $3)
+		ON CONFLICT (channel_id, account_id) DO UPDATE SET expires_at = EXCLUDED.expires_at`,
+		channelID.String(), accountID.String(), until); err != nil {
+		return fmt.Errorf("calls: bar removed: %w", err)
+	}
+	return nil
+}
+
+// IsRemoved implements calldom.Repository.
+func (r *CallRepository) IsRemoved(ctx context.Context, channelID, accountID uuid.UUID) (bool, error) {
+	var removed bool
+	if err := r.db.GetContext(ctx, &removed, `SELECT EXISTS (SELECT 1 FROM call_removals
+		WHERE channel_id = $1::uuid AND account_id = $2::uuid AND expires_at > NOW())`,
+		channelID.String(), accountID.String()); err != nil {
+		return false, fmt.Errorf("calls: is removed: %w", err)
+	}
+	return removed, nil
 }
 
 // EndSession implements calldom.Repository.

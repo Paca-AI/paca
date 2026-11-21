@@ -4,8 +4,8 @@ package callsvc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -68,7 +68,16 @@ func (s *Service) Join(ctx context.Context, projectID, channelID, accountID uuid
 	if ch.Archived {
 		return nil, chatdom.ErrChannelArchived
 	}
+	if removed, err := s.repo.IsRemoved(ctx, channelID, accountID); err != nil {
+		return nil, err
+	} else if removed {
+		return nil, calldom.ErrRemoved
+	}
 	name, kind, err := s.repo.AccountName(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	meta, err := json.Marshal(map[string]string{"kind": kind})
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +86,7 @@ func (s *Service) Join(ctx context.Context, projectID, channelID, accountID uuid
 	}
 	room := channelID.String()
 	tok, exp, err := s.room.MintToken(
-		livekit.Identity{ID: accountID.String(), Name: name, Metadata: fmt.Sprintf(`{"kind":%q}`, kind)},
+		livekit.Identity{ID: accountID.String(), Name: name, Metadata: string(meta)},
 		livekit.Grant{Room: room, CanPublish: true, CanSubscribe: true}, TokenTTL)
 	if err != nil {
 		return nil, err
@@ -143,14 +152,20 @@ func (s *Service) Mute(ctx context.Context, projectID, channelID, actorID, targe
 	return s.moderate(ctx, projectID, channelID, actorID, targetID, s.room.MuteParticipant)
 }
 
-// Remove implements calldom.Service. The participant row is closed by LiveKit's
+// Remove implements calldom.Service. LiveKit cannot revoke a token that was
+// already handed out, so the account is also barred for as long as such a token
+// could still connect (TokenTTL): Join refuses it and the participant_joined
+// webhook disconnects it again. The participant row is closed by LiveKit's
 // participant_left webhook; it is closed here too so the list does not lag.
 func (s *Service) Remove(ctx context.Context, projectID, channelID, actorID, targetID uuid.UUID) error {
 	err := s.moderate(ctx, projectID, channelID, actorID, targetID, s.room.RemoveParticipant)
 	if err != nil {
 		return err
 	}
-	if err := s.repo.ParticipantLeft(ctx, channelID, targetID); err != nil {
+	if err := s.repo.BanRemoved(ctx, channelID, targetID, time.Now().Add(TokenTTL)); err != nil {
+		slog.Warn("calls: bar removed participant", "channel_id", channelID, "err", err)
+	}
+	if err := s.repo.ParticipantLeft(ctx, channelID, targetID, ""); err != nil {
 		slog.Warn("calls: close removed participant", "channel_id", channelID, "err", err)
 	}
 	s.announce(ctx, channelID)
@@ -178,7 +193,17 @@ func (s *Service) HandleWebhook(ctx context.Context, authHeader string, body []b
 		if err != nil {
 			return nil
 		}
-		if err := s.repo.ParticipantJoined(ctx, channelID, accountID); err != nil {
+		if removed, err := s.repo.IsRemoved(ctx, channelID, accountID); err != nil {
+			return err
+		} else if removed {
+			// A moderator removed this account and it reconnected with the
+			// token it already held: disconnect it again.
+			if err := s.room.RemoveParticipant(ctx, channelID.String(), accountID.String()); err != nil && !errors.Is(err, livekit.ErrNotFound) {
+				return err
+			}
+			return nil
+		}
+		if err := s.repo.ParticipantJoined(ctx, channelID, accountID, ev.Participant.SID); err != nil {
 			return err
 		}
 	case livekit.EventParticipantLeft:
@@ -186,7 +211,7 @@ func (s *Service) HandleWebhook(ctx context.Context, authHeader string, body []b
 		if err != nil {
 			return nil
 		}
-		if err := s.repo.ParticipantLeft(ctx, channelID, accountID); err != nil {
+		if err := s.repo.ParticipantLeft(ctx, channelID, accountID, ev.Participant.SID); err != nil {
 			return err
 		}
 	case livekit.EventRoomFinished:
@@ -204,5 +229,5 @@ func (s *Service) announce(ctx context.Context, channelID uuid.UUID) {
 	if s.notifier == nil {
 		return
 	}
-	s.notifier.CallChanged(ctx, uuid.Nil, channelID)
+	s.notifier.CallChanged(ctx, channelID)
 }

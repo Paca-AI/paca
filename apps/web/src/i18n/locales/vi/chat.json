@@ -109,7 +109,8 @@
 		"dmNotSupported": "Tin nhắn trực tiếp không hỗ trợ thao tác này.",
 		"callsDisabled": "Máy chủ này chưa thiết lập cuộc gọi.",
 		"callNotInCall": "Người đó đã rời cuộc gọi.",
-		"callSelfModerate": "Để tự rời cuộc gọi, hãy dùng Rời cuộc gọi."
+		"callSelfModerate": "Để tự rời cuộc gọi, hãy dùng Rời cuộc gọi.",
+		"callRemoved": "Người điều hành đã xóa bạn khỏi cuộc gọi này. Bạn có thể tham gia lại sau vài phút."
 	},
 	"noPermission": {
 		"title": "Bạn không có quyền dùng trò chuyện trong dự án này",

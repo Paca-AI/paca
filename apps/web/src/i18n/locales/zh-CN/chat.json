@@ -109,7 +109,8 @@
 		"dmNotSupported": "私信中不支持此操作。",
 		"callsDisabled": "此服务器尚未设置通话功能。",
 		"callNotInCall": "该用户已离开通话。",
-		"callSelfModerate": "如需自己离开通话，请使用“离开通话”。"
+		"callSelfModerate": "如需自己离开通话，请使用“离开通话”。",
+		"callRemoved": "管理员已将你移出此通话。几分钟后你可以重新加入。"
 	},
 	"noPermission": {
 		"title": "你无权在此项目中使用聊天",

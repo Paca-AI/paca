@@ -698,6 +698,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusServiceUnavailable, apierr.CodeCallsDisabled
 	case errors.Is(err, calldom.ErrNotInCall):
 		return http.StatusConflict, apierr.CodeCallNotInCall
+	case errors.Is(err, calldom.ErrRemoved):
+		return http.StatusForbidden, apierr.CodeCallRemoved
 	case errors.Is(err, calldom.ErrSelfModerate):
 		return http.StatusBadRequest, apierr.CodeCallSelfModerate
 	case errors.Is(err, livekit.ErrBadWebhook):

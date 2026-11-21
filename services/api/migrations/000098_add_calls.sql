@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS call_participants (
     id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id UUID        NOT NULL REFERENCES call_sessions(id) ON DELETE CASCADE,
     account_id UUID        NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    -- LiveKit's id of the connection, so a late participant_left of a replaced
+    -- connection (the same account in a second tab) does not close the row.
+    sid        TEXT        NOT NULL DEFAULT '',
     joined_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     left_at    TIMESTAMPTZ
 );
@@ -30,6 +33,15 @@ CREATE TABLE IF NOT EXISTS call_participants (
 -- An account is in a call once, however many tabs it connects from.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_call_participants_open ON call_participants (session_id, account_id) WHERE left_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_call_participants_account ON call_participants (account_id);
+
+-- A moderator's removal bars the account from the channel's call until a token
+-- it already holds has expired; LiveKit cannot revoke one.
+CREATE TABLE IF NOT EXISTS call_removals (
+    channel_id UUID        NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    account_id UUID        NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (channel_id, account_id)
+);
 
 -- Gives the roles that already exist the calls:join action the shipped
 -- templates now carry: Editors join calls in the channels they can use, and

@@ -19,6 +19,9 @@ type fakeRepo struct {
 	call     *calldom.Call
 	joined   []uuid.UUID
 	left     []uuid.UUID
+	leftSIDs []string
+	joinSIDs []string
+	banned   map[uuid.UUID]bool
 	ended    int
 	sid      string
 }
@@ -39,13 +42,25 @@ func (f *fakeRepo) SetRoomSID(_ context.Context, _ uuid.UUID, sid string) error 
 	f.sid = sid
 	return nil
 }
-func (f *fakeRepo) ParticipantJoined(_ context.Context, _, a uuid.UUID) error {
+func (f *fakeRepo) ParticipantJoined(_ context.Context, _, a uuid.UUID, sid string) error {
 	f.joined = append(f.joined, a)
+	f.joinSIDs = append(f.joinSIDs, sid)
 	return nil
 }
-func (f *fakeRepo) ParticipantLeft(_ context.Context, _, a uuid.UUID) error {
+func (f *fakeRepo) ParticipantLeft(_ context.Context, _, a uuid.UUID, sid string) error {
 	f.left = append(f.left, a)
+	f.leftSIDs = append(f.leftSIDs, sid)
 	return nil
+}
+func (f *fakeRepo) BanRemoved(_ context.Context, _, a uuid.UUID, _ time.Time) error {
+	if f.banned == nil {
+		f.banned = map[uuid.UUID]bool{}
+	}
+	f.banned[a] = true
+	return nil
+}
+func (f *fakeRepo) IsRemoved(_ context.Context, _, a uuid.UUID) (bool, error) {
+	return f.banned[a], nil
 }
 func (f *fakeRepo) EndSession(context.Context, uuid.UUID) error { f.ended++; return nil }
 func (f *fakeRepo) ListCall(context.Context, uuid.UUID) (*calldom.Call, error) {
@@ -81,7 +96,7 @@ func (f *fakeRoom) MuteParticipant(_ context.Context, _, id string) error {
 
 type fakeNotifier struct{ n int }
 
-func (f *fakeNotifier) CallChanged(context.Context, uuid.UUID, uuid.UUID) { f.n++ }
+func (f *fakeNotifier) CallChanged(context.Context, uuid.UUID) { f.n++ }
 
 func TestJoinMintsTokenForTheChannelRoom(t *testing.T) {
 	ch, me := uuid.New(), uuid.New()
@@ -112,7 +127,7 @@ func TestWebhookEvents(t *testing.T) {
 	ev := func(kind string) *livekit.WebhookEvent {
 		e := &livekit.WebhookEvent{Event: kind}
 		e.Room.Name, e.Room.SID = ch.String(), "RM_1"
-		e.Participant.Identity = acc.String()
+		e.Participant.Identity, e.Participant.SID = acc.String(), "PA_1"
 		return e
 	}
 	repo, n := &fakeRepo{}, &fakeNotifier{}
@@ -123,6 +138,9 @@ func TestWebhookEvents(t *testing.T) {
 		if err := s.HandleWebhook(t.Context(), "auth", nil); err != nil {
 			t.Fatalf("%s: %v", kind, err)
 		}
+	}
+	if repo.joinSIDs[0] != "PA_1" || repo.leftSIDs[0] != "PA_1" {
+		t.Errorf("sids = %v / %v, want the webhook's participant sid", repo.joinSIDs, repo.leftSIDs)
 	}
 	if repo.sid != "RM_1" || len(repo.joined) != 1 || len(repo.left) != 1 || repo.ended != 1 || n.n != 4 {
 		t.Errorf("repo = %+v, announcements = %d", repo, n.n)
@@ -168,5 +186,34 @@ func TestModeration(t *testing.T) {
 	room.rerr = livekit.ErrNotFound
 	if err := s.Remove(t.Context(), uuid.New(), ch, actor, target); !errors.Is(err, calldom.ErrNotInCall) {
 		t.Errorf("already gone: err = %v", err)
+	}
+}
+
+func TestRemoveBarsTheAccountFromRejoining(t *testing.T) {
+	ch, actor, target := uuid.New(), uuid.New(), uuid.New()
+	call := &calldom.Call{ChannelID: ch, Participants: []calldom.Participant{{AccountID: target}}}
+	repo, room := &fakeRepo{call: call}, &fakeRoom{enabled: true}
+	s := New(repo, room)
+	if err := s.Remove(t.Context(), uuid.New(), ch, actor, target); err != nil {
+		t.Fatal(err)
+	}
+	if repo.leftSIDs[0] != "" {
+		t.Errorf("remove must close the row whatever its connection, got sid %q", repo.leftSIDs[0])
+	}
+	if _, err := s.Join(t.Context(), uuid.New(), ch, target); !errors.Is(err, calldom.ErrRemoved) {
+		t.Errorf("join after removal: err = %v", err)
+	}
+
+	// A connection that still holds its old token is disconnected again and not recorded.
+	e := &livekit.WebhookEvent{Event: livekit.EventParticipantJoined}
+	e.Room.Name, e.Participant.Identity, e.Participant.SID = ch.String(), target.String(), "PA_2"
+	room.event = e
+	room.removed = nil
+	repo.joined = nil
+	if err := s.HandleWebhook(t.Context(), "auth", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(room.removed) != 1 || len(repo.joined) != 0 {
+		t.Errorf("removed = %v, joined = %v", room.removed, repo.joined)
 	}
 }

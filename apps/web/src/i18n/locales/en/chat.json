@@ -109,7 +109,8 @@
 		"dmNotSupported": "That isn't available in direct messages.",
 		"callsDisabled": "Calls are not set up on this server.",
 		"callNotInCall": "That person has already left the call.",
-		"callSelfModerate": "To leave the call yourself, use Leave call."
+		"callSelfModerate": "To leave the call yourself, use Leave call.",
+		"callRemoved": "A moderator removed you from this call. You can rejoin in a few minutes."
 	},
 	"noPermission": {
 		"title": "You don't have permission to use chat in this project",

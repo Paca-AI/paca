@@ -109,7 +109,8 @@
 		"dmNotSupported": "Eso no está disponible en los mensajes directos.",
 		"callsDisabled": "Las llamadas no están configuradas en este servidor.",
 		"callNotInCall": "Esa persona ya salió de la llamada.",
-		"callSelfModerate": "Para salir de la llamada tú mismo, usa Salir de la llamada."
+		"callSelfModerate": "Para salir de la llamada tú mismo, usa Salir de la llamada.",
+		"callRemoved": "Un moderador te ha quitado de esta llamada. Podrás volver a unirte en unos minutos."
 	},
 	"noPermission": {
 		"title": "No tienes permiso para usar el chat en este proyecto",
