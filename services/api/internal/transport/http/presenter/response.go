@@ -694,7 +694,7 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusUnauthorized, apierr.CodeAutomationWebhookTokenInvalid
 	case errors.Is(err, automationdom.ErrUpdateTaskSelfParent):
 		return http.StatusBadRequest, apierr.CodeAutomationUpdateTaskSelfParent
-	case errors.Is(err, calldom.ErrDisabled):
+	case errors.Is(err, calldom.ErrDisabled), errors.Is(err, livekit.ErrDisabled):
 		return http.StatusServiceUnavailable, apierr.CodeCallsDisabled
 	case errors.Is(err, calldom.ErrNotInCall):
 		return http.StatusConflict, apierr.CodeCallNotInCall
