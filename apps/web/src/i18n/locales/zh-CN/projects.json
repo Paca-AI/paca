@@ -2141,6 +2141,7 @@
 				"dueDate": "截止日期",
 				"epic": "史诗",
 				"created": "创建时间",
+				"waiting": "Waiting",
 				"tags": "标签"
 			},
 			"unassigned": "未分配",

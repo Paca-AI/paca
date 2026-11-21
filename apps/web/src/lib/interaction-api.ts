@@ -823,6 +823,39 @@ export const assignedTasksQueryOptions = () =>
 		getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
 	});
 
+export interface WaitingTasksResult {
+	items: Task[];
+	page_size: number;
+	has_more: boolean;
+}
+
+/** Open tasks across every project the current user can access, ordered by
+ *  updated_at ascending (least recently active first) — backs the home page
+ *  "Waiting tasks" widget. Single page by design: the server caps at
+ *  page_size (max 100) and reports has_more. */
+export async function listWaitingTasks(
+	opts: { pageSize?: number } = {},
+): Promise<WaitingTasksResult> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<WaitingTasksResult>
+	>("/users/me/waiting-tasks", {
+		params: {
+			page_size: opts.pageSize ?? WAITING_TASKS_PAGE_SIZE,
+			include: TASK_INCLUDE,
+		},
+	});
+	seedTaskPeople(data.data.items);
+	return data.data;
+}
+
+export const WAITING_TASKS_PAGE_SIZE = 10;
+
+export const waitingTasksQueryOptions = (pageSize: number) =>
+	queryOptions({
+		queryKey: ["users", "me", "waiting-tasks", pageSize],
+		queryFn: () => listWaitingTasks({ pageSize }),
+	});
+
 export async function createTask(
 	projectId: string,
 	payload: {

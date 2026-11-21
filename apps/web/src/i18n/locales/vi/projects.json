@@ -2141,6 +2141,7 @@
 				"dueDate": "Ngày đến hạn",
 				"epic": "Epic",
 				"created": "Đã tạo",
+				"waiting": "Waiting",
 				"tags": "Thẻ"
 			},
 			"unassigned": "Chưa giao",

@@ -164,6 +164,10 @@ func (s *stubTaskSvc) ListAssignedTasks(_ context.Context, _ []uuid.UUID, _ int,
 	return nil, false, nil
 }
 
+func (s *stubTaskSvc) ListWaitingTasks(_ context.Context, _ []uuid.UUID, _ int) ([]*taskdom.Task, bool, error) {
+	return nil, false, nil
+}
+
 func (s *stubTaskSvc) CountOpenTasksByProjects(_ context.Context, _ []uuid.UUID) (int64, error) {
 	return 0, nil
 }

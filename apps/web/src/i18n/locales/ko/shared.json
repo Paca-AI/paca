@@ -84,6 +84,17 @@
 			"loadMore": "더 보기",
 			"loading": "불러오는 중…"
 		},
+		"waitingTasks": {
+			"title": "Waiting tasks",
+			"description": "Open tasks with the least recent activity, across all your projects",
+			"subtitle": "Sorted by last activity",
+			"columns": "Columns",
+			"showCount": "Show {{count}}",
+			"emptyTitle": "Nothing is stuck",
+			"emptyDescription": "No open tasks are waiting on anyone right now.",
+			"loadError": "Couldn't load waiting tasks. Please try again.",
+			"moreHidden": "More waiting tasks are not shown"
+		},
 		"projectsSection": {
 			"title": "프로젝트",
 			"countInWorkspace_one": "워크스페이스에 프로젝트 {{count}}개",

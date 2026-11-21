@@ -1078,6 +1078,100 @@ func (h *TaskHandler) ListAssignedToMe(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ListWaitingTasks handles GET /users/me/waiting-tasks. It returns open
+// (non-done) tasks across every project the authenticated user can access,
+// ordered by updated_at ascending — the tasks that have been sitting the
+// longest without activity. No keyset cursor: the widget shows at most
+// page_size items and a has_more flag. Powers the cross-project "waiting
+// tasks" widget on the home page.
+func (h *TaskHandler) ListWaitingTasks(w http.ResponseWriter, r *http.Request) {
+	accountID, ok := requireAccountID(w, r)
+	if !ok {
+		return
+	}
+
+	pageSize, err := parsePageSize(r, 10, 100)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	include, err := parseTaskInclude(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	empty := func() {
+		presenter.OK(w, r, map[string]any{
+			"items":     []dto.TaskResponse{},
+			"page_size": pageSize,
+			"has_more":  false,
+		})
+	}
+
+	if h.projectSvc == nil {
+		empty()
+		return
+	}
+
+	projects, _, err := h.projectSvc.ListAccessible(r.Context(), accountID, 1, 10000)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if len(projects) == 0 {
+		empty()
+		return
+	}
+	projectIDs := make([]uuid.UUID, 0, len(projects))
+	for _, p := range projects {
+		projectIDs = append(projectIDs, p.ID)
+	}
+
+	// Each accessible project contributes the scope of the tasks the caller
+	// may read there, applied by the repository inside the query.
+	listCtx := r.Context()
+	if h.listScoper != nil {
+		principal, perr := middleware.IAMPrincipalFrom(r)
+		if perr != nil {
+			presenter.Error(w, r, perr)
+			return
+		}
+		byProject := map[string]*iam.Node{}
+		for _, pid := range projectIDs {
+			n, serr := h.listScoper.ListScope(r.Context(), principal, string(iam.ActionTasksRead), pid.String(), "task")
+			if serr != nil {
+				presenter.Error(w, r, serr)
+				return
+			}
+			byProject[pid.String()] = n
+		}
+		listCtx = iam.WithProjectScopes(listCtx, "task", byProject)
+	}
+	tasks, hasMore, err := h.svc.ListWaitingTasks(listCtx, projectIDs, pageSize)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	resp := make([]dto.TaskResponse, 0, len(tasks))
+	for _, t := range tasks {
+		resp = append(resp, dto.TaskFromEntity(t))
+	}
+	if include.people {
+		if err := h.attachPeople(r.Context(), tasks, resp); err != nil {
+			presenter.Error(w, r, err)
+			return
+		}
+	}
+
+	presenter.OK(w, r, map[string]any{
+		"items":     resp,
+		"page_size": pageSize,
+		"has_more":  hasMore,
+	})
+}
+
 // GetTask handles GET /projects/:projectId/tasks/:taskId.
 func (h *TaskHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 	projectID, err := parseProjectID(r)

@@ -2141,6 +2141,7 @@
 				"dueDate": "期日",
 				"epic": "エピック",
 				"created": "作成日",
+				"waiting": "Waiting",
 				"tags": "タグ"
 			},
 			"unassigned": "未割り当て",

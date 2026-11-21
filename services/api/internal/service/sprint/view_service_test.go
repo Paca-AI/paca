@@ -92,6 +92,9 @@ func (permissiveTaskRepo) BulkMoveSprintTasks(context.Context, uuid.UUID, uuid.U
 func (permissiveTaskRepo) ListAssignedTasks(context.Context, []uuid.UUID, int, *string) ([]*taskdom.Task, bool, error) {
 	return nil, false, nil
 }
+func (permissiveTaskRepo) ListWaitingTasks(context.Context, []uuid.UUID, int) ([]*taskdom.Task, bool, error) {
+	return nil, false, nil
+}
 func (permissiveTaskRepo) CountOpenTasksByProjects(context.Context, []uuid.UUID) (int64, error) {
 	return 0, nil
 }

@@ -432,6 +432,15 @@ func (s *Service) ListAssignedTasks(ctx context.Context, memberIDs []uuid.UUID, 
 	return s.repo.ListAssignedTasks(ctx, memberIDs, limit, cursorAfter)
 }
 
+// ListWaitingTasks returns open tasks in any of projectIDs, least recently
+// updated first — see taskdom.Repository.ListWaitingTasks.
+func (s *Service) ListWaitingTasks(ctx context.Context, projectIDs []uuid.UUID, limit int) ([]*taskdom.Task, bool, error) {
+	if limit < 1 {
+		limit = 10
+	}
+	return s.repo.ListWaitingTasks(ctx, projectIDs, limit)
+}
+
 // GetTask returns the task with the given ID, verifying it belongs to projectID.
 func (s *Service) GetTask(ctx context.Context, projectID, id uuid.UUID) (*taskdom.Task, error) {
 	t, err := s.repo.FindTaskByID(ctx, id)

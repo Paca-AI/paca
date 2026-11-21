@@ -79,6 +79,7 @@ var openRouteGroups = []struct {
 			"PATCH /api/v1/users/me/password",
 			"GET /api/v1/users/me/global-permissions",
 			"GET /api/v1/users/me/tasks",
+			"GET /api/v1/users/me/waiting-tasks",
 			"POST /api/v1/users/me/avatar/initiate-upload",
 			"POST /api/v1/users/me/avatar/complete-upload",
 			"DELETE /api/v1/users/me/avatar",

@@ -2159,6 +2159,7 @@
 				"dueDate": "Срок",
 				"epic": "Эпик",
 				"created": "Создана",
+				"waiting": "Waiting",
 				"tags": "Теги"
 			},
 			"unassigned": "Не назначено",
