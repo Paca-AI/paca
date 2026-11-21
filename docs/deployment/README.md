@@ -104,7 +104,7 @@ bash migrate-storage.sh --to s3
 bash migrate-storage.sh --to rustfs
 ```
 
-Use `--dry-run` to preview. By default the `api` is stopped during the copy so nothing is uploaded mid-migration. After moving to S3, run future `docker compose up` with `--scale rustfs=0`. See the header of the script for all options.
+Copying is done by [rclone](https://rclone.org) in a throwaway container (`rclone/rclone` from Docker Hub). For `--to s3`, create the bucket first; the script does not create it, so the key needs no `s3:CreateBucket`. Use `--dry-run` to preview. By default the `api` is stopped during the copy so nothing is uploaded mid-migration. After moving to S3, run future `docker compose up` with `--scale rustfs=0`. See the header of the script for all options.
 
 ### Migrating from MinIO to RustFS
 

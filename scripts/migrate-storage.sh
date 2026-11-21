@@ -14,10 +14,10 @@
 # touched, and is restored automatically if the script fails part-way).
 #
 # Run this from the directory that holds your docker-compose.yml and .env (the
-# directory install.sh created). Requires Docker; copying is done by MinIO
-# Client (`mc`, quay.io/minio/mc) running in a throwaway container attached to
+# directory install.sh created). Requires Docker; copying is done by rclone
+# (rclone/rclone from Docker Hub) running in a throwaway container attached to
 # the compose network, because the bundled RustFS port is not published to the
-# host.
+# host. No MinIO software is involved.
 #
 # ── Usage ────────────────────────────────────────────────────────────────────
 #   bash migrate-storage.sh --to s3
@@ -33,7 +33,7 @@
 #                                Set to "no" only if you accept that files
 #                                uploaded during the copy may be missed.
 #   PACA_SWITCH_ENV              Update .env + restart api afterwards (default: yes)
-#   PACA_MC_IMAGE                MinIO Client image        (default: quay.io/minio/mc)
+#   PACA_RCLONE_IMAGE            rclone image              (default: rclone/rclone)
 #   PACA_COMPOSE_NETWORK         Docker network of the stack. Auto-detected from
 #                                the running rustfs/api container if unset.
 #
@@ -44,7 +44,7 @@
 #   DEST_STORAGE_REGION          default: us-east-1
 #   DEST_STORAGE_ENDPOINT        --to s3 only. Empty = AWS regional endpoint. Set
 #                                host[:port] for another S3-compatible service
-#                                (Cloudflare R2, Backblaze B2, a self-managed MinIO ...)
+#                                (Cloudflare R2, Backblaze B2, Wasabi ...)
 #   DEST_STORAGE_USE_SSL         --to s3 only. true/false          (default: true)
 #
 # The source is always read from the current STORAGE_* values in .env.
@@ -56,9 +56,6 @@
 #
 #   bash migrate-storage.sh --to rustfs
 
-# The $VARS inside the single-quoted mc scripts are meant to expand in the
-# container, not here.
-# shellcheck disable=SC2016
 set -euo pipefail
 
 # ── Colours ───────────────────────────────────────────────────────────────────
@@ -160,7 +157,7 @@ cd "$PACA_DIR"
     || die "No Paca installation here (missing docker-compose.yml and/or .env). Run from your install directory or set PACA_DIR."
 info "Installation directory: $(pwd)"
 
-MC_IMAGE="${PACA_MC_IMAGE:-quay.io/minio/mc}"
+RCLONE_IMAGE="${PACA_RCLONE_IMAGE:-rclone/rclone}"
 
 # ── Source (current .env) ─────────────────────────────────────────────────────
 
@@ -180,6 +177,7 @@ if [[ "$SRC_PROVIDER" != "rustfs" && "$SRC_PROVIDER" != "s3" ]]; then
 fi
 [[ -n "$SRC_AK" && -n "$SRC_SK" ]] || die "STORAGE_ACCESS_KEY_ID / STORAGE_SECRET_ACCESS_KEY are not set in .env."
 
+SRC_IS_AWS="no"
 if [[ "$SRC_PROVIDER" == "rustfs" ]]; then
     SRC_ENDPOINT="${SRC_ENDPOINT:-rustfs:9000}"
     SRC_SSL="${SRC_SSL:-false}"
@@ -187,6 +185,7 @@ else
     SRC_SSL="${SRC_SSL:-true}"
     if [[ -z "$SRC_ENDPOINT" ]]; then
         SRC_ENDPOINT="s3.amazonaws.com"
+        SRC_IS_AWS="yes"
     fi
 fi
 SRC_SCHEME="http"; [[ "$SRC_SSL" == "true" ]] && SRC_SCHEME="https"
@@ -204,12 +203,14 @@ if [[ "$TARGET" == "s3" ]]; then
     [[ -n "$DEST_BUCKET" && -n "$DEST_AK" && -n "$DEST_SK" ]] \
         || die "--to s3 needs DEST_STORAGE_BUCKET, DEST_STORAGE_ACCESS_KEY_ID and DEST_STORAGE_SECRET_ACCESS_KEY (see --help)."
     DEST_ENDPOINT="${DEST_ENDPOINT_ENV:-s3.amazonaws.com}"
+    DEST_IS_AWS="no"; [[ -z "$DEST_ENDPOINT_ENV" ]] && DEST_IS_AWS="yes"
 else
     DEST_BUCKET="${DEST_STORAGE_BUCKET:-paca}"
     DEST_AK="${DEST_STORAGE_ACCESS_KEY_ID:-}"
     DEST_SK="${DEST_STORAGE_SECRET_ACCESS_KEY:-}"
     DEST_ENDPOINT_ENV="rustfs:9000"
     DEST_ENDPOINT="rustfs:9000"
+    DEST_IS_AWS="no"
     DEST_SSL="false"
     GENERATED_KEYS="no"
     if [[ -z "$DEST_AK" ]]; then DEST_AK="paca$(rand_hex 16)"; GENERATED_KEYS="yes"; fi
@@ -223,26 +224,58 @@ echo "  Source      : ${SRC_PROVIDER}  ${SRC_URL}/${SRC_BUCKET}"
 echo "  Destination : ${TARGET}  ${DEST_URL}/${DEST_BUCKET}"
 echo ""
 
-# ── mc runner ─────────────────────────────────────────────────────────────────
-# Credentials travel as environment variables (never on a command line, which
-# other users could see in `ps`) and are expanded inside the container.
+# ── rclone runner ─────────────────────────────────────────────────────────────
+# Both remotes ("src" and "dst") are defined through RCLONE_CONFIG_* environment
+# variables. They are passed to Docker by NAME (`-e VAR`), so the secrets are
+# read from this process's environment and never appear in the `docker run`
+# argv, which other local users could see in `ps`.
 
 NETWORK="${PACA_COMPOSE_NETWORK:-}"
 BACKUP_ENV=""
 API_STOPPED="no"
 ENV_SWITCHED="no"
 
-mc_run() {   # mc_run '<sh script>'
+setup_remotes() {
+    export RCLONE_CONFIG_SRC_TYPE=s3 RCLONE_CONFIG_DST_TYPE=s3
+    export RCLONE_CONFIG_SRC_ACCESS_KEY_ID="$SRC_AK" RCLONE_CONFIG_SRC_SECRET_ACCESS_KEY="$SRC_SK"
+    export RCLONE_CONFIG_DST_ACCESS_KEY_ID="$DEST_AK" RCLONE_CONFIG_DST_SECRET_ACCESS_KEY="$DEST_SK"
+    export RCLONE_CONFIG_SRC_REGION="$SRC_REGION" RCLONE_CONFIG_DST_REGION="$DEST_REGION"
+    if [[ "$SRC_IS_AWS" == "yes" ]]; then
+        export RCLONE_CONFIG_SRC_PROVIDER=AWS
+    else
+        export RCLONE_CONFIG_SRC_PROVIDER=Other RCLONE_CONFIG_SRC_ENDPOINT="$SRC_URL" RCLONE_CONFIG_SRC_FORCE_PATH_STYLE=true
+    fi
+    if [[ "$DEST_IS_AWS" == "yes" ]]; then
+        export RCLONE_CONFIG_DST_PROVIDER=AWS
+    else
+        export RCLONE_CONFIG_DST_PROVIDER=Other RCLONE_CONFIG_DST_ENDPOINT="$DEST_URL" RCLONE_CONFIG_DST_FORCE_PATH_STYLE=true
+    fi
+    # The bucket is expected to exist already on S3 (so the key needs no
+    # s3:CreateBucket); don't let rclone try to create or probe it.
+    [[ "$TARGET" == "s3" ]] && export RCLONE_CONFIG_DST_NO_CHECK_BUCKET=true
+    return 0
+}
+
+rclone_run() {   # rclone_run <rclone args...>
     local net_args=()
     [[ -n "$NETWORK" ]] && net_args=(--network "$NETWORK")
-    # `-e NAME` (no value) makes Docker read it from this process's environment,
-    # so secrets never appear in the docker argv visible via `ps`.
-    export SRC_URL SRC_AK SRC_SK DEST_URL DEST_AK DEST_SK SRC_BUCKET DEST_BUCKET DEST_REGION
     docker run --rm "${net_args[@]}" \
-        -e SRC_URL -e SRC_AK -e SRC_SK -e DEST_URL -e DEST_AK -e DEST_SK \
-        -e SRC_BUCKET -e DEST_BUCKET -e DEST_REGION \
-        --entrypoint /bin/sh "$MC_IMAGE" -c \
-        'mc alias set src "$SRC_URL" "$SRC_AK" "$SRC_SK" >/dev/null && mc alias set dst "$DEST_URL" "$DEST_AK" "$DEST_SK" >/dev/null && '"$1"
+        -e RCLONE_CONFIG_SRC_TYPE -e RCLONE_CONFIG_SRC_PROVIDER -e RCLONE_CONFIG_SRC_ACCESS_KEY_ID \
+        -e RCLONE_CONFIG_SRC_SECRET_ACCESS_KEY -e RCLONE_CONFIG_SRC_REGION -e RCLONE_CONFIG_SRC_ENDPOINT \
+        -e RCLONE_CONFIG_SRC_FORCE_PATH_STYLE \
+        -e RCLONE_CONFIG_DST_TYPE -e RCLONE_CONFIG_DST_PROVIDER -e RCLONE_CONFIG_DST_ACCESS_KEY_ID \
+        -e RCLONE_CONFIG_DST_SECRET_ACCESS_KEY -e RCLONE_CONFIG_DST_REGION -e RCLONE_CONFIG_DST_ENDPOINT \
+        -e RCLONE_CONFIG_DST_FORCE_PATH_STYLE -e RCLONE_CONFIG_DST_NO_CHECK_BUCKET \
+        "$RCLONE_IMAGE" "$@"
+}
+
+# bucket_stats REMOTE BUCKET → "<objects> <bytes>" (empty on failure)
+bucket_stats() {
+    local out
+    out="$(rclone_run size --json "$1:$2" 2>/dev/null | tail -1 || true)"
+    printf '%s %s' \
+        "$(printf '%s' "$out" | sed -n 's/.*"count":\([0-9]*\).*/\1/p')" \
+        "$(printf '%s' "$out" | sed -n 's/.*"bytes":\([0-9]*\).*/\1/p')"
 }
 
 detect_network() {
@@ -281,6 +314,17 @@ trap on_exit EXIT
 
 heading "Preparing"
 
+# Pull the rclone image up front so a registry problem is reported as such, not
+# as a bad storage credential further down.
+if ! docker image inspect "$RCLONE_IMAGE" >/dev/null 2>&1 && ! docker pull -q "$RCLONE_IMAGE" >/dev/null 2>&1; then
+    error "Could not pull the rclone image '$RCLONE_IMAGE'."
+    error "Check the host's internet/proxy access and 'docker login' state (a 401 usually means stale registry credentials: 'docker logout <registry>'),"
+    error "or point PACA_RCLONE_IMAGE at an rclone image you can pull."
+    exit 1
+fi
+info "Using rclone image: $RCLONE_IMAGE"
+setup_remotes
+
 if [[ "$TARGET" == "rustfs" ]]; then
     # RustFS reads its credentials from .env at container start, so the new
     # keys must be in .env before it starts. Back up first; on_exit restores.
@@ -307,22 +351,20 @@ if ! detect_network; then
     if [[ "$SRC_PROVIDER" == "rustfs" || "$TARGET" == "rustfs" ]]; then
         die "Could not find the compose network (is the stack running?). Set PACA_COMPOSE_NETWORK, e.g. paca_default (see 'docker network ls')."
     fi
-    warn "No compose network found; running mc on the default Docker network."
+    warn "No compose network found; running rclone on the default Docker network."
 fi
 [[ -n "$NETWORK" ]] && info "Docker network: $NETWORK"
 
 info "Checking source credentials..."
-mc_run 'mc ls "src/$SRC_BUCKET" >/dev/null' \
+rclone_run lsf "src:$SRC_BUCKET" --max-depth 1 >/dev/null \
     || die "Cannot read source bucket '$SRC_BUCKET' at $SRC_URL — check STORAGE_* in .env."
 
-SRC_STATS="$(mc_run 'mc du --json "src/$SRC_BUCKET"' 2>/dev/null | tail -1 || true)"
-SRC_OBJECTS="$(printf '%s' "$SRC_STATS" | sed -n 's/.*"objects":\([0-9]*\).*/\1/p')"
-SRC_SIZE="$(printf '%s' "$SRC_STATS"    | sed -n 's/.*"size":\([0-9]*\).*/\1/p')"
+read -r SRC_OBJECTS SRC_SIZE <<<"$(bucket_stats src "$SRC_BUCKET")"
 info "Source holds ${SRC_OBJECTS:-?} object(s), ${SRC_SIZE:-?} bytes."
 
 if [[ "$DRY_RUN" == "yes" ]]; then
     heading "Dry run"
-    mc_run 'mc mirror --dry-run --overwrite "src/$SRC_BUCKET" "dst/$DEST_BUCKET"' || true
+    rclone_run copy --dry-run -v "src:$SRC_BUCKET" "dst:$DEST_BUCKET" || true
     info "Dry run only — nothing was copied or changed."
     exit 0
 fi
@@ -344,25 +386,24 @@ fi
 
 heading "Copying objects"
 
-MB_REGION=""
-[[ "$TARGET" == "s3" ]] && MB_REGION='--region "$DEST_REGION"'
-mc_run "mc mb --ignore-existing $MB_REGION \"dst/\$DEST_BUCKET\" >/dev/null && mc mirror --overwrite \"src/\$SRC_BUCKET\" \"dst/\$DEST_BUCKET\"" \
-    || die "Copy failed (see mc output above)."
+if [[ "$TARGET" == "rustfs" ]]; then
+    rclone_run mkdir "dst:$DEST_BUCKET" || die "Could not create bucket '$DEST_BUCKET' on RustFS."
+fi
+rclone_run copy -v --stats-one-line --transfers 8 "src:$SRC_BUCKET" "dst:$DEST_BUCKET" \
+    || die "Copy failed (see rclone output above). On S3 the bucket '$DEST_BUCKET' must already exist and the key needs s3:PutObject/ListBucket."
 info "Copy finished."
 
 # ── Verify ────────────────────────────────────────────────────────────────────
 
 if [[ "$API_STOPPED" == "no" ]] && $COMPOSE_CMD --env-file .env ps -q api 2>/dev/null | grep -q .; then
     heading "Second pass (api was running)"
-    mc_run 'mc mirror --overwrite "src/$SRC_BUCKET" "dst/$DEST_BUCKET"' \
-        || die "Second copy pass failed (see mc output above)."
+    rclone_run copy -v --stats-one-line --transfers 8 "src:$SRC_BUCKET" "dst:$DEST_BUCKET" \
+        || die "Second copy pass failed (see rclone output above)."
 fi
 
 heading "Verifying"
 
-DST_STATS="$(mc_run 'mc du --json "dst/$DEST_BUCKET"' 2>/dev/null | tail -1 || true)"
-DST_OBJECTS="$(printf '%s' "$DST_STATS" | sed -n 's/.*"objects":\([0-9]*\).*/\1/p')"
-DST_SIZE="$(printf '%s' "$DST_STATS"    | sed -n 's/.*"size":\([0-9]*\).*/\1/p')"
+read -r DST_OBJECTS DST_SIZE <<<"$(bucket_stats dst "$DEST_BUCKET")"
 echo "  source      : ${SRC_OBJECTS:-?} objects, ${SRC_SIZE:-?} bytes"
 echo "  destination : ${DST_OBJECTS:-?} objects, ${DST_SIZE:-?} bytes"
 
@@ -372,6 +413,10 @@ if [[ -z "$SRC_OBJECTS" || -z "$DST_OBJECTS" ]] \
     || (( DST_OBJECTS < SRC_OBJECTS )) || (( ${DST_SIZE:-0} < ${SRC_SIZE:-0} )); then
     die "Verification failed: the destination is missing data. .env was not switched."
 fi
+# Every source object must exist in the destination with the same size. Size
+# only: ETags/hashes legitimately differ between stores (multipart, SSE-KMS).
+rclone_run check --one-way --size-only "src:$SRC_BUCKET" "dst:$DEST_BUCKET" >/dev/null 2>&1 \
+    || die "Verification failed: some source objects are missing or differ in size at the destination. .env was not switched."
 info "Destination holds every source object."
 
 # ── Switch .env ───────────────────────────────────────────────────────────────
