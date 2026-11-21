@@ -284,6 +284,13 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
       # Public base URL used by plugins for callback / webhook URLs.
       PUBLIC_URL: ${PUBLIC_URL:-}
+      # Voice and video calls (the livekit service below). Calls stay off
+      # until LIVEKIT_URL and a key/secret are set. LIVEKIT_URL (the signalling URL, derived from PUBLIC_URL when empty)
+      # browsers use (through the gateway's /livekit route).
+      LIVEKIT_URL: ${LIVEKIT_URL:-}
+      LIVEKIT_INTERNAL_URL: http://livekit:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-paca}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
       # Origin Git providers deliver to, when it must differ from PUBLIC_URL.
       GIT_WEBHOOK_PUBLIC_URL: ${GIT_WEBHOOK_PUBLIC_URL:-}
       # "local" keeps plugins in the folders below; "s3" stores them in the
@@ -396,6 +403,41 @@ services:
         required: false  # skipped when --scale web=0 (external / CDN-hosted frontend)
       realtime:
         condition: service_started
+
+  # ── LiveKit (opt-in voice and video calls) ───────────────────────────────────
+  # Runs by default; skip it with --scale livekit=0 if you do not want calls.
+  # Calls stay off until LIVEKIT_API_SECRET is set in .env (openssl rand -hex 32);
+  # until then this container only idles. LIVEKIT_URL defaults to PUBLIC_URL with
+  # ws(s):// and /livekit. Signalling
+  # goes through the gateway (/livekit); media needs UDP ${LIVEKIT_UDP_PORT:-7882}
+  # and TCP ${LIVEKIT_TCP_PORT:-7881} reachable from users. This is a single node,
+  # so it needs no Redis; scaling out means adding `redis:` to the config.
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    restart: unless-stopped
+    entrypoint:
+      - sh
+      - -c
+      - |
+        [ -n "$$LIVEKIT_API_SECRET" ] || { echo "LIVEKIT_API_SECRET is not set: calls are off" >&2; exec sleep infinity; }
+        exec /livekit-server
+    environment:
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:-paca}: ${LIVEKIT_API_SECRET:-}"
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
+          use_external_ip: true
+        webhook:
+          api_key: ${LIVEKIT_API_KEY:-paca}
+          urls:
+            - http://api:8080/api/v1/webhooks/livekit
+    ports:
+      # Media bypasses the gateway: one muxed UDP port plus a TCP fallback.
+      - "${LIVEKIT_TCP_PORT:-7881}:7881/tcp"
+      - "${LIVEKIT_UDP_PORT:-7882}:7882/udp"
 
   # ── Agent Runner (optional) ─────────────────────────────────────────────────
   # Go replacement for the old Python "ai-agent" service. Suppress with

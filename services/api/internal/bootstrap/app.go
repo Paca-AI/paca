@@ -18,6 +18,7 @@ import (
 	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/platform/cache"
 	"github.com/Paca-AI/api/internal/platform/database"
+	"github.com/Paca-AI/api/internal/platform/livekit"
 	"github.com/Paca-AI/api/internal/platform/logger"
 	"github.com/Paca-AI/api/internal/platform/messaging"
 	"github.com/Paca-AI/api/internal/platform/netguard"
@@ -33,6 +34,7 @@ import (
 	attachmentsvc "github.com/Paca-AI/api/internal/service/attachment"
 	authsvc "github.com/Paca-AI/api/internal/service/auth"
 	automationsvc "github.com/Paca-AI/api/internal/service/automation"
+	callsvc "github.com/Paca-AI/api/internal/service/call"
 	chatsvc "github.com/Paca-AI/api/internal/service/chat"
 	docsvc "github.com/Paca-AI/api/internal/service/doc"
 	environmentsvc "github.com/Paca-AI/api/internal/service/environment"
@@ -574,6 +576,12 @@ func New(cfg *config.Config) (*App, error) {
 		WithListScoper(authorizer).
 		WithDeploymentConfig(cfg.SSHBastionHost, cfg.PortForwardHost).
 		WithDockerInSandbox(cfg.DockerInSandbox)
+	livekitClient := livekit.New(livekit.Config{
+		PublicURL: cfg.LiveKit.URL, InternalURL: cfg.LiveKit.InternalURL,
+		APIKey: cfg.LiveKit.APIKey, APISecret: cfg.LiveKit.APISecret,
+	})
+	callService := callsvc.New(pgRepo.NewCallRepository(db), livekitClient).WithNotifier(callsvc.NewPubSubNotifier(publisher))
+	callHandler := handler.NewCallHandler(callService).WithCallListScoper(authorizer)
 	chatHandler := handler.NewChatHandler(chatService).WithChatListScoper(authorizer).WithChatProjectsScoper(authorizer).WithChatRootScoper(authorizer)
 	annotationHandler := handler.NewAnnotationHandler(annotationService).
 		WithAnnotationListScoper(authorizer).
@@ -665,6 +673,7 @@ func New(cfg *config.Config) (*App, error) {
 		Git:                gitHandler,
 		Annotation:         annotationHandler,
 		Chat:               chatHandler,
+		Call:               callHandler,
 		Conversation:       convHandler,
 		Automation:         automationHandler,
 		Settings:           handler.NewSettingsHandler(settingsService).WithAvatarService(attachmentService),

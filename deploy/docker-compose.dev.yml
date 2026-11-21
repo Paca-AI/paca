@@ -156,6 +156,15 @@ services:
       AI_AGENT_INTERNAL_KEY: dev-internal-key-change-in-production
       # Public base URL used by plugins to generate callback/webhook URLs.
       PUBLIC_URL: ${PUBLIC_HOST:-http://localhost}
+      # Voice and video calls (the livekit service below). Calls stay off
+      # until LIVEKIT_URL and a key/secret are set. LIVEKIT_URL (the signalling URL, derived from PUBLIC_URL when empty)
+      # browsers use (through the gateway's /livekit route).
+      # Empty: derived from PUBLIC_URL (PUBLIC_HOST), so calls use the same host
+      # and port as the app.
+      LIVEKIT_URL: ${LIVEKIT_URL:-}
+      LIVEKIT_INTERNAL_URL: http://livekit:7880
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: devsecret-devsecret-devsecret-0123456789
       # Purely descriptive — services/api never itself publishes any
       # environment port, it only echoes these back via GET
       # /environments/config so the web app's Connect page can show a real
@@ -251,6 +260,31 @@ services:
       api:
         condition: service_started
   
+  # ── LiveKit (opt-in voice and video calls) ───────────────────────────────────
+  # Voice and video calls. Media uses UDP 7882 and TCP 7881 on the host;
+  # signalling goes through the gateway's /livekit route.
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    restart: unless-stopped
+    environment:
+      LIVEKIT_KEYS: "devkey: devsecret-devsecret-devsecret-0123456789"
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
+          # The address browsers send media to: 127.0.0.1 for localhost, the
+          # machine's LAN or public IP when you open the app by another host.
+          node_ip: ${LIVEKIT_NODE_IP:-127.0.0.1}
+        webhook:
+          api_key: devkey
+          urls:
+            - http://api:8080/api/v1/webhooks/livekit
+    ports:
+      # Media bypasses the gateway: one muxed UDP port plus a TCP fallback.
+      - "${LIVEKIT_TCP_PORT:-7881}:7881/tcp"
+      - "${LIVEKIT_UDP_PORT:-7882}:7882/udp"
+
   gateway:
     image: caddy:2-alpine
     restart: unless-stopped

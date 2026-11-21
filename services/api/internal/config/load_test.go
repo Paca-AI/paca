@@ -324,3 +324,17 @@ func TestLoadAuthRateLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestLiveKitSignalURL(t *testing.T) {
+	cases := []struct{ explicit, public, want string }{
+		{"", "http://localhost:3000", "ws://localhost:3000/livekit"},
+		{"", "https://paca.example.com/", "wss://paca.example.com/livekit"},
+		{"wss://calls.example.com/rtc", "https://paca.example.com", "wss://calls.example.com/rtc"},
+		{"", "", ""},
+	}
+	for _, c := range cases {
+		if got := livekitSignalURL(c.explicit, c.public); got != c.want {
+			t.Errorf("livekitSignalURL(%q, %q) = %q, want %q", c.explicit, c.public, got, c.want)
+		}
+	}
+}

@@ -63,6 +63,7 @@ import { chatErrorKey } from "@/lib/chat-errors";
 import { taskCreatedBlocks, titleFromText } from "@/lib/chat-tasks";
 import { createTask } from "@/lib/interaction-api";
 import { AgentRunsPanel } from "./agent-runs-panel";
+import { CallBanner, CallHeaderButton, useChannelCall } from "./call-join";
 import { Composer, type SlashCommand } from "./composer";
 import type { MessageActions } from "./message-item";
 import { MessageList } from "./message-list";
@@ -300,6 +301,7 @@ export function ChannelView({
 	const canManage = !isDM && can("channels:write");
 	const archived = channel?.archived_at != null;
 	const canCreateTasks = !isDM && !archived && canWrite && can("tasks:write");
+	const channelCall = useChannelCall(projectId, channel, can("calls:join"));
 
 	const commands = useMemo<SlashCommand[] | undefined>(() => {
 		const list: SlashCommand[] = [];
@@ -379,6 +381,12 @@ export function ChannelView({
 							testId="channel-viewers"
 						/>
 					}
+					callButton={
+						<CallHeaderButton
+							call={channelCall}
+							voice={channel?.kind === "voice"}
+						/>
+					}
 					channel={channel}
 					onToggleStar={(on) => starMutation.mutate(on)}
 					agent={agent}
@@ -395,6 +403,7 @@ export function ChannelView({
 						{actionError}
 					</p>
 				) : null}
+				<CallBanner call={channelCall} voice={channel?.kind === "voice"} />
 				{win.isError ? (
 					<div className="flex flex-1 flex-col items-center justify-center gap-2 text-sm">
 						<p>{t("list.loadFailed")}</p>
@@ -526,6 +535,7 @@ export function ChannelView({
 
 function ChannelHeader({
 	viewers,
+	callButton,
 	channel,
 	onToggleStar,
 	agent,
@@ -536,6 +546,8 @@ function ChannelHeader({
 }: {
 	/** Who else is in the channel right now. */
 	viewers?: ReactNode;
+	/** Start or join a call. */
+	callButton?: ReactNode;
 	channel: Channel | undefined;
 	agent?: AgentRuns;
 	onToggleStar: (starred: boolean) => void;
@@ -568,6 +580,7 @@ function ChannelHeader({
 					<AgentRunsPanel runs={agent.runs} agentName={channel.peer.name} />
 				) : null}
 				{viewers}
+				{callButton}
 				<Button
 					size="icon-sm"
 					variant="ghost"
@@ -602,6 +615,7 @@ function ChannelHeader({
 				</p>
 			</div>
 			{viewers}
+			{callButton}
 			{channel ? (
 				<Button
 					size="icon-sm"

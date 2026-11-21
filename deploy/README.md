@@ -100,6 +100,9 @@ prefixed `PACA_` are installer-only choices with no direct `.env` equivalent.
 | `GATEWAY_PORT` | Only used when serving plain HTTP | `80` |
 | `PUBLIC_URL` | Full public URL, no trailing slash | derived from the above |
 | `GIT_WEBHOOK_PUBLIC_URL` | Optional origin Git providers deliver webhooks to, when it differs from `PUBLIC_URL`. Existing hooks retain their URL: update each GitHub App's webhook URL or unlink and relink each repository, and remove any stale hooks | `PUBLIC_URL` |
+| `LIVEKIT_URL` | Voice and video calls (the `livekit` Compose service, on by default; `--scale livekit=0` skips it): the signalling URL browsers use. Defaults to `PUBLIC_URL` with `ws(s)://` and `/livekit`, so you rarely set it. Calls stay off until `LIVEKIT_API_SECRET` is set. Media needs UDP `LIVEKIT_UDP_PORT` and TCP `LIVEKIT_TCP_PORT` reachable from users | from `PUBLIC_URL` |
+| `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | Key and secret shared by the API and the LiveKit container (`openssl rand -hex 32` for the secret) | `paca` / none |
+| `LIVEKIT_UDP_PORT` / `LIVEKIT_TCP_PORT` | Host ports for LiveKit media | `7882` / `7881` |
 | `PASSKEY_RP_ID` | Optional WebAuthn relying-party ID for passkeys; override only to share passkeys across subdomains (use a parent domain of `PUBLIC_URL`'s host). Passkeys are off when `PUBLIC_URL` is unset, and changing this invalidates every registered passkey | host of `PUBLIC_URL` |
 | `PACA_WEB` | `bundled`/`external` | `bundled` |
 | `PACA_AGENT_RUNNER` | Include the Agent Runner service (`yes`/`no`) | `yes` |

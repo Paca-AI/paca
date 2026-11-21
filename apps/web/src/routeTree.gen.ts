@@ -45,6 +45,7 @@ import { Route as AuthenticatedProjectsProjectIdChatRouteImport } from './routes
 import { Route as AuthenticatedPluginPagesPluginIdSlugRouteImport } from './routes/_authenticated/plugin-pages/$pluginId/$slug'
 import { Route as AuthenticatedGitSetupCallbackRouteImport } from './routes/_authenticated/git/setup/callback'
 import { Route as AuthenticatedChatDmChannelIdRouteImport } from './routes/_authenticated/chat/dm/$channelId'
+import { Route as AuthenticatedCallScopeChannelIdRouteImport } from './routes/_authenticated/call/$scope.$channelId'
 import { Route as AuthenticatedProjectsProjectIdTeamIndexRouteImport } from './routes/_authenticated/projects/$projectId/team/index'
 import { Route as AuthenticatedProjectsProjectIdSettingsIndexRouteImport } from './routes/_authenticated/projects/$projectId/settings/index'
 import { Route as AuthenticatedProjectsProjectIdFilesIndexRouteImport } from './routes/_authenticated/projects/$projectId/files/index'
@@ -282,6 +283,12 @@ const AuthenticatedChatDmChannelIdRoute =
     path: '/chat/dm/$channelId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedCallScopeChannelIdRoute =
+  AuthenticatedCallScopeChannelIdRouteImport.update({
+    id: '/call/$scope/$channelId',
+    path: '/call/$scope/$channelId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedProjectsProjectIdTeamIndexRoute =
   AuthenticatedProjectsProjectIdTeamIndexRouteImport.update({
     id: '/team/',
@@ -508,6 +515,7 @@ export interface FileRoutesByFullPath {
   '/conversations/': typeof AuthenticatedConversationsIndexRoute
   '/files/': typeof AuthenticatedFilesIndexRoute
   '/home/': typeof AuthenticatedHomeIndexRoute
+  '/call/$scope/$channelId': typeof AuthenticatedCallScopeChannelIdRoute
   '/chat/dm/$channelId': typeof AuthenticatedChatDmChannelIdRoute
   '/git/setup/callback': typeof AuthenticatedGitSetupCallbackRoute
   '/plugin-pages/$pluginId/$slug': typeof AuthenticatedPluginPagesPluginIdSlugRoute
@@ -574,6 +582,7 @@ export interface FileRoutesByTo {
   '/conversations': typeof AuthenticatedConversationsIndexRoute
   '/files': typeof AuthenticatedFilesIndexRoute
   '/home': typeof AuthenticatedHomeIndexRoute
+  '/call/$scope/$channelId': typeof AuthenticatedCallScopeChannelIdRoute
   '/chat/dm/$channelId': typeof AuthenticatedChatDmChannelIdRoute
   '/git/setup/callback': typeof AuthenticatedGitSetupCallbackRoute
   '/plugin-pages/$pluginId/$slug': typeof AuthenticatedPluginPagesPluginIdSlugRoute
@@ -643,6 +652,7 @@ export interface FileRoutesById {
   '/_authenticated/conversations/': typeof AuthenticatedConversationsIndexRoute
   '/_authenticated/files/': typeof AuthenticatedFilesIndexRoute
   '/_authenticated/home/': typeof AuthenticatedHomeIndexRoute
+  '/_authenticated/call/$scope/$channelId': typeof AuthenticatedCallScopeChannelIdRoute
   '/_authenticated/chat/dm/$channelId': typeof AuthenticatedChatDmChannelIdRoute
   '/_authenticated/git/setup/callback': typeof AuthenticatedGitSetupCallbackRoute
   '/_authenticated/plugin-pages/$pluginId/$slug': typeof AuthenticatedPluginPagesPluginIdSlugRoute
@@ -714,6 +724,7 @@ export interface FileRouteTypes {
     | '/conversations/'
     | '/files/'
     | '/home/'
+    | '/call/$scope/$channelId'
     | '/chat/dm/$channelId'
     | '/git/setup/callback'
     | '/plugin-pages/$pluginId/$slug'
@@ -780,6 +791,7 @@ export interface FileRouteTypes {
     | '/conversations'
     | '/files'
     | '/home'
+    | '/call/$scope/$channelId'
     | '/chat/dm/$channelId'
     | '/git/setup/callback'
     | '/plugin-pages/$pluginId/$slug'
@@ -848,6 +860,7 @@ export interface FileRouteTypes {
     | '/_authenticated/conversations/'
     | '/_authenticated/files/'
     | '/_authenticated/home/'
+    | '/_authenticated/call/$scope/$channelId'
     | '/_authenticated/chat/dm/$channelId'
     | '/_authenticated/git/setup/callback'
     | '/_authenticated/plugin-pages/$pluginId/$slug'
@@ -1156,6 +1169,13 @@ declare module '@tanstack/react-router' {
       path: '/chat/dm/$channelId'
       fullPath: '/chat/dm/$channelId'
       preLoaderRoute: typeof AuthenticatedChatDmChannelIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/call/$scope/$channelId': {
+      id: '/_authenticated/call/$scope/$channelId'
+      path: '/call/$scope/$channelId'
+      fullPath: '/call/$scope/$channelId'
+      preLoaderRoute: typeof AuthenticatedCallScopeChannelIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/projects/$projectId/team/': {
@@ -1566,6 +1586,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedChatIndexRoute: typeof AuthenticatedChatIndexRoute
   AuthenticatedFilesIndexRoute: typeof AuthenticatedFilesIndexRoute
   AuthenticatedHomeIndexRoute: typeof AuthenticatedHomeIndexRoute
+  AuthenticatedCallScopeChannelIdRoute: typeof AuthenticatedCallScopeChannelIdRoute
   AuthenticatedChatDmChannelIdRoute: typeof AuthenticatedChatDmChannelIdRoute
   AuthenticatedGitSetupCallbackRoute: typeof AuthenticatedGitSetupCallbackRoute
   AuthenticatedPluginPagesPluginIdSlugRoute: typeof AuthenticatedPluginPagesPluginIdSlugRoute
@@ -1594,6 +1615,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedChatIndexRoute: AuthenticatedChatIndexRoute,
   AuthenticatedFilesIndexRoute: AuthenticatedFilesIndexRoute,
   AuthenticatedHomeIndexRoute: AuthenticatedHomeIndexRoute,
+  AuthenticatedCallScopeChannelIdRoute: AuthenticatedCallScopeChannelIdRoute,
   AuthenticatedChatDmChannelIdRoute: AuthenticatedChatDmChannelIdRoute,
   AuthenticatedGitSetupCallbackRoute: AuthenticatedGitSetupCallbackRoute,
   AuthenticatedPluginPagesPluginIdSlugRoute:

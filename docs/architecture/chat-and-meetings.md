@@ -2,7 +2,7 @@
 
 Design and delivery plan for built-in team chat (a Slack alternative) and voice/video meetings (a Discord alternative) in Paca v1.0.0.
 
-> **Status:** proposal; Phase 2 is mostly built, see [Phase 2 status](#phase-2-status). Phase 1b (presence and task-comment UX) is built, see [Phase 1b status](#phase-1b-status). Phase 1 is partly built (project channels, direct messages, replies from global agents in direct messages, messages, threads, reactions, mentions, followed threads, saved messages, read state, the sidebar and Inbox, IAM variable and realtime channel rooms, uncommitted). Everything else here is not implemented. The Phase 0 spikes ran on 2026-11-17 and all five came back go; see [Phase 0 results](#phase-0-results). The roadmap entry is in [ROADMAP.md](../../ROADMAP.md) under *Beyond v1.0 — Exploring*.
+> **Status:** proposal; Phase 3 (meetings) is built, unit-tested and covered by a Playwright spec, see [Phase 3 status](#phase-3-status). Phase 2 is mostly built, see [Phase 2 status](#phase-2-status). Phase 1b (presence and task-comment UX) is built, see [Phase 1b status](#phase-1b-status). Phase 1 is partly built (project channels, direct messages, replies from global agents in direct messages, messages, threads, reactions, mentions, followed threads, saved messages, read state, the sidebar and Inbox, IAM variable and realtime channel rooms, uncommitted). Everything else here is not implemented. The Phase 0 spikes ran on 2026-11-17 and all five came back go; see [Phase 0 results](#phase-0-results). The roadmap entry is in [ROADMAP.md](../../ROADMAP.md) under *Beyond v1.0 — Exploring*.
 
 ## Goals
 
@@ -197,7 +197,7 @@ Gaps to close while here: `NotifyTaskDescriptionMentioned` and `NotifyDocMention
 Browser ──HTTPS──▶ Caddy ─/api──▶ api   (IAM check → mint LiveKit JWT)
    │                    └─/livekit (WS signaling)──▶ livekit:7880
    └─── media: UDP (single mux port) + TCP 7881 fallback + TURN ──▶ livekit   (bypasses Caddy)
-livekit ──webhooks──▶ api (/internal/livekit/webhook) ──▶ realtime (who is in which room)
+livekit ──webhooks──▶ api (/api/v1/webhooks/livekit) ──▶ realtime (who is in which room)
 livekit ◀──▶ Valkey (required for multi-node; optional on a single node)
 ```
 
@@ -218,7 +218,7 @@ The API verifies LiveKit webhooks (Go server SDK / `livekit/protocol`) and recor
 - Add a `/livekit/*` signaling route.
 - Caddy owns 443, so TURN/TLS cannot also use it. Use TURN/UDP (3478) plus TCP 7881 fallback; TURN/TLS needs its own port or domain and a trusted certificate.
 - LiveKit does not run on serverless or private-NAT clusters, and needs a UDP media range (or single mux port) reachable from clients. Verify exact port options against LiveKit's config reference when building.
-- Opt-in "meet" profile in `docker-compose.{dev,prod,e2e}.yml`, the install script, and the Helm chart (LiveKit's own chart as a dependency, or a small template).
+- A `livekit` service in `docker-compose.{dev,prod,e2e}.yml` (no separate profile; prod skips it with `--scale livekit=0`), the install script, and the Helm chart (LiveKit's own chart as a dependency, or a small template).
 
 ### Later (v1.1 candidates)
 
@@ -257,7 +257,7 @@ Paca's agents are different: accounts with IAM roles, run by `services/agent-run
 
 ### Architecture options
 
-1. **Agents framework worker (recommended):** a new optional container, `services/meeting-agent`, in the "meet" profile. It registers with `LIVEKIT_URL`, key and secret and receives dispatches. **The LiveKit agent runs the reasoning** (its STT stream, its LLM loop, its function tools, including the forwarded ones). It is configured by a Paca agent of the new `meeting` type (see [Meeting agent type](#meeting-agent-type)): at dispatch it fetches that agent's decrypted settings from the API over an internal route, and afterwards it calls the Paca API with the agent's own API key, so everything it writes is judged by the agent's roles. `services/agent-runner` is not involved.
+1. **Agents framework worker (recommended):** a new optional container, `services/meeting-agent`, next to the `livekit` service. It registers with `LIVEKIT_URL`, key and secret and receives dispatches. **The LiveKit agent runs the reasoning** (its STT stream, its LLM loop, its function tools, including the forwarded ones). It is configured by a Paca agent of the new `meeting` type (see [Meeting agent type](#meeting-agent-type)): at dispatch it fetches that agent's decrypted settings from the API over an internal route, and afterwards it calls the Paca API with the agent's own API key, so everything it writes is judged by the agent's roles. `services/agent-runner` is not involved.
 2. **Batch transcription after the call:** record with LiveKit Egress, then run STT on the audio file. Cheaper and simpler (no live worker, no always-on agent server) but no live captions and Egress is a heavy container. A reasonable lighter tier for operators who do not want a worker.
 3. **Hand-rolled Go participant** with the server SDK: rejected. It would re-implement VAD, turn detection and interruption handling.
 
@@ -487,6 +487,19 @@ Built and unit-tested (Go, web, MCP); not run end to end against a real agent ru
 - **Agent DM conversations.** The runs list of an agent DM now also holds the runs the person's channel mentions started, tagged *from #channel*, for project agents too; `/new` (`POST /chat/dms/{id}/agent/new`) detaches the DM from its session so the next message starts a new conversation.
 
 Not done: the two-pane agent DM layout, rename/pin/archive of runs, run search over content, `agent_conversations.channel_id`, working or needs-you marks in the sidebar and Inbox, the task *Discussion* section and `message_links`, streaming an answer into the thread, a reply for a run that failed, an automation condition on the channel or text (filter with the agent's own judgement for now), a thread-pane `/task`, and Playwright specs for any of this.
+
+## Phase 3 status
+
+Built, unit-tested (Go, web) and covered by `apps/e2e/tests/projects/chat-calls.spec.ts`: two real Chromium contexts (fake microphone and camera) join a voice channel through the gateway, see each other, appear in the API's participant list through LiveKit's webhooks, one is removed by a moderator (that tab closes), and both leave. The e2e Compose file runs LiveKit by default; the spec skips itself if calls are off. Not verified: TURN and NAT traversal, TLS, a deployed Helm release.
+
+- **Data.** Migration `000098`: `call_sessions` (one open session per channel, partial unique index) and `call_participants` (one open row per account and session). It also adds `calls:join` to the existing Editor roles and to the platform `USER` role's `DirectMessages` statement; the shipped templates carry it too. `calls:moderate` is held through `*` by the project Admin role only. `call_participants` carries LiveKit's connection `sid`, so a late `participant_left` from a replaced connection (the same account in a second tab) does not close the newer row; `call_removals` holds the short bar set by a removal.
+- **LiveKit adapter** (`internal/platform/livekit`). Tokens, webhook verification and the RoomService calls are written against LiveKit's wire formats (HS256 access tokens, a signed body hash, Twirp JSON) rather than the server SDK, which brings a large dependency tree for three small features. Verified against `livekit-server` 1.13.11: its admin-token and Twirp calls are accepted, a wrong secret gets 401.
+- **API.** The room is named after the channel id. `POST …/channels/{id}/call/join` (gated on `channels:read` + `calls:join`) opens the session and returns `{url, token, room, expires_at}`; the token lasts 10 minutes and grants publish and subscribe. `GET …/call` and `GET /projects/{id}/calls` (scoped like the channel list) say who is in a call. `POST …/call/participants/{accountId}/mute` and `DELETE …/call/participants/{accountId}` need `calls:moderate`. The same join and read routes exist under `/chat/dms/{id}/call` for huddles in direct messages, without moderation. Moderation is not ranked: anyone holding `calls:moderate` can mute or remove any participant, including an Admin (the grant is the policy's decision, not the service's). Mute silences the audio tracks being published at that moment and the person can unmute; it is not a persistent server mute. Removal also bars the account from the channel's call for the token lifetime (10 minutes), because LiveKit cannot revoke a token already issued: join answers 403 `CALL_REMOVED` and a reconnect with the old token is disconnected by the `participant_joined` webhook. Webhook deliveries are idempotent and bounded by the signed token's expiry; there is no event-id replay store. `GET /chat/calls/config` says whether LiveKit is configured; calls are on only when `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` are set and a signalling URL is known (`LIVEKIT_URL`, which defaults to `PUBLIC_URL` with `ws(s)://` and `/livekit`). Otherwise join, mute, remove and the webhook answer 503 `CALLS_DISABLED`, while the reads (`GET …/call`, `GET /projects/{id}/calls`) return an empty result and `GET /chat/calls/config` returns `enabled: false`, so the UI can hide calls.
+- **Webhooks.** `POST /api/v1/webhooks/livekit` (open, per-IP rate limited) verifies LiveKit's signature and body hash, then records room start and finish and participant joins and leaves, and publishes `chat.call.changed` to the channel's realtime room. Rooms whose name is not a channel id are ignored.
+- **Web.** `livekit-client` with Paca's own tiles and controls. Starting or joining a call opens it in its own browser tab (`/call/<project or dm>/<channel>`, a named window, so a second click focuses it); that tab owns the LiveKit room and closes itself when the person leaves or is removed, so browsing the app in the main tab never touches the call. The main tab shows who is in it and a Back to call button. Voice channels show a banner with who is in; any channel or direct message can start a huddle from its header; sidebar voice rows show the head count (polled every 20 seconds, plus the realtime announcement in the open channel). Camera, microphone and screen share toggles; mute and remove for people with `calls:moderate`.
+- **Infra.** The three Caddyfiles (they stay in sync by hand) allow `camera`, `microphone` and `display-capture` for the site and proxy `/livekit/*` to LiveKit. `livekit` is a regular service in the dev, e2e and prod Compose files (prod idles until `LIVEKIT_API_SECRET` is set) (single node, no Redis, one UDP mux port 7882 and TCP 7881 published on the host). The Helm chart has `livekit.enabled` (off by default), a Deployment on the host network, a Service, a ConfigMap, and the API and gateway wiring.
+
+Not done: the sidebar presence of huddles in non-voice channels (shown inside the channel only), moderation in direct messages, ending a call for everyone, a stale-session sweeper if a webhook is lost, TURN/TLS and NAT traversal (not verified), multi-node LiveKit with Valkey, an install-script prompt for the LiveKit settings, and everything in Phase 3b.
 
 ## Risks and open questions
 

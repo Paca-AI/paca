@@ -115,6 +115,19 @@ spec:
                   key: ENCRYPTION_KEY
             - name: PUBLIC_URL
               value: {{ .Values.publicUrl | quote }}
+            {{- if .Values.livekit.enabled }}
+            - name: LIVEKIT_URL
+              value: {{ include "paca.livekitUrl" . | quote }}
+            - name: LIVEKIT_INTERNAL_URL
+              value: "http://{{ include "paca.fullname" . }}-livekit:7880"
+            - name: LIVEKIT_API_KEY
+              value: {{ .Values.livekit.apiKey | quote }}
+            - name: LIVEKIT_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: LIVEKIT_API_SECRET
+            {{- end }}
             - name: GIT_WEBHOOK_PUBLIC_URL
               value: {{ .Values.gitWebhookPublicUrl | quote }}
             - name: PLUGINS_STORE

@@ -106,7 +106,11 @@
 		"seqInvalid": "リクエストが正しくありません。",
 		"dmSelf": "自分自身にはメッセージを送れません。",
 		"dmPeerNotFound": "そのアカウントは存在しません。",
-		"dmNotSupported": "ダイレクトメッセージでは利用できません。"
+		"dmNotSupported": "ダイレクトメッセージでは利用できません。",
+		"callsDisabled": "このサーバーでは通話が設定されていません。",
+		"callNotInCall": "その人はすでに通話から退出しています。",
+		"callSelfModerate": "自分が通話から退出するには「通話から退出」を使用してください。",
+		"callRemoved": "モデレーターによってこの通話から削除されました。数分後に再参加できます。"
 	},
 	"noPermission": {
 		"title": "このプロジェクトでチャットを使う権限がありません",
@@ -226,5 +230,32 @@
 	},
 	"tasks": {
 		"created": "タスクを作成しました:"
+	},
+	"call": {
+		"panelLabel": "通話",
+		"connecting": "接続中…",
+		"inCall": "通話中",
+		"inCallCount": "{{count}}人が通話中",
+		"voiceEmpty": "まだ誰もいません。参加して話し始めましょう。",
+		"join": "通話に参加",
+		"joinVoice": "ボイスに参加",
+		"startHuddle": "ハドルを開始",
+		"leave": "通話から退出",
+		"mute": "マイクをミュート",
+		"unmute": "マイクのミュートを解除",
+		"micOff": "マイクオフ",
+		"cameraOn": "カメラをオン",
+		"cameraOff": "カメラをオフ",
+		"shareScreen": "画面を共有",
+		"stopShare": "共有を停止",
+		"you": "あなた",
+		"screenOf": "{{name}}の画面",
+		"mediaBlocked": "ブラウザがマイクまたはカメラをブロックしました。声を届けるには、アドレスバーでアクセスを許可してください。",
+		"moderate": "{{name}}を管理",
+		"muteParticipant": "{{name}}をミュート",
+		"removeParticipant": "{{name}}を通話から削除",
+		"voiceRow": "ボイス{{count}}人",
+		"backToCall": "通話に戻る",
+		"ended": "通話が終了しました。このタブは閉じて構いません。"
 	}
 }

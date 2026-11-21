@@ -28,6 +28,10 @@ import { useChatPermissions } from "@/hooks/use-chat-permissions";
 import { useChatSidebarState } from "@/hooks/use-chat-sidebar-state";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
+	callConfigQueryOptions,
+	projectCallsQueryOptions,
+} from "@/lib/call-api";
+import {
 	chatKeys,
 	DM_SCOPE,
 	type InboxItem,
@@ -185,6 +189,31 @@ function IconAction({
 	);
 }
 
+/** How many people are in a voice channel's call, when there is one. */
+function VoiceCount({
+	projectId,
+	channelId,
+}: {
+	projectId: string;
+	channelId: string;
+}) {
+	const { t } = useTranslation("chat");
+	const enabled = useQuery(callConfigQueryOptions).data === true;
+	// One request per project, shared by its voice rows.
+	const calls = useQuery(projectCallsQueryOptions(projectId, enabled)).data;
+	const n =
+		calls?.find((c) => c.channel_id === channelId)?.participants.length ?? 0;
+	if (n === 0) return null;
+	return (
+		<span
+			title={t("call.voiceRow", { count: n })}
+			className="ml-auto rounded-full bg-emerald-600/15 px-1.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400"
+		>
+			{n}
+		</span>
+	);
+}
+
 function RowIcon({ item }: { item: InboxItem }) {
 	if (item.peer) {
 		return <PeerAvatar name={item.peer.name} kind={item.peer.kind} size="xs" />;
@@ -265,6 +294,9 @@ function Row({
 					<span className="rounded bg-sidebar-accent px-1 text-[10px] font-normal text-sidebar-foreground/70">
 						{t(`dm.badge.${item.peer.kind}`)}
 					</span>
+				) : null}
+				{item.kind === "voice" && item.project_id ? (
+					<VoiceCount projectId={item.project_id} channelId={item.channel_id} />
 				) : null}
 				{showProject && item.project_name ? (
 					<span className="ml-auto max-w-20 truncate pr-1 text-[10px] font-normal text-sidebar-foreground/60">

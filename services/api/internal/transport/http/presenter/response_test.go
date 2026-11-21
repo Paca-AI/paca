@@ -12,11 +12,13 @@ import (
 	"github.com/Paca-AI/api/internal/apierr"
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
+	calldom "github.com/Paca-AI/api/internal/domain/call"
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	gitdom "github.com/Paca-AI/api/internal/domain/git"
 	roledom "github.com/Paca-AI/api/internal/domain/role"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
+	"github.com/Paca-AI/api/internal/platform/livekit"
 	"github.com/Paca-AI/api/internal/transport/http/httpx"
 )
 
@@ -353,5 +355,16 @@ func TestStatusAndCodeFor_DocPathChanged(t *testing.T) {
 	status, code := statusAndCodeFor(docdom.ErrDocPathChanged)
 	if status != http.StatusConflict || code != apierr.CodeDocPathChanged {
 		t.Errorf("expected (409,%s), got (%d,%s)", apierr.CodeDocPathChanged, status, code)
+	}
+}
+
+// Calls that are switched off answer 503 CALLS_DISABLED from every route that
+// needs LiveKit, including the webhook, which surfaces the adapter's own error.
+func TestStatusAndCodeFor_CallsDisabled(t *testing.T) {
+	for _, err := range []error{calldom.ErrDisabled, livekit.ErrDisabled} {
+		status, code := statusAndCodeFor(err)
+		if status != http.StatusServiceUnavailable || code != apierr.CodeCallsDisabled {
+			t.Fatalf("for %v expected (503,CALLS_DISABLED), got (%d,%s)", err, status, code)
+		}
 	}
 }

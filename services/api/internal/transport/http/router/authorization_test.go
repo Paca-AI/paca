@@ -57,6 +57,7 @@ var openRouteGroups = []struct {
 			"POST /api/v1/auth/logout",
 			"POST /api/v1/webhooks/automations/{nodeId}",
 			"POST /api/v1/git/webhooks/{endpointKey}",
+			"POST /api/v1/webhooks/livekit",
 		},
 	},
 	{
@@ -200,6 +201,7 @@ func allRoutes(t *testing.T, authorizer *iam.Authorizer) []routeUnderTest {
 		ProjectExport:   handler.NewProjectExportHandler(nil),
 		Annotation:      handler.NewAnnotationHandler(nil),
 		Chat:            handler.NewChatHandler(nil),
+		Call:            handler.NewCallHandler(nil),
 		Conversation:    handler.NewConversationHandler(nil),
 		Automation:      handler.NewAutomationHandler(nil),
 		Settings:        handler.NewSettingsHandler(nil),

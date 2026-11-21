@@ -644,6 +644,18 @@ const (
 	// CodeChatSeqInvalid is the CHAT_SEQ_INVALID error code.
 	CodeChatSeqInvalid Code = "CHAT_SEQ_INVALID"
 
+	// CodeCallsDisabled is the CALLS_DISABLED error code: LiveKit is not configured.
+	CodeCallsDisabled Code = "CALLS_DISABLED"
+	// CodeCallNotInCall is the CALL_NOT_IN_CALL error code.
+	CodeCallNotInCall Code = "CALL_NOT_IN_CALL"
+	// CodeCallRemoved is the CALL_REMOVED error code: a moderator removed the
+	// account from the call and it may not rejoin yet.
+	CodeCallRemoved Code = "CALL_REMOVED"
+	// CodeCallSelfModerate is the CALL_SELF_MODERATE error code.
+	CodeCallSelfModerate Code = "CALL_SELF_MODERATE"
+	// CodeCallWebhookInvalid is the CALL_WEBHOOK_INVALID error code.
+	CodeCallWebhookInvalid Code = "CALL_WEBHOOK_INVALID"
+
 	// CodeDMSelf is the DM_SELF error code.
 	CodeDMSelf Code = "DM_SELF"
 	// CodeDMPeerNotFound is the DM_PEER_NOT_FOUND error code.

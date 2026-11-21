@@ -192,6 +192,12 @@ func Load() (*Config, error) {
 		Redis: RedisConfig{
 			URL: redisURL,
 		},
+		LiveKit: LiveKitConfig{
+			URL:         livekitSignalURL(env("LIVEKIT_URL", ""), env("PUBLIC_URL", "")),
+			InternalURL: env("LIVEKIT_INTERNAL_URL", ""),
+			APIKey:      env("LIVEKIT_API_KEY", ""),
+			APISecret:   env("LIVEKIT_API_SECRET", ""),
+		},
 		Cache: CacheConfig{
 			ProjectTTL: cacheProjectTTL,
 			ConfigTTL:  cacheConfigTTL,
@@ -310,4 +316,22 @@ func parseInt64(s string) (int64, error) {
 		return 0, fmt.Errorf("invalid int64 %q: %w", s, err)
 	}
 	return v, nil
+}
+
+// livekitSignalURL is the signalling URL browsers connect to. An explicit
+// LIVEKIT_URL wins; otherwise it follows PUBLIC_URL (https becomes wss, http
+// becomes ws) plus the gateway's /livekit route, so the call goes to the same
+// host and port the person opened the app on. Empty when neither is set.
+func livekitSignalURL(explicit, publicURL string) string {
+	if explicit != "" {
+		return explicit
+	}
+	u := strings.TrimRight(publicURL, "/")
+	switch {
+	case strings.HasPrefix(u, "https://"):
+		return "wss://" + strings.TrimPrefix(u, "https://") + "/livekit"
+	case strings.HasPrefix(u, "http://"):
+		return "ws://" + strings.TrimPrefix(u, "http://") + "/livekit"
+	}
+	return ""
 }

@@ -87,6 +87,7 @@ func coverageDeps(iamAuth *iam.Authorizer) Deps {
 		ProjectExport:       handler.NewProjectExportHandler(nil),
 		Annotation:          handler.NewAnnotationHandler(nil),
 		Chat:                handler.NewChatHandler(nil),
+		Call:                handler.NewCallHandler(nil),
 		Conversation:        handler.NewConversationHandler(nil),
 		Automation:          handler.NewAutomationHandler(nil),
 		Settings:            handler.NewSettingsHandler(nil),

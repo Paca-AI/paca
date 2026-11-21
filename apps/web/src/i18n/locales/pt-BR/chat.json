@@ -106,7 +106,11 @@
 		"seqInvalid": "A solicitação não era válida.",
 		"dmSelf": "Você não pode enviar mensagem para si mesmo.",
 		"dmPeerNotFound": "Essa conta não existe mais.",
-		"dmNotSupported": "Isso não está disponível em mensagens diretas."
+		"dmNotSupported": "Isso não está disponível em mensagens diretas.",
+		"callsDisabled": "As chamadas não estão configuradas neste servidor.",
+		"callNotInCall": "Essa pessoa já saiu da chamada.",
+		"callSelfModerate": "Para sair da chamada você mesmo, use Sair da chamada.",
+		"callRemoved": "Um moderador removeu você desta chamada. Você poderá entrar novamente em alguns minutos."
 	},
 	"noPermission": {
 		"title": "Você não tem permissão para usar o chat neste projeto",
@@ -226,5 +230,32 @@
 	},
 	"tasks": {
 		"created": "Tarefa criada:"
+	},
+	"call": {
+		"panelLabel": "Chamada",
+		"connecting": "Conectando…",
+		"inCall": "Em chamada",
+		"inCallCount": "{{count}} na chamada",
+		"voiceEmpty": "Ninguém por aqui ainda. Entre para começar a conversar.",
+		"join": "Entrar na chamada",
+		"joinVoice": "Entrar na voz",
+		"startHuddle": "Iniciar huddle",
+		"leave": "Sair da chamada",
+		"mute": "Silenciar microfone",
+		"unmute": "Ativar microfone",
+		"micOff": "Microfone desligado",
+		"cameraOn": "Ligar câmera",
+		"cameraOff": "Desligar câmera",
+		"shareScreen": "Compartilhar tela",
+		"stopShare": "Parar de compartilhar",
+		"you": "Você",
+		"screenOf": "Tela de {{name}}",
+		"mediaBlocked": "Seu navegador bloqueou o microfone ou a câmera. Permita o acesso na barra de endereços para ser ouvido.",
+		"moderate": "Moderar {{name}}",
+		"muteParticipant": "Silenciar {{name}}",
+		"removeParticipant": "Remover {{name}} da chamada",
+		"voiceRow": "{{count}} na voz",
+		"backToCall": "Voltar à chamada",
+		"ended": "A chamada terminou. Você pode fechar esta aba."
 	}
 }
