@@ -1,0 +1,19 @@
+{{- if .Values.livekit.enabled }}
+# Signalling only: the gateway's /livekit route and the API's RoomService
+# calls reach LiveKit here. Media goes straight to the node (see the
+# Deployment's hostNetwork) and never passes through a Service.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "paca.fullname" . }}-livekit
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "paca.componentLabels" (dict "root" . "component" "livekit") | nindent 4 }}
+spec:
+  selector:
+    {{- include "paca.selectorLabels" (dict "root" . "component" "livekit") | nindent 4 }}
+  ports:
+    - port: 7880
+      targetPort: http
+      name: http
+{{- end }}

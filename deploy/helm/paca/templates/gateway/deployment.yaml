@@ -52,6 +52,10 @@ spec:
             - name: AGENT_RUNNER_UPSTREAM
               value: "{{ include "paca.fullname" . }}-agent-runner:8080"
             {{- end }}
+            {{- if .Values.livekit.enabled }}
+            - name: LIVEKIT_UPSTREAM
+              value: "{{ include "paca.fullname" . }}-livekit:7880"
+            {{- end }}
             {{- if .Values.rustfs.enabled }}
             - name: STORAGE_UPSTREAM
               value: {{ include "paca.rustfsEndpoint" . | quote }}

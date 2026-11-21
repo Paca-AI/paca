@@ -19,6 +19,7 @@ import (
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	automationdom "github.com/Paca-AI/api/internal/domain/automation"
+	calldom "github.com/Paca-AI/api/internal/domain/call"
 	chatdom "github.com/Paca-AI/api/internal/domain/chat"
 	docdom "github.com/Paca-AI/api/internal/domain/doc"
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
@@ -34,6 +35,7 @@ import (
 	ssodom "github.com/Paca-AI/api/internal/domain/sso"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	userdom "github.com/Paca-AI/api/internal/domain/user"
+	"github.com/Paca-AI/api/internal/platform/livekit"
 	"github.com/Paca-AI/api/internal/transport/http/httpx"
 )
 
@@ -692,6 +694,14 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusUnauthorized, apierr.CodeAutomationWebhookTokenInvalid
 	case errors.Is(err, automationdom.ErrUpdateTaskSelfParent):
 		return http.StatusBadRequest, apierr.CodeAutomationUpdateTaskSelfParent
+	case errors.Is(err, calldom.ErrDisabled):
+		return http.StatusServiceUnavailable, apierr.CodeCallsDisabled
+	case errors.Is(err, calldom.ErrNotInCall):
+		return http.StatusConflict, apierr.CodeCallNotInCall
+	case errors.Is(err, calldom.ErrSelfModerate):
+		return http.StatusBadRequest, apierr.CodeCallSelfModerate
+	case errors.Is(err, livekit.ErrBadWebhook):
+		return http.StatusUnauthorized, apierr.CodeCallWebhookInvalid
 	case errors.Is(err, chatdom.ErrChannelNotFound):
 		return http.StatusNotFound, apierr.CodeChannelNotFound
 	case errors.Is(err, chatdom.ErrChannelNameInvalid):

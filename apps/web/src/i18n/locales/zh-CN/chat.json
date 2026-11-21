@@ -106,7 +106,10 @@
 		"seqInvalid": "请求无效。",
 		"dmSelf": "你不能给自己发消息。",
 		"dmPeerNotFound": "该账号已不存在。",
-		"dmNotSupported": "私信中不支持此操作。"
+		"dmNotSupported": "私信中不支持此操作。",
+		"callsDisabled": "此服务器尚未设置通话功能。",
+		"callNotInCall": "该用户已离开通话。",
+		"callSelfModerate": "如需自己离开通话，请使用“离开通话”。"
 	},
 	"noPermission": {
 		"title": "你无权在此项目中使用聊天",
@@ -226,5 +229,32 @@
 	},
 	"tasks": {
 		"created": "已创建任务："
+	},
+	"call": {
+		"panelLabel": "通话",
+		"connecting": "正在连接…",
+		"inCall": "通话中",
+		"inCallCount": "{{count}} 人在通话中",
+		"voiceEmpty": "这里还没有人。加入后即可开始交谈。",
+		"join": "加入通话",
+		"joinVoice": "加入语音",
+		"startHuddle": "发起小聚",
+		"leave": "离开通话",
+		"mute": "静音麦克风",
+		"unmute": "取消静音",
+		"micOff": "麦克风已关闭",
+		"cameraOn": "开启摄像头",
+		"cameraOff": "关闭摄像头",
+		"shareScreen": "共享屏幕",
+		"stopShare": "停止共享",
+		"you": "你",
+		"screenOf": "{{name}} 的屏幕",
+		"mediaBlocked": "浏览器已阻止麦克风或摄像头。请在地址栏中允许访问，别人才能听到你。",
+		"moderate": "管理 {{name}}",
+		"muteParticipant": "将 {{name}} 静音",
+		"removeParticipant": "将 {{name}} 移出通话",
+		"voiceRow": "{{count}} 人在语音中",
+		"backToCall": "返回通话",
+		"ended": "通话已结束。你可以关闭此标签页。"
 	}
 }

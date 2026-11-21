@@ -68,6 +68,13 @@ services:
       ENCRYPTION_KEY: "3b4a93a4f2ffa732a5f7cf44b9a37050e49f5f9c3f105c3995432b9dd49e28ac"
       # Public base URL used by plugins to generate callback/webhook URLs.
       PUBLIC_URL: http://localhost
+      # Voice and video calls (the livekit service below). Calls stay off
+      # until LIVEKIT_URL and a key/secret are set. LIVEKIT_URL (the signalling URL, derived from PUBLIC_URL when empty)
+      # browsers use (through the gateway's /livekit route).
+      LIVEKIT_URL: ${LIVEKIT_URL:-}
+      LIVEKIT_INTERNAL_URL: http://livekit:7880
+      LIVEKIT_API_KEY: e2ekey
+      LIVEKIT_API_SECRET: e2esecret-e2esecret-e2esecret-0123456789
       # Base URL of the agent-runner service. Explicit rather than relying
       # on the Go code's own http://ai-agent:8080 default — see
       # docker-compose.dev.yml's identical note for why that default no
@@ -164,6 +171,29 @@ services:
       JSON_CONFIG: '{"interactiveLogin": true}'
     ports:
       - "9090:9090"
+
+  # ── LiveKit (opt-in voice and video calls) ───────────────────────────────────
+  # Voice and video calls. Media uses UDP 7882 and TCP 7881 on the host;
+  # signalling goes through the gateway's /livekit route.
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    restart: unless-stopped
+    environment:
+      LIVEKIT_KEYS: "e2ekey: e2esecret-e2esecret-e2esecret-0123456789"
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
+          node_ip: 127.0.0.1
+        webhook:
+          api_key: e2ekey
+          urls:
+            - http://api:8080/api/v1/webhooks/livekit
+    ports:
+      # Media bypasses the gateway: one muxed UDP port plus a TCP fallback.
+      - "${LIVEKIT_TCP_PORT:-7881}:7881/tcp"
+      - "${LIVEKIT_UDP_PORT:-7882}:7882/udp"
 
   gateway:
     image: caddy:2-alpine

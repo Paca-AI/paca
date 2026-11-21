@@ -47,9 +47,11 @@ type Deps struct {
 	File         *handler.FileHandler
 	Notification *handler.NotificationHandler
 	Chat         *handler.ChatHandler
-	APIKey       *handler.APIKeyHandler
-	Plugin       *handler.PluginHandler
-	Skills       *handler.SkillsHandler
+	// Call serves voice and video calls on channels (LiveKit); optional.
+	Call   *handler.CallHandler
+	APIKey *handler.APIKeyHandler
+	Plugin *handler.PluginHandler
+	Skills *handler.SkillsHandler
 	// PluginAssets streams plugin bundle files out of the plugin store; optional.
 	PluginAssets *handler.PluginAssetsHandler
 	Agent        *handler.AgentHandler
@@ -496,7 +498,16 @@ func New(deps Deps) http.Handler {
 							r.With(read).Put("/messages/{messageId}/follow", deps.Chat.FollowThread)
 							r.With(read).Delete("/messages/{messageId}/follow", deps.Chat.UnfollowThread)
 							r.With(read, httpmw.RequireJSONContentType()).Post("/messages/{messageId}/thread-read", deps.Chat.MarkThreadRead)
+							// A huddle in a direct message: its two members are the only
+							// people who can be in it, so there is no moderation.
+							if deps.Call != nil {
+								r.With(read).Get("/call", deps.Call.Get)
+								r.With(require.DirectChannel(iam.ActionChannelsRead, iam.ActionCallsJoin)).Post("/call/join", deps.Call.Join)
+							}
 						})
+						if deps.Call != nil {
+							r.With(require.Global(iam.ActionChannelsRead)).Get("/calls/config", deps.Call.Config)
+						}
 					})
 				})
 			}
@@ -1088,6 +1099,9 @@ func New(deps Deps) http.Handler {
 				// (channel.kind / channel.member_ids), not from code. Editing
 				// your own message and removing someone else's are separate
 				// routes so each has its own gate.
+				if deps.Call != nil {
+					r.With(require.Project(iam.ActionChannelsRead)).Get("/calls", deps.Call.List)
+				}
 				if deps.Chat != nil {
 					r.Route("/channels", func(r chi.Router) {
 						r.With(require.Project(iam.ActionChannelsRead)).Get("/", deps.Chat.ListChannels)
@@ -1122,6 +1136,16 @@ func New(deps Deps) http.Handler {
 							r.With(read, httpmw.RequireJSONContentType()).Post("/messages/{messageId}/thread-read", deps.Chat.MarkThreadRead)
 							r.With(require.ChannelEntity(iam.ActionChannelsRead, iam.ActionMessagesModerate)).
 								Delete("/moderation/messages/{messageId}", deps.Chat.ModerateDeleteMessage)
+							// Calls: a voice channel is a standing room and any channel can
+							// open a huddle. Reading who is in one needs the channel; joining
+							// needs calls:join; muting or removing someone needs calls:moderate.
+							if deps.Call != nil {
+								r.With(read).Get("/call", deps.Call.Get)
+								r.With(require.ChannelEntity(iam.ActionChannelsRead, iam.ActionCallsJoin)).Post("/call/join", deps.Call.Join)
+								moderate := require.ChannelEntity(iam.ActionChannelsRead, iam.ActionCallsModerate)
+								r.With(moderate).Post("/call/participants/{accountId}/mute", deps.Call.Mute)
+								r.With(moderate).Delete("/call/participants/{accountId}", deps.Call.Remove)
+							}
 						})
 					})
 				}
@@ -1368,6 +1392,13 @@ func New(deps Deps) http.Handler {
 			// rather than router-level session/API-key middleware.
 			if deps.Automation != nil {
 				r.Post("/webhooks/automations/{nodeId}", deps.Automation.ReceiveWebhook)
+			}
+
+			// LiveKit webhooks — public for the same reason: the caller is the
+			// media server. The delivery carries a token signed with the API
+			// secret and the hash of its body, which the service verifies.
+			if deps.Call != nil {
+				r.With(authLimit(120*deps.AuthRateLimit)).Post("/webhooks/livekit", deps.Call.ReceiveWebhook)
 			}
 
 			// Git platform webhooks — public for the same reason: the caller

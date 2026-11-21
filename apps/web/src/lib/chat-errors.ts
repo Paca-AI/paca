@@ -21,7 +21,10 @@ export type ChatErrorKey =
 	| "seqInvalid"
 	| "dmSelf"
 	| "dmPeerNotFound"
-	| "dmNotSupported";
+	| "dmNotSupported"
+	| "callsDisabled"
+	| "callNotInCall"
+	| "callSelfModerate";
 
 const KEYS: Record<string, ChatErrorKey> = {
 	CHANNEL_NOT_FOUND: "channelNotFound",
@@ -38,6 +41,9 @@ const KEYS: Record<string, ChatErrorKey> = {
 	THREAD_ROOT_INVALID: "threadInvalid",
 	EMOJI_INVALID: "emojiInvalid",
 	CHANNEL_NOT_MEMBER: "notMember",
+	CALLS_DISABLED: "callsDisabled",
+	CALL_NOT_IN_CALL: "callNotInCall",
+	CALL_SELF_MODERATE: "callSelfModerate",
 	CHAT_NOT_PROJECT_MEMBER: "notProjectMember",
 	CHAT_SEQ_INVALID: "seqInvalid",
 	DM_SELF: "dmSelf",

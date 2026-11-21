@@ -39,7 +39,8 @@
       "actions": [
         "channels:read",
         "channels:write",
-        "messages:write"
+        "messages:write",
+        "calls:join"
       ],
       "resources": [
         "channel/*"

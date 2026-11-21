@@ -15,6 +15,7 @@ type Config struct {
 	Security   SecurityConfig
 	Plugins    PluginsConfig
 	Release    ReleaseConfig
+	LiveKit    LiveKitConfig
 	AIAgentURL string // base URL of the ai-agent service, e.g. http://ai-agent:8080
 	// AIAgentInternalKey authenticates server-to-server calls into ai-agent's
 	// internal-only routes (see services/ai-agent's _require_internal_key) —
@@ -109,6 +110,22 @@ type AdminConfig struct {
 // DatabaseConfig holds the primary database connection settings.
 type DatabaseConfig struct {
 	DSN string
+}
+
+// LiveKitConfig holds the settings for voice and video calls. Calls are off
+// until LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET are all set.
+//
+// Environment variables (loaded by config.Load):
+//
+//	LIVEKIT_URL          – signalling URL browsers connect to (wss://host/livekit)
+//	LIVEKIT_INTERNAL_URL – where the API reaches LiveKit (http://livekit:7880)
+//	LIVEKIT_API_KEY      – API key shared with the LiveKit server
+//	LIVEKIT_API_SECRET   – API secret shared with the LiveKit server
+type LiveKitConfig struct {
+	URL         string
+	InternalURL string
+	APIKey      string
+	APISecret   string
 }
 
 // RedisConfig holds Redis connection settings.

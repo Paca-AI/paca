@@ -221,3 +221,18 @@ persistentVolumeClaim:
 emptyDir: {}
 {{- end -}}
 {{- end -}}
+
+{{/*
+The signalling URL browsers use for calls: livekit.publicUrl, or publicUrl with
+its http(s) scheme turned into ws(s) plus the gateway's /livekit route.
+*/}}
+{{- define "paca.livekitUrl" -}}
+{{- if .Values.livekit.publicUrl -}}
+{{- .Values.livekit.publicUrl -}}
+{{- else -}}
+{{- $u := required "livekit.enabled needs publicUrl (or livekit.publicUrl) so browsers know where to connect" .Values.publicUrl -}}
+{{- if hasPrefix "https://" $u -}}wss://{{ trimPrefix "https://" $u | trimSuffix "/" }}/livekit
+{{- else -}}ws://{{ trimPrefix "http://" $u | trimSuffix "/" }}/livekit
+{{- end -}}
+{{- end -}}
+{{- end }}

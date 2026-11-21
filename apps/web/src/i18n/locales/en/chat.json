@@ -106,7 +106,10 @@
 		"seqInvalid": "That request was not valid.",
 		"dmSelf": "You can't message yourself.",
 		"dmPeerNotFound": "That account no longer exists.",
-		"dmNotSupported": "That isn't available in direct messages."
+		"dmNotSupported": "That isn't available in direct messages.",
+		"callsDisabled": "Calls are not set up on this server.",
+		"callNotInCall": "That person has already left the call.",
+		"callSelfModerate": "To leave the call yourself, use Leave call."
 	},
 	"noPermission": {
 		"title": "You don't have permission to use chat in this project",
@@ -226,5 +229,32 @@
 	},
 	"tasks": {
 		"created": "Task created:"
+	},
+	"call": {
+		"panelLabel": "Call",
+		"connecting": "Connecting…",
+		"inCall": "In call",
+		"inCallCount": "{{count}} in call",
+		"voiceEmpty": "Nobody is here yet. Join to start talking.",
+		"join": "Join call",
+		"joinVoice": "Join voice",
+		"startHuddle": "Start huddle",
+		"leave": "Leave call",
+		"mute": "Mute microphone",
+		"unmute": "Unmute microphone",
+		"micOff": "Microphone off",
+		"cameraOn": "Turn on camera",
+		"cameraOff": "Turn off camera",
+		"shareScreen": "Share screen",
+		"stopShare": "Stop sharing",
+		"you": "You",
+		"screenOf": "{{name}}'s screen",
+		"mediaBlocked": "Your browser blocked the microphone or camera. Allow access in the address bar to be heard.",
+		"moderate": "Moderate {{name}}",
+		"muteParticipant": "Mute {{name}}",
+		"removeParticipant": "Remove {{name}} from the call",
+		"voiceRow": "{{count}} in voice",
+		"backToCall": "Back to call",
+		"ended": "Call ended. You can close this tab."
 	}
 }

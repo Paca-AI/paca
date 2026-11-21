@@ -8,6 +8,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef } from "react";
+import { callKeys } from "@/lib/call-api";
 import {
 	chatKeys,
 	DM_SCOPE,
@@ -169,6 +170,15 @@ export function useChatRealtime(
 					}
 					void catchUp();
 					if (p.actor_id !== currentUserId) onNew.current?.();
+					break;
+				case "chat.call.changed":
+					// Who is in the channel's call changed: refetch it and the list.
+					void queryClient.invalidateQueries({
+						queryKey: callKeys.channel(projectId, channelId),
+					});
+					void queryClient.invalidateQueries({
+						queryKey: callKeys.project(projectId),
+					});
 					break;
 				case "chat.message.updated":
 				case "chat.message.deleted":

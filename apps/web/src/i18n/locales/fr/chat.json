@@ -106,7 +106,10 @@
 		"seqInvalid": "Cette requête n'était pas valide.",
 		"dmSelf": "Vous ne pouvez pas vous écrire à vous-même.",
 		"dmPeerNotFound": "Ce compte n'existe plus.",
-		"dmNotSupported": "Cette action n'est pas disponible dans les messages privés."
+		"dmNotSupported": "Cette action n'est pas disponible dans les messages privés.",
+		"callsDisabled": "Les appels ne sont pas configurés sur ce serveur.",
+		"callNotInCall": "Cette personne a déjà quitté l'appel.",
+		"callSelfModerate": "Pour quitter l'appel vous-même, utilisez Quitter l'appel."
 	},
 	"noPermission": {
 		"title": "Vous n'avez pas l'autorisation d'utiliser la discussion dans ce projet",
@@ -226,5 +229,32 @@
 	},
 	"tasks": {
 		"created": "Tâche créée :"
+	},
+	"call": {
+		"panelLabel": "Appel",
+		"connecting": "Connexion…",
+		"inCall": "En appel",
+		"inCallCount": "{{count}} dans l'appel",
+		"voiceEmpty": "Personne n'est encore là. Rejoignez pour commencer à parler.",
+		"join": "Rejoindre l'appel",
+		"joinVoice": "Rejoindre le vocal",
+		"startHuddle": "Lancer un huddle",
+		"leave": "Quitter l'appel",
+		"mute": "Couper le micro",
+		"unmute": "Réactiver le micro",
+		"micOff": "Micro coupé",
+		"cameraOn": "Activer la caméra",
+		"cameraOff": "Désactiver la caméra",
+		"shareScreen": "Partager l'écran",
+		"stopShare": "Arrêter le partage",
+		"you": "Vous",
+		"screenOf": "Écran de {{name}}",
+		"mediaBlocked": "Votre navigateur a bloqué le micro ou la caméra. Autorisez l'accès dans la barre d'adresse pour être entendu.",
+		"moderate": "Modérer {{name}}",
+		"muteParticipant": "Couper le micro de {{name}}",
+		"removeParticipant": "Retirer {{name}} de l'appel",
+		"voiceRow": "{{count}} en vocal",
+		"backToCall": "Retour à l'appel",
+		"ended": "L'appel est terminé. Vous pouvez fermer cet onglet."
 	}
 }

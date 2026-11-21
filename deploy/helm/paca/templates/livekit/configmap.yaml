@@ -1,0 +1,23 @@
+{{- if .Values.livekit.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "paca.fullname" . }}-livekit
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "paca.componentLabels" (dict "root" . "component" "livekit") | nindent 4 }}
+data:
+  livekit.yaml: |
+    port: 7880
+    rtc:
+      tcp_port: 7881
+      udp_port: 7882
+      use_external_ip: true
+    webhook:
+      api_key: {{ .Values.livekit.apiKey | quote }}
+      urls:
+        - http://{{ include "paca.fullname" . }}-api:8080/api/v1/webhooks/livekit
+    {{- with .Values.livekit.extraConfig }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,78 @@
+{{- if .Values.livekit.enabled }}
+{{- if gt (int .Values.livekit.replicaCount) 1 }}
+{{- fail "livekit.replicaCount > 1 needs a shared Valkey for LiveKit's routing (add redis settings under livekit.extraConfig) and is not supported by this chart yet; keep it at 1" }}
+{{- end }}
+{{- $_ := required "secrets.livekitApiSecret is required when livekit.enabled (or set secrets.existingSecret with a LIVEKIT_API_SECRET key)" (ternary "x" .Values.secrets.livekitApiSecret (not (empty .Values.secrets.existingSecret))) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "paca.fullname" . }}-livekit
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "paca.componentLabels" (dict "root" . "component" "livekit") | nindent 4 }}
+spec:
+  replicas: {{ .Values.livekit.replicaCount }}
+  # One node at a time: two pods on the same host would fight for the media ports.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "paca.selectorLabels" (dict "root" . "component" "livekit") | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/livekit/configmap.yaml") . | sha256sum }}
+      labels:
+        {{- include "paca.componentLabels" (dict "root" . "component" "livekit") | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # Browsers send media straight to the node's address on a UDP port and a TCP
+      # fallback port, which LiveKit advertises as the node's external IP. On
+      # Kubernetes the dependable way to make that true is the host network (the
+      # approach LiveKit's own chart takes). Open UDP 7882 and TCP 7881 on the
+      # node's firewall. LiveKit does not run on serverless or private-NAT clusters.
+      hostNetwork: {{ .Values.livekit.hostNetwork }}
+      {{- if .Values.livekit.hostNetwork }}
+      dnsPolicy: ClusterFirstWithHostNet
+      {{- end }}
+      containers:
+        - name: livekit
+          image: "{{ .Values.livekit.image.repository }}:{{ .Values.livekit.image.tag }}"
+          imagePullPolicy: {{ .Values.livekit.image.pullPolicy }}
+          args: ["--config", "/etc/livekit/livekit.yaml"]
+          ports:
+            - containerPort: 7880
+              name: http
+          env:
+            - name: LIVEKIT_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: LIVEKIT_API_SECRET
+            # Kubernetes expands $(LIVEKIT_API_SECRET) from the entry above.
+            - name: LIVEKIT_KEYS
+              value: "{{ .Values.livekit.apiKey }}: $(LIVEKIT_API_SECRET)"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/livekit
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.livekit.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "paca.fullname" . }}-livekit
+{{- end }}

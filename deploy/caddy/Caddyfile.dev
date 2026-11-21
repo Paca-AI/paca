@@ -111,7 +111,7 @@
 		X-Frame-Options "DENY"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Permissions-Policy "camera=(self), microphone=(self), display-capture=(self), geolocation=()"
 		X-XSS-Protection "0"
 		-Server
 	}
@@ -139,6 +139,18 @@
 
 	handle /api/* {
 		reverse_proxy api:8080
+	}
+
+	# -- LiveKit signalling (voice and video calls) -------------------------------
+	#
+	# Only the WebSocket the browser's LiveKit client opens to join a call
+	# (wss://<site>/livekit). Media does NOT pass through here: it goes
+	# straight to the LiveKit container over UDP (a single muxed port) and TCP
+	# 7881, so those ports must be reachable from clients (see the livekit
+	# service in docker-compose and docs/architecture/chat-and-meetings.md).
+	# Answers 502 when the livekit service is not running.
+	handle_path /livekit/* {
+		reverse_proxy livekit:7880
 	}
 
 	# Scoped to exactly /agent-bridge/ws — /agent-bridge/status/* and

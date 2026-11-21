@@ -54,6 +54,9 @@ secrets:
   # Valkey (agent triggers, environment commands, all conversation events).
   # With existingSecret, put it under the VALKEY_PASSWORD key.
   valkeyPassword: ""
+  # Secret shared with LiveKit; required when livekit.enabled. With
+  # existingSecret, put it under the LIVEKIT_API_SECRET key.
+  livekitApiSecret: ""
   # Only read when rustfs.enabled is false (external S3) — the bundled
   # RustFS's own credentials live under rustfs.secret.rustfs.* instead, see
   # that section's doc comment for why the two aren't unified into one.
@@ -345,6 +348,38 @@ realtime:
   # produced since a wildcard origin plus Socket.IO's credentialed CORS is
   # rejected by browsers anyway).
   corsOrigins: ""
+
+# ---------------------------------------------------------------------------
+# LiveKit — voice and video calls (opt-in)
+# ---------------------------------------------------------------------------
+# Off by default. Signalling goes through the gateway's /livekit route; media
+# goes straight to the node, so UDP 7882 and TCP 7881 must be reachable from
+# users. LiveKit does not run on serverless or private-NAT clusters.
+livekit:
+  enabled: false
+  # Single node. More replicas need a shared Valkey (extraConfig) and are not
+  # supported by this chart yet.
+  replicaCount: 1
+  image:
+    repository: livekit/livekit-server
+    tag: "v1.13.11"
+    pullPolicy: IfNotPresent
+  # Run on the node's network so the media ports are the node's own (see the
+  # Deployment's comment). Turn off only if you expose them another way.
+  hostNetwork: true
+  # Identifies the API key; the matching secret is secrets.livekitApiSecret.
+  apiKey: paca
+  # Signalling URL browsers connect to. Empty derives it from publicUrl:
+  # https://paca.example.com becomes wss://paca.example.com/livekit.
+  publicUrl: ""
+  # Extra LiveKit config merged into the generated file, e.g. a redis block.
+  extraConfig: {}
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 1Gi
 
 # ---------------------------------------------------------------------------
 # Agent Runner — the AI agent conversation executor, and its sandbox

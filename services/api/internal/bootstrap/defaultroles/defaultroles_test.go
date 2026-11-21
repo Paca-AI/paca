@@ -126,8 +126,9 @@ func TestPlatformRoles(t *testing.T) {
 
 	user := parse(t, byName[defaultroles.User])
 	// Reading users, and direct messages (the collection, and the channels the
-	// caller belongs to: see the DirectMessages statement).
-	if got, want := actionsOf(user), []string{"channels:read", "channels:write", "messages:write", "users:read"}; !slices.Equal(got, want) {
+	// caller belongs to, and joining a huddle in one: see the DirectMessages
+	// statement).
+	if got, want := actionsOf(user), []string{"calls:join", "channels:read", "channels:write", "messages:write", "users:read"}; !slices.Equal(got, want) {
 		t.Errorf("USER actions = %v, want %v", got, want)
 	}
 	if !allows(user, "channels:read", "channel") {
