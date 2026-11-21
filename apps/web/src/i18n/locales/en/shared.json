@@ -209,5 +209,19 @@
 	"paneResize": {
 		"sidebar": "Resize sidebar",
 		"taskColumn": "Resize task column"
+	},
+	"commands": {
+		"task": {
+			"title": "Create task",
+			"description": "Create a task from this text and link it here",
+			"created": "Task created:"
+		},
+		"doc": {
+			"title": "Create document",
+			"description": "Create a document from this text and link it here",
+			"created": "Document created:"
+		},
+		"usage": "Usage: {{usage}}",
+		"failed": "The command failed. Please try again."
 	}
 }

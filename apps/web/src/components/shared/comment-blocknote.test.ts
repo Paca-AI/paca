@@ -3,6 +3,7 @@ import {
 	convertAnnotationLinks,
 	convertMermaidCodeBlocks,
 	normalizeBlockContent,
+	stripUnsafeLinks,
 } from "./comment-blocknote";
 
 describe("normalizeBlockContent", () => {
@@ -187,5 +188,38 @@ describe("convertAnnotationLinks", () => {
 	it("tolerates malformed / non-object entries", () => {
 		const input = [null, "x", 42, { type: "paragraph" }];
 		expect(convertAnnotationLinks(input)).toBe(input);
+	});
+});
+
+describe("stripUnsafeLinks", () => {
+	const link = (href: string, text: string) => ({
+		type: "link",
+		href,
+		content: [{ type: "text", text }],
+	});
+
+	it("keeps the text of a script link and drops the link", () => {
+		const out = stripUnsafeLinks([
+			{
+				type: "paragraph",
+				content: [
+					link("javascript:alert(1)", "click"),
+					link("https://ok.test", "fine"),
+				],
+			},
+		]) as Array<{
+			content: Array<{ type: string; href?: string; text?: string }>;
+		}>;
+		expect(out[0]?.content.map((n) => [n.type, n.href ?? n.text])).toEqual([
+			["text", "click"],
+			["link", "https://ok.test"],
+		]);
+	});
+
+	it("returns the same array when every link is safe", () => {
+		const blocks = [
+			{ type: "paragraph", content: [link("mailto:a@b.test", "a")] },
+		];
+		expect(stripUnsafeLinks(blocks)).toBe(blocks);
 	});
 });

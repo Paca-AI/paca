@@ -217,6 +217,12 @@ const (
 	// PendingDelay/walkWait/WaitScheduler) rather than call_api's
 	// run-to-completion one.
 	ActionWait ActionType = "wait"
+
+	// ActionChatSendMessage is core's chat action (service/chat): it posts text
+	// in a channel as an agent and touches no task, so it runs from a task-less
+	// trigger too. It is not a built-in action: the engine hands it to the
+	// node runtime like a plugin's.
+	ActionChatSendMessage ActionType = "chat.send_message"
 	// ActionUpdateSprint and ActionCompleteSprint resolve their target
 	// sprint from the walk's own context (w.sprint if Sprint-triggered, else
 	// task.SprintID if Task-triggered — see the worker's resolveSprint), not
@@ -287,7 +293,7 @@ func NodeRequiresTask(kind Kind, nodeType string) bool {
 		return true
 	case KindAction:
 		switch ActionType(nodeType) {
-		case ActionCallAPI, ActionTriggerAIAgent, ActionWait, ActionUpdateSprint, ActionCompleteSprint:
+		case ActionCallAPI, ActionTriggerAIAgent, ActionWait, ActionUpdateSprint, ActionCompleteSprint, ActionChatSendMessage:
 			return false
 		default:
 			return true

@@ -44,7 +44,13 @@
 		"readOnly": "You can read this channel but not post in it.",
 		"archived": "This channel is archived.",
 		"tooLong": "That message is too long.",
-		"mentionList": "People to mention"
+		"mentionList": "People to mention",
+		"commandList": "Commands",
+		"referenceList": "Tasks and documents",
+		"commandUsage": "Usage: {{usage}}",
+		"hintCommands": "Enter to send, Shift+Enter for a new line, / for commands, # for tasks and docs",
+		"commandTaskDescription": "Create a task from this text and link it here",
+		"commandNewDescription": "Start a new conversation with the agent"
 	},
 	"message": {
 		"edited": "(edited)",
@@ -59,7 +65,8 @@
 		"viewThread": "View thread ({{count}})",
 		"bookmark": "Save message",
 		"unbookmark": "Remove from saved",
-		"viewRun": "View run"
+		"viewRun": "View run",
+		"createTask": "Create task from message"
 	},
 	"thread": {
 		"title": "Thread",
@@ -136,7 +143,12 @@
 			"threadsBody": "You follow a thread when you reply in it, are mentioned in it, or choose Follow.",
 			"savedTitle": "Nothing saved",
 			"savedBody": "Save a message from its toolbar to find it here."
-		}
+		},
+		"search": "Search messages",
+		"searchClear": "Clear search",
+		"searchShort": "Type at least 3 characters to search.",
+		"searchEmptyTitle": "No messages found",
+		"searchEmptyBody": "Nothing matches \"{{q}}\" in the channels you can read."
 	},
 	"browse": {
 		"title": "Browse channels",
@@ -205,6 +217,14 @@
 			"failed": "Failed",
 			"stopped": "Stopped"
 		},
-		"isWorking": "is working…"
+		"isWorking": "is working…",
+		"fromChannel": "from #{{channel}}"
+	},
+	"reference": {
+		"doc": "Document",
+		"locked": "You don't have access to this item"
+	},
+	"tasks": {
+		"created": "Task created:"
 	}
 }

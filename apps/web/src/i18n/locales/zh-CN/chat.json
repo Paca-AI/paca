@@ -44,7 +44,13 @@
 		"readOnly": "你可以阅读此频道，但不能发言。",
 		"archived": "此频道已归档。",
 		"tooLong": "消息太长。",
-		"mentionList": "可提及的人"
+		"mentionList": "可提及的人",
+		"commandList": "命令",
+		"referenceList": "任务和文档",
+		"commandUsage": "用法：{{usage}}",
+		"hintCommands": "按 Enter 发送，Shift+Enter 换行，输入 / 使用命令，输入 # 引用任务和文档",
+		"commandTaskDescription": "用这段文字创建任务并在此处链接",
+		"commandNewDescription": "与智能体开始新对话"
 	},
 	"message": {
 		"edited": "（已编辑）",
@@ -59,7 +65,8 @@
 		"viewThread": "查看讨论串（{{count}}）",
 		"bookmark": "保存消息",
 		"unbookmark": "从已保存中移除",
-		"viewRun": "查看运行"
+		"viewRun": "查看运行",
+		"createTask": "从消息创建任务"
 	},
 	"thread": {
 		"title": "讨论串",
@@ -136,7 +143,12 @@
 			"threadsBody": "在讨论串中回复、被提及或选择关注，就会关注它。",
 			"savedTitle": "还没有保存的内容",
 			"savedBody": "在消息的工具栏中保存后，可在这里找到。"
-		}
+		},
+		"search": "搜索消息",
+		"searchClear": "清除搜索",
+		"searchShort": "请至少输入 3 个字符再搜索。",
+		"searchEmptyTitle": "未找到消息",
+		"searchEmptyBody": "在你可以阅读的频道中没有匹配“{{q}}”的内容。"
 	},
 	"browse": {
 		"title": "浏览频道",
@@ -205,6 +217,14 @@
 			"failed": "失败",
 			"stopped": "已停止"
 		},
-		"isWorking": "正在处理…"
+		"isWorking": "正在处理…",
+		"fromChannel": "来自 #{{channel}}"
+	},
+	"reference": {
+		"doc": "文档",
+		"locked": "你没有访问此项的权限"
+	},
+	"tasks": {
+		"created": "已创建任务："
 	}
 }

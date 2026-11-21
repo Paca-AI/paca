@@ -27,7 +27,8 @@ export function MessageRefList({
 	list,
 	items,
 }: {
-	list: RefListKind;
+	/** "search" is a search result list: rows show the message, nothing more. */
+	list: RefListKind | "search";
 	items: MessageRef[];
 }) {
 	const { t, i18n } = useTranslation("chat");

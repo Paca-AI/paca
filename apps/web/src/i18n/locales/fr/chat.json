@@ -44,7 +44,13 @@
 		"readOnly": "Vous pouvez lire ce canal mais pas y écrire.",
 		"archived": "Ce canal est archivé.",
 		"tooLong": "Ce message est trop long.",
-		"mentionList": "Personnes à mentionner"
+		"mentionList": "Personnes à mentionner",
+		"commandList": "Commandes",
+		"referenceList": "Tâches et documents",
+		"commandUsage": "Utilisation : {{usage}}",
+		"hintCommands": "Entrée pour envoyer, Maj+Entrée pour un saut de ligne, / pour les commandes, # pour les tâches et documents",
+		"commandTaskDescription": "Crée une tâche à partir de ce texte et la lie ici",
+		"commandNewDescription": "Démarrer une nouvelle conversation avec l'agent"
 	},
 	"message": {
 		"edited": "(modifié)",
@@ -59,7 +65,8 @@
 		"viewThread": "Voir le fil ({{count}})",
 		"bookmark": "Enregistrer le message",
 		"unbookmark": "Retirer des enregistrés",
-		"viewRun": "Voir l'exécution"
+		"viewRun": "Voir l'exécution",
+		"createTask": "Créer une tâche à partir du message"
 	},
 	"thread": {
 		"title": "Fil",
@@ -136,7 +143,12 @@
 			"threadsBody": "Vous suivez un fil lorsque vous y répondez, y êtes mentionné ou choisissez Suivre.",
 			"savedTitle": "Rien d'enregistré",
 			"savedBody": "Enregistrez un message depuis sa barre d'outils pour le retrouver ici."
-		}
+		},
+		"search": "Rechercher des messages",
+		"searchClear": "Effacer la recherche",
+		"searchShort": "Saisissez au moins 3 caractères pour rechercher.",
+		"searchEmptyTitle": "Aucun message trouvé",
+		"searchEmptyBody": "Rien ne correspond à « {{q}} » dans les canaux que vous pouvez lire."
 	},
 	"browse": {
 		"title": "Parcourir les canaux",
@@ -205,6 +217,14 @@
 			"failed": "Échouée",
 			"stopped": "Arrêtée"
 		},
-		"isWorking": "travaille…"
+		"isWorking": "travaille…",
+		"fromChannel": "depuis #{{channel}}"
+	},
+	"reference": {
+		"doc": "Document",
+		"locked": "Vous n'avez pas accès à cet élément"
+	},
+	"tasks": {
+		"created": "Tâche créée :"
 	}
 }

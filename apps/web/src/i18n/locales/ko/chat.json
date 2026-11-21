@@ -44,7 +44,13 @@
 		"readOnly": "이 채널을 읽을 수는 있지만 글을 올릴 수는 없습니다.",
 		"archived": "이 채널은 보관되었습니다.",
 		"tooLong": "메시지가 너무 깁니다.",
-		"mentionList": "멘션할 사람"
+		"mentionList": "멘션할 사람",
+		"commandList": "명령어",
+		"referenceList": "작업 및 문서",
+		"commandUsage": "사용법: {{usage}}",
+		"hintCommands": "Enter로 전송, Shift+Enter로 줄바꿈, /로 명령어, #로 작업 및 문서",
+		"commandTaskDescription": "이 텍스트로 작업을 만들고 여기에 연결합니다",
+		"commandNewDescription": "에이전트와 새 대화를 시작합니다"
 	},
 	"message": {
 		"edited": "(수정됨)",
@@ -59,7 +65,8 @@
 		"viewThread": "스레드 보기 ({{count}})",
 		"bookmark": "메시지 저장",
 		"unbookmark": "저장 취소",
-		"viewRun": "실행 보기"
+		"viewRun": "실행 보기",
+		"createTask": "메시지에서 작업 만들기"
 	},
 	"thread": {
 		"title": "스레드",
@@ -136,7 +143,12 @@
 			"threadsBody": "스레드에 답글을 달거나, 멘션되거나, 팔로우를 선택하면 팔로우됩니다.",
 			"savedTitle": "저장한 항목이 없습니다",
 			"savedBody": "메시지의 도구 모음에서 저장하면 여기에서 찾을 수 있습니다."
-		}
+		},
+		"search": "메시지 검색",
+		"searchClear": "검색 지우기",
+		"searchShort": "검색하려면 3자 이상 입력하세요.",
+		"searchEmptyTitle": "메시지를 찾을 수 없습니다",
+		"searchEmptyBody": "읽을 수 있는 채널에서 \"{{q}}\"와(과) 일치하는 항목이 없습니다."
 	},
 	"browse": {
 		"title": "채널 둘러보기",
@@ -205,6 +217,14 @@
 			"failed": "실패",
 			"stopped": "중지됨"
 		},
-		"isWorking": "작업 중…"
+		"isWorking": "작업 중…",
+		"fromChannel": "#{{channel}}에서"
+	},
+	"reference": {
+		"doc": "문서",
+		"locked": "이 항목에 접근할 권한이 없습니다"
+	},
+	"tasks": {
+		"created": "작업을 만들었습니다:"
 	}
 }

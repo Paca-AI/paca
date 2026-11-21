@@ -1,32 +1,33 @@
 import { format, isToday } from "date-fns";
 import {
 	Bookmark,
+	ListPlus,
 	MessageSquareReply,
 	Pencil,
 	SmilePlus,
 	Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ConversationMessage } from "@/components/conversation/conversation-message";
 import { ReactionBar } from "@/components/conversation/reaction-bar";
 import { RunLink } from "@/components/conversation/run-card";
+import {
+	CommentDisplay,
+	type CommentEditorHandle,
+	normalizeBlockContent,
+} from "@/components/shared/comment-blocknote";
 import { EntityAvatar } from "@/components/shared/entity-avatar";
+import { MessageEditor } from "@/components/shared/message-editor";
 import { Button } from "@/components/ui/button";
 import {
 	Popover,
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
-import { Textarea } from "@/components/ui/textarea";
 import type { ChatBlock, ChatMessage, ChatPeer } from "@/lib/chat-api";
-import {
-	blocksToText,
-	mentionsOf,
-	sameText,
-	textToBlocks,
-} from "@/lib/chat-content";
-import { MessageContent } from "./message-content";
+import { isEmptyMessage, prepareForSend } from "@/lib/chat-blocks";
+import { sameText } from "@/lib/chat-content";
 import { PeerAvatar } from "./peer-avatar";
 
 export const QUICK_REACTIONS = ["👍", "❤️", "😄", "🎉", "👀", "🙏"] as const;
@@ -43,6 +44,8 @@ export interface MessageActions {
 	openThread?: (m: ChatMessage) => void;
 	/** Saves or unsaves a message for the caller. */
 	save?: (m: ChatMessage, saved: boolean) => void;
+	/** Makes a task from the message; absent when the viewer cannot create tasks. */
+	createTask?: (m: ChatMessage) => void;
 }
 
 /**
@@ -59,6 +62,7 @@ export function MessageItem({
 	canReply,
 	actions,
 	peer,
+	mentionProjectId,
 }: {
 	message: ChatMessage;
 	currentUserId: string | undefined;
@@ -69,25 +73,31 @@ export function MessageItem({
 	actions: MessageActions;
 	/** The other party of a direct message, to show an agent or service account as such. */
 	peer?: ChatPeer | null;
+	/** Offers "@" and "#" suggestions while the message is edited. */
+	mentionProjectId?: string;
 }) {
 	const { t } = useTranslation("chat");
 	const [editing, setEditing] = useState(false);
-	const [draft, setDraft] = useState("");
+	const editor = useRef<CommentEditorHandle>(null);
 	const [saving, setSaving] = useState(false);
 	const [pickerOpen, setPickerOpen] = useState(false);
+	// Stored content is read like a task comment: same normalisation, same renderer.
+	const content = useMemo(
+		() => normalizeBlockContent(message.content),
+		[message.content],
+	);
 	const mine = message.author_id === currentUserId;
 	const deleted = message.deleted_at !== null;
 	const fromPeer =
 		!!peer && peer.kind !== "user" && message.author_id === peer.account_id;
 
 	const startEdit = () => {
-		setDraft(blocksToText(message.content));
 		setEditing(true);
 	};
 	const save = async () => {
-		// The mentions already in the message stay linked if their text is kept.
-		const next = textToBlocks(draft, mentionsOf(message.content));
-		if (next.length === 0) return;
+		const blocks = (editor.current?.getBlocks() ?? []) as ChatBlock[];
+		if (isEmptyMessage(blocks)) return;
+		const next = prepareForSend(blocks);
 		if (sameText(next, message.content)) {
 			setEditing(false);
 			return;
@@ -159,6 +169,16 @@ export function MessageItem({
 						onClick={() => actions.save?.(message, !message.saved)}
 					>
 						<Bookmark className={message.saved ? "fill-current" : undefined} />
+					</Button>
+				) : null}
+				{actions.createTask ? (
+					<Button
+						size="icon-sm"
+						variant="ghost"
+						aria-label={t("message.createTask")}
+						onClick={() => actions.createTask?.(message)}
+					>
+						<ListPlus />
 					</Button>
 				) : null}
 				{mine && canReply ? (
@@ -244,22 +264,15 @@ export function MessageItem({
 				</p>
 			) : editing ? (
 				<div className="space-y-2">
-					<Textarea
-						value={draft}
-						onChange={(e) => setDraft(e.target.value)}
-						onKeyDown={(e) => {
-							if (e.key === "Escape") setEditing(false);
-							if (
-								e.key === "Enter" &&
-								!e.shiftKey &&
-								!e.nativeEvent.isComposing
-							) {
-								e.preventDefault();
-								void save();
-							}
-						}}
+					<MessageEditor
+						ref={editor}
+						placeholder={t("message.edit")}
+						projectId={mentionProjectId}
+						submitKey="enter"
+						initialBlocks={normalizeBlockContent(message.content)}
 						autoFocus
-						aria-label={t("message.edit")}
+						onSubmit={() => void save()}
+						onEscape={() => setEditing(false)}
 					/>
 					<div className="flex gap-2">
 						<Button size="sm" disabled={saving} onClick={() => void save()}>
@@ -272,10 +285,7 @@ export function MessageItem({
 				</div>
 			) : (
 				<>
-					<MessageContent
-						blocks={message.content}
-						currentUserId={currentUserId}
-					/>
+					<CommentDisplay blocks={content} />
 					{message.edited_at ? (
 						<span className="text-xs text-muted-foreground">
 							{t("message.edited")}

@@ -35,6 +35,7 @@ This is your default operating procedure for every conversation — it always ap
 | Run a sprint retrospective and turn improvements into tasks | `load_skill(name: "paca-retro")` |
 | Turn page comments / UI annotations from an environment into tasks | `load_skill(name: "paca-feedback")` |
 | Set up or clean up task types, statuses, custom fields and views | `load_skill(name: "paca-board")` |
+| Catch up on, summarise or post in a project's team chat; answer an @mention in a channel | `load_skill(name: "paca-chat")` |
 | See who can do what, or add / change / remove project members | `load_skill(name: "paca-team")` |
 | Draft a role policy — read-only role, limit someone to a sprint, restrict an agent or environment (drafts JSON only, never saves a role) | `load_skill(name: "paca-role-policy")` |
 <!-- paca:plugin-routes -->

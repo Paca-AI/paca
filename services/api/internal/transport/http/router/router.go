@@ -250,6 +250,7 @@ func New(deps Deps) http.Handler {
 						r.Get("/me/chat/mentions", deps.Chat.Mentions)
 						r.Get("/me/chat/threads", deps.Chat.Threads)
 						r.Get("/me/chat/saved", deps.Chat.Saved)
+						r.Get("/me/chat/search", deps.Chat.Search)
 						r.Post("/me/chat/read-all", deps.Chat.MarkAllRead)
 						// The batch form of "may I?" for resources under a platform
 						// root (a direct message), for services/realtime. It reports
@@ -482,6 +483,7 @@ func New(deps Deps) http.Handler {
 							r.With(read).Put("/star", deps.Chat.StarChannel)
 							r.With(read).Delete("/star", deps.Chat.UnstarChannel)
 							r.With(read).Get("/agent", deps.Chat.AgentRuns)
+							r.With(post).Post("/agent/new", deps.Chat.NewAgentConversation)
 							r.With(read, httpmw.RequireJSONContentType()).Post("/read", deps.Chat.MarkRead)
 							r.With(read).Get("/messages", deps.Chat.ListMessages)
 							r.With(post, httpmw.RequireJSONContentType()).Post("/messages", deps.Chat.PostMessage)

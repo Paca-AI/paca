@@ -726,6 +726,38 @@ func (h *ChatHandler) Threads(w http.ResponseWriter, r *http.Request) {
 // Saved handles GET /users/me/chat/saved: the caller's saved messages.
 func (h *ChatHandler) Saved(w http.ResponseWriter, r *http.Request) { h.messageRefs(w, r, h.svc.Saved) }
 
+// Search handles GET /users/me/chat/search?q=&project_id=: messages whose text
+// contains q, newest first, in channels the caller may read.
+func (h *ChatHandler) Search(w http.ResponseWriter, r *http.Request) {
+	me, ok := requireAccountID(w, r)
+	if !ok {
+		return
+	}
+	var projectID *uuid.UUID
+	if raw := r.URL.Query().Get("project_id"); raw != "" {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid project_id"))
+			return
+		}
+		projectID = &id
+	}
+	scoped, ok := h.inboxScope(w, r, me)
+	if !ok {
+		return
+	}
+	refs, err := h.svc.Search(scoped, me, r.URL.Query().Get("q"), projectID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	out := make([]dto.MessageRefResponse, len(refs))
+	for i, ref := range refs {
+		out[i] = dto.MessageRefFromEntity(ref)
+	}
+	presenter.OK(w, r, out)
+}
+
 func (h *ChatHandler) follow(w http.ResponseWriter, r *http.Request, on bool) {
 	projectID, channelID, err := chatIDs(r)
 	if err != nil {
@@ -831,6 +863,25 @@ func (h *ChatHandler) StarChannel(w http.ResponseWriter, r *http.Request) { h.st
 
 // UnstarChannel handles DELETE .../channels/{channelId}/star.
 func (h *ChatHandler) UnstarChannel(w http.ResponseWriter, r *http.Request) { h.star(w, r, false) }
+
+// NewAgentConversation handles POST /chat/dms/{channelId}/agent/new: the next
+// message to the agent starts a fresh conversation.
+func (h *ChatHandler) NewAgentConversation(w http.ResponseWriter, r *http.Request) {
+	_, channelID, err := chatIDs(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	me, ok := requireAccountID(w, r)
+	if !ok {
+		return
+	}
+	if err := h.svc.NewAgentConversation(r.Context(), channelID, me); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	presenter.NoContent(w)
+}
 
 // AgentRuns handles GET /chat/dms/{channelId}/agent: the runs of the agent a
 // direct message talks to, and whether it is answering.

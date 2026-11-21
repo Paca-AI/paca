@@ -46,6 +46,7 @@ var skillEntries = loadEntries([]skillEntry{
 	{Name: "paca-automation"},
 	{Name: "paca-board"},
 	{Name: "paca-breakdown"},
+	{Name: "paca-chat"},
 	{Name: "paca-clarify"},
 	{Name: "paca-do", AgentVariant: true},
 	{Name: "paca-doc"},

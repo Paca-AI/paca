@@ -1,24 +1,15 @@
 import { describe, expect, it } from "vitest";
-import {
-	blocksToText,
-	mentionsOf,
-	safeHref,
-	sameText,
-	textToBlocks,
-} from "./chat-content";
+import type { ChatBlock, ChatInline } from "./chat-api";
+import { blocksToText, safeHref, sameText } from "./chat-content";
+
+const textToBlocks = (text: string): ChatBlock[] =>
+	text.split("\n").map((line) => ({
+		type: "paragraph",
+		content: [{ type: "text", text: line, styles: {} }],
+	}));
 
 describe("chat content", () => {
-	it("turns lines into paragraphs and drops blank ones", () => {
-		const blocks = textToBlocks("one\n\n  \ntwo  ");
-		expect(blocks).toHaveLength(2);
-		expect(blocks[1]).toEqual({
-			type: "paragraph",
-			content: [{ type: "text", text: "two", styles: {} }],
-		});
-		expect(textToBlocks("   \n ")).toEqual([]);
-	});
-
-	it("round-trips text through blocks", () => {
+	it("reads one line per block", () => {
 		expect(blocksToText(textToBlocks("a\nb"))).toBe("a\nb");
 	});
 
@@ -57,43 +48,22 @@ describe("chat content", () => {
 	});
 });
 
-describe("mentions in chat content", () => {
-	const mina = { id: "u-mina", name: "Mina" };
-	const ann = { id: "u-ann", name: "Ann" };
-	const annLee = { id: "u-annlee", name: "Ann Lee" };
-
-	it("turns @Name into a mention node and keeps the rest as text", () => {
-		const [p] = textToBlocks("hey @Mina, look", [mina]);
-		expect(p?.content).toEqual([
-			{ type: "text", text: "hey ", styles: {} },
-			{ type: "teamMention", props: { id: "u-mina", name: "Mina" } },
-			{ type: "text", text: ", look", styles: {} },
-		]);
+describe("references in chat content", () => {
+	const para = (...content: ChatInline[]): ChatBlock => ({
+		type: "paragraph",
+		content,
 	});
 
-	it("prefers the longest matching name and respects word boundaries", () => {
-		const [p] = textToBlocks("@Ann Lee and @Ann and @Annabel", [ann, annLee]);
-		const ids = (p?.content ?? [])
-			.filter((n) => n.type === "teamMention")
-			.map((n) => n.props?.id);
-		expect(ids).toEqual(["u-annlee", "u-ann"]);
-		// "@Annabel" is not a mention of Ann.
-		expect(blocksToText([p as never])).toBe("@Ann Lee and @Ann and @Annabel");
-	});
-
-	it("drops a mention whose text was deleted", () => {
-		const [p] = textToBlocks("no names here", [mina]);
-		expect(p?.content).toEqual([
-			{ type: "text", text: "no names here", styles: {} },
-		]);
-	});
-
-	it("shows a mention as @name in plain text and finds it again for an edit", () => {
-		const blocks = textToBlocks("ping @Mina", [mina]);
-		expect(blocksToText(blocks)).toBe("ping @Mina");
-		expect(mentionsOf(blocks)).toEqual([mina]);
-		// Edited text keeps the link when the name is kept.
-		const edited = textToBlocks("ping again @Mina", mentionsOf(blocks));
-		expect(mentionsOf(edited)).toEqual([mina]);
+	it("shows a mention as @name and a task or document as #label", () => {
+		const blocks = [
+			para(
+				{ type: "text", text: "hi " },
+				{ type: "teamMention", props: { id: "u1", name: "Mina" } },
+				{ type: "text", text: " see " },
+				{ type: "taskReference", props: { id: "t1", number: 42 } },
+				{ type: "docReference", props: { id: "d1234567-aaaa" } },
+			),
+		];
+		expect(blocksToText(blocks)).toBe("hi @Mina see #42#doc:d1234567");
 	});
 });

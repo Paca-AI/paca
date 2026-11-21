@@ -41,12 +41,12 @@ import { AskQuestionCard } from "@/components/shared/ask-question-card";
 import {
 	blocksToText,
 	CommentDisplay,
-	CommentEditor,
 	type CommentEditorHandle,
 } from "@/components/shared/comment-blocknote";
 import { ContentDiffDialog } from "@/components/shared/content-diff";
 import { EntityAvatar } from "@/components/shared/entity-avatar";
 import { LoadMoreSentinel } from "@/components/shared/load-more-sentinel";
+import { MessageEditor } from "@/components/shared/message-editor";
 import { TypingIndicator } from "@/components/shared/typing-indicator";
 import { Button } from "@/components/ui/button";
 import {
@@ -59,7 +59,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useActorAvatar } from "@/hooks/use-actor-avatar";
+import { useCommandRunner, useSlashCommands } from "@/hooks/use-slash-commands";
 import { extractAskQuestion } from "@/lib/ask-question";
+import type { ChatBlock } from "@/lib/chat-api";
 import { searchMentionableMembers } from "@/lib/mention-api";
 import { timeAgo } from "@/lib/time-ago";
 import { cn } from "@/lib/utils";
@@ -404,11 +406,26 @@ export function ActivityPane<T extends ActivityEntry>({
 		},
 	});
 
-	const handleSend = () => {
+	// The same "/" commands as chat: they create the item and post its chip
+	// as a comment here.
+	const commands = useSlashCommands({
+		projectId,
+		post: (blocks) => addMutation.mutateAsync(blocks),
+	});
+	const {
+		run: runCommand,
+		tryRun,
+		error: commandError,
+	} = useCommandRunner(commands);
+
+	const handleSend = async () => {
 		const blocks = editorRef.current?.getBlocks();
 		if (!blocks || blocks.length === 0) return;
 		const text = blocksToText(blocks).trim();
 		if (!text) return;
+		if (!editingCommentId && (await tryRun(blocks as ChatBlock[])) !== "none") {
+			return;
+		}
 		if (editingCommentId && updateComment) {
 			updateMutation.mutate({ commentId: editingCommentId, blocks });
 		} else {
@@ -602,12 +619,20 @@ export function ActivityPane<T extends ActivityEntry>({
 							</Button>
 						</div>
 					)}
-					<fieldset
-						className={cn(
-							"min-w-0 rounded-xl border border-border/50 bg-card/80 transition-all duration-200 overflow-hidden",
-							editorFocused && "border-primary/25 shadow-sm shadow-primary/5",
-							"[&_.bn-editor]:min-h-6 [&_.bn-editor]:max-h-48 [&_.bn-editor]:overflow-y-auto [&_.bn-editor]:py-1.5 [&_.bn-editor]:px-3 [&_.bn-editor]:text-sm [&_.bn-editor]:leading-relaxed",
-						)}
+					<MessageEditor
+						key={editingCommentId}
+						ref={editorRef}
+						focused={editorFocused}
+						initialBlocks={editingCommentBlocks}
+						commands={editingCommentId ? undefined : commands}
+						onCommand={(c) => void runCommand(c, "")}
+						onSubmit={handleSend}
+						onChange={
+							onTyping
+								? (blocks) => onTyping(blocksToText(blocks).trim().length > 0)
+								: undefined
+						}
+						projectId={projectId}
 						onFocus={() => setEditorFocused(true)}
 						onBlur={(e) => {
 							if (!e.currentTarget.contains(e.relatedTarget as Node)) {
@@ -616,20 +641,12 @@ export function ActivityPane<T extends ActivityEntry>({
 								if (!text) setEditorFocused(false);
 							}
 						}}
-					>
-						<CommentEditor
-							key={editingCommentId}
-							ref={editorRef}
-							initialBlocks={editingCommentBlocks}
-							onSubmit={handleSend}
-							onChange={
-								onTyping
-									? (blocks) => onTyping(blocksToText(blocks).trim().length > 0)
-									: undefined
-							}
-							projectId={projectId}
-						/>
-					</fieldset>
+					/>
+					{commandError ? (
+						<p role="alert" className="pl-1 text-xs text-destructive">
+							{commandError}
+						</p>
+					) : null}
 					<div className="flex items-center justify-between">
 						{editorFocused && (
 							<p className="text-xs text-muted-foreground/90 pl-1">

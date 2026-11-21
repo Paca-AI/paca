@@ -297,7 +297,7 @@ func TestList_EngineeringPractices(t *testing.T) {
 // present in both flavors, routed to by the paca skill, reserved as builtin
 // names, and the retired paca-workflow no longer shipped.
 func TestList_PacaFeatureSkills(t *testing.T) {
-	names := []string{"paca-analyst", "paca-automation", "paca-review", "paca-triage", "paca-retro", "paca-feedback", "paca-board", "paca-team"}
+	names := []string{"paca-analyst", "paca-automation", "paca-review", "paca-triage", "paca-retro", "paca-feedback", "paca-board", "paca-team", "paca-chat"}
 	for _, target := range []string{TargetCLI, TargetAgent} {
 		byName := map[string]Skill{}
 		for _, s := range List(target) {

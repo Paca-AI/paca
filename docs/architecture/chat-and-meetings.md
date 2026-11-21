@@ -2,7 +2,7 @@
 
 Design and delivery plan for built-in team chat (a Slack alternative) and voice/video meetings (a Discord alternative) in Paca v1.0.0.
 
-> **Status:** proposal; Phase 1b (presence and task-comment UX) is built, see [Phase 1b status](#phase-1b-status). Phase 1 is partly built (project channels, direct messages, replies from global agents in direct messages, messages, threads, reactions, mentions, followed threads, saved messages, read state, the sidebar and Inbox, IAM variable and realtime channel rooms, uncommitted). Everything else here is not implemented. The Phase 0 spikes ran on 2026-11-17 and all five came back go; see [Phase 0 results](#phase-0-results). The roadmap entry is in [ROADMAP.md](../../ROADMAP.md) under *Beyond v1.0 — Exploring*.
+> **Status:** proposal; Phase 2 is mostly built, see [Phase 2 status](#phase-2-status). Phase 1b (presence and task-comment UX) is built, see [Phase 1b status](#phase-1b-status). Phase 1 is partly built (project channels, direct messages, replies from global agents in direct messages, messages, threads, reactions, mentions, followed threads, saved messages, read state, the sidebar and Inbox, IAM variable and realtime channel rooms, uncommitted). Everything else here is not implemented. The Phase 0 spikes ran on 2026-11-17 and all five came back go; see [Phase 0 results](#phase-0-results). The roadmap entry is in [ROADMAP.md](../../ROADMAP.md) under *Beyond v1.0 — Exploring*.
 
 ## Goals
 
@@ -472,6 +472,21 @@ Built, unit-tested and covered by Playwright specs (`apps/e2e/tests/projects/tas
 - **Description and document mentions** now create in-app rows (`mention_source` `description` / `document`) as well as the plugin event.
 
 Not done: the Watch toggle on tasks; the sprint-count shortcut in the Interactions sidebar (only sprint headers in the list view show it); badges on board cards; a Playwright scenario for the sprint-header badge (it only exists in a list grouped by sprint); copy for the mention excerpt beyond the first 140 characters of text. Chat threads do not report typing yet.
+
+## Phase 2 status
+
+Built and unit-tested (Go, web, MCP); not run end to end against a real agent runtime or in Playwright.
+
+- **Chips.** `#` in the composer suggests the project's tasks and documents. A chip stores ids only (`taskReference` `{id, projectId, number}`, `docReference` `{id, projectId}`), never the title: the title is read when the message is shown, with the reader's own access, so someone who may not open the item sees a locked chip. Task chips share the task query, so they follow live task updates. Message text keeps a `#<number>` / `#doc` label for previews and search.
+- **Create task from message** (toolbar button, needs `tasks:write`) and **`/task <title>`**: the browser creates the task with the person's own session and posts a reply with the chip in the message's thread, which is the link back. The task side has no back-link yet (no `message_links` table, no *Discussion* section on the task).
+- **Slash commands.** The composer takes a command list: `/task` in project channels, `/new` in a global agent's DM. `/` opens a menu only as the first word.
+- **Search.** `GET /users/me/chat/search?q=&project_id=` (trigram `ILIKE` on `content_text`, migration `000096`, three characters or more), scoped by the same per-project channel scopes as the Inbox. A search box sits above the Inbox tabs.
+- **`@agent` triggers.** Mentioning an agent that is a member of the project, in a project channel, starts a run through the gated `TriggerDirectMessage` (the author needs `conversations:write` on the agent). The agent is shown the mention and, in a public channel, the eight messages before it; a private channel shares only the message itself. When the run's first turn ends, `ChatAgentConsumer` posts its answer as a reply in the thread from the agent's own account, mentioning the asker, with a "View run" link. Link table `chat_agent_runs` (migration `000097`) replaces the `agent_conversations.channel_id` column this document first proposed: it needs no change to the agent runtime. The run uses the existing `automation_message` trigger type. An agent's own message never starts a run, so two agents cannot loop. A refused or failed run posts nothing (it is logged).
+- **MCP tools and skill.** `chat_list_channels`, `chat_read_channel`, `chat_send_message` (message text returned inside untrusted-data fences) and the bundled `paca-chat` skill. They run on the agent's own roles.
+- **Automation nodes (core-owned).** Triggers `chat.message_posted` and `chat.mention` (task-less; public channels only; never for an agent's message) and action `chat.send_message`, which posts as a chosen agent member. The engine renders `{{event.*}}` in the action's text, and a new rule in `NodeRequiresTask` lets it run in a task-less run.
+- **Agent DM conversations.** The runs list of an agent DM now also holds the runs the person's channel mentions started, tagged *from #channel*, for project agents too; `/new` (`POST /chat/dms/{id}/agent/new`) detaches the DM from its session so the next message starts a new conversation.
+
+Not done: the two-pane agent DM layout, rename/pin/archive of runs, run search over content, `agent_conversations.channel_id`, working or needs-you marks in the sidebar and Inbox, the task *Discussion* section and `message_links`, streaming an answer into the thread, a reply for a run that failed, an automation condition on the channel or text (filter with the agent's own judgement for now), a thread-pane `/task`, and Playwright specs for any of this.
 
 ## Risks and open questions
 

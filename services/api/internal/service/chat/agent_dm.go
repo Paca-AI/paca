@@ -198,7 +198,10 @@ func (s *Service) AgentRuns(ctx context.Context, channelID, accountID uuid.UUID)
 	}
 	out := &chatdom.AgentRuns{}
 	if !s.answersDMs(ctx, ch) {
-		return out, nil
+		// Such an agent does not answer here, but the runs the person's channel
+		// mentions of it started are still theirs to find.
+		out.Runs, err = s.repo.ListAgentRuns(ctx, &chatdom.AgentLink{ChannelID: ch.ID, AgentID: ch.Peer.AccountID, AccountID: accountID}, chatdom.MaxAgentRuns)
+		return out, err
 	}
 	out.Replies = true
 	link, err := s.repo.EnsureAgentLink(ctx, ch.ID, ch.Peer.AccountID, accountID)
@@ -216,4 +219,16 @@ func (s *Service) AgentRuns(ctx context.Context, channelID, accountID uuid.UUID)
 		}
 	}
 	return out, nil
+}
+
+// NewAgentConversation implements chatdom.Service.
+func (s *Service) NewAgentConversation(ctx context.Context, channelID, accountID uuid.UUID) error {
+	ch, err := s.requireChannel(ctx, uuid.Nil, channelID, accountID)
+	if err != nil {
+		return err
+	}
+	if ch.Kind != chatdom.KindDM || ch.Peer == nil || ch.Peer.Kind != chatdom.AccountAgent || !s.answersDMs(ctx, ch) {
+		return chatdom.ErrDMNotSupported
+	}
+	return s.repo.ResetAgentRun(ctx, channelID)
 }

@@ -476,6 +476,7 @@ Run `/paca-setup` inside a Claude Code session for a guided interactive walkthro
 | `/paca-feedback` | Turn page comments from the browser extension into tasks |
 | `/paca-board` | Audit and set up task types, statuses, custom fields and views |
 | `/paca-team` | See who can do what; add, re-role or remove project members |
+| `/paca-chat` | Catch up on, summarise or post in team chat; answer an @mention |
 | `/paca-automation <goal>` | Design and build event-driven automations (trigger → condition → action) |
 | `/paca-setup` | Interactive MCP connection wizard |
 

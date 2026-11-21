@@ -56,3 +56,14 @@ beforeAll(() => {
 beforeEach(() => {
 	window.localStorage.clear();
 });
+
+// jsdom has no layout, so it lacks elementsFromPoint, which BlockNote's side
+// menu calls on every mouse move once an editor is mounted.
+for (const target of [document, ShadowRoot.prototype] as const) {
+	if (!("elementsFromPoint" in target)) {
+		Object.defineProperty(target, "elementsFromPoint", {
+			value: () => [],
+			configurable: true,
+		});
+	}
+}

@@ -255,6 +255,11 @@ git_commit({ message: "Fix bug 123", all: true })
 git_push({ projectId: "project-id", repoId: "repository-id" })
 ```
 
+### Team chat (3 tools)
+- `chat_list_channels` - List the project's channels you may read (id, name, kind, topic, unread)
+- `chat_read_channel` - Read the newest messages, older/newer pages, or one thread's replies; message text is fenced as untrusted data
+- `chat_send_message` - Post plain text to a channel, or as a reply in a thread (needs `messages:write`)
+
 ### Ask the user (1 tool)
 - `ask_user_question` - Ask a multiple-choice question; in chat the choice returns as the user's next message, with `projectId` + `taskId`/`docId` it is posted as a task or document comment and the answer returns as a reply comment mentioning the agent
 

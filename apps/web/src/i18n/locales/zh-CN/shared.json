@@ -209,5 +209,19 @@
 	"paneResize": {
 		"sidebar": "调整侧边栏大小",
 		"taskColumn": "调整任务列大小"
+	},
+	"commands": {
+		"task": {
+			"title": "创建任务",
+			"description": "用此文本创建任务并链接到这里",
+			"created": "已创建任务："
+		},
+		"doc": {
+			"title": "创建文档",
+			"description": "用此文本创建文档并链接到这里",
+			"created": "已创建文档："
+		},
+		"usage": "用法：{{usage}}",
+		"failed": "命令执行失败，请重试。"
 	}
 }

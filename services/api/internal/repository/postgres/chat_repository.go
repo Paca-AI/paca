@@ -1213,10 +1213,16 @@ const messageRefGuard = ` AND (c.project_id IS NULL OR (p.deleted_at IS NULL AND
 	WHERE pmm.project_id = c.project_id AND pmm.account_id = $1::uuid AND pmm.deleted_at IS NULL)))`
 
 func (r *ChatRepository) listRefs(ctx context.Context, accountID uuid.UUID, query, order string, limit int) ([]chatdom.MessageRef, error) {
+	return r.listRefsArgs(ctx, accountID, query, order, limit, nil)
+}
+
+// listRefsArgs is listRefs for a query with parameters of its own: they are
+// $2, $3 … (the caller is $1) and the scope clause and limit follow them.
+func (r *ChatRepository) listRefsArgs(ctx context.Context, accountID uuid.UUID, query, order string, limit int, extra []any) ([]chatdom.MessageRef, error) {
 	if limit <= 0 || limit > chatdom.MaxMessageRefs {
 		limit = chatdom.MaxMessageRefs
 	}
-	sink := &argList{args: []any{accountID.String()}}
+	sink := &argList{args: append([]any{accountID.String()}, extra...)}
 	clause, none, err := chatVisibilitySQL(ctx, sink)
 	if err != nil {
 		return nil, err
@@ -1293,6 +1299,20 @@ func (r *ChatRepository) ListSaved(ctx context.Context, accountID uuid.UUID, lim
 	FROM saved_messages sm JOIN messages m ON m.id = sm.message_id AND m.deleted_at IS NULL` + messageRefJoins + `
 	WHERE sm.account_id = $1::uuid`
 	return r.listRefs(ctx, accountID, q, "sm.created_at DESC, m.id", limit)
+}
+
+// SearchMessages implements chatdom.Repository. The text match is a trigram
+// ILIKE on messages.content_text, the way document search works.
+func (r *ChatRepository) SearchMessages(ctx context.Context, accountID uuid.UUID, query string, projectID *uuid.UUID, limit int) ([]chatdom.MessageRef, error) {
+	q := messageRefSelect + `
+	FROM messages m` + messageRefJoins + `
+	WHERE m.deleted_at IS NULL AND m.content_text ILIKE '%' || $2::text || '%' ESCAPE '\'`
+	args := []any{escapeLikePattern(query)}
+	if projectID != nil {
+		q += " AND c.project_id = $3::uuid"
+		args = append(args, projectID.String())
+	}
+	return r.listRefsArgs(ctx, accountID, q, "m.created_at DESC, m.id", limit, args)
 }
 
 // SetStarred implements chatdom.Repository.
@@ -1441,28 +1461,141 @@ func (r *ChatRepository) AgentReply(ctx context.Context, conversationID uuid.UUI
 	return strings.TrimSpace(strings.Join(parts, "")), nil
 }
 
-// ListAgentRuns implements chatdom.Repository.
+// ListAgentRuns implements chatdom.Repository. It lists the runs of the link's
+// chat session and the runs an @mention of the agent by the same person
+// started in a channel, newest first.
 func (r *ChatRepository) ListAgentRuns(ctx context.Context, link *chatdom.AgentLink, limit int) ([]chatdom.AgentRun, error) {
-	if link == nil || link.SessionID == nil {
+	if link == nil {
 		return nil, nil
 	}
-	var rows []struct {
-		ID        string    `db:"id"`
-		Title     string    `db:"title"`
-		Status    string    `db:"status"`
-		CreatedAt time.Time `db:"created_at"`
-		UpdatedAt time.Time `db:"updated_at"`
+	var session *string
+	if link.SessionID != nil {
+		s := link.SessionID.String()
+		session = &s
 	}
-	if err := r.db.SelectContext(ctx, &rows, `SELECT id::text, COALESCE(title, '') AS title, status, created_at, updated_at
-		FROM agent_conversations WHERE chat_session_id = $1::uuid AND deleted_at IS NULL
-		ORDER BY created_at DESC, id LIMIT $2`, link.SessionID.String(), limit); err != nil {
+	var rows []struct {
+		ID          string    `db:"id"`
+		Title       string    `db:"title"`
+		ChannelName string    `db:"channel_name"`
+		Status      string    `db:"status"`
+		CreatedAt   time.Time `db:"created_at"`
+		UpdatedAt   time.Time `db:"updated_at"`
+	}
+	if err := r.db.SelectContext(ctx, &rows, `
+		SELECT id, title, channel_name, status, created_at, updated_at FROM (
+			SELECT ac.id::text AS id, COALESCE(ac.title, '') AS title, ''::text AS channel_name, ac.status, ac.created_at, ac.updated_at
+			FROM agent_conversations ac WHERE ac.chat_session_id = $1::uuid AND ac.deleted_at IS NULL
+			UNION ALL
+			SELECT ac.id::text, COALESCE(ac.title, ''), ch.name, ac.status, ac.created_at, ac.updated_at
+			FROM chat_agent_runs r JOIN agent_conversations ac ON ac.id = r.conversation_id AND ac.deleted_at IS NULL
+			JOIN channels ch ON ch.id = r.channel_id
+			WHERE r.agent_id = $2::uuid AND r.requester_id = $3::uuid
+		) runs ORDER BY created_at DESC, id LIMIT $4`,
+		session, link.AgentID.String(), link.AccountID.String(), limit); err != nil {
 		return nil, fmt.Errorf("chat: list agent runs: %w", err)
 	}
 	out := make([]chatdom.AgentRun, len(rows))
 	for i, row := range rows {
-		out[i] = chatdom.AgentRun{ID: uuid.MustParse(row.ID), Title: row.Title, Status: row.Status, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
+		out[i] = chatdom.AgentRun{ID: uuid.MustParse(row.ID), Title: row.Title, ChannelName: row.ChannelName, Status: row.Status, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
 	}
 	return out, nil
+}
+
+// ResetAgentRun implements chatdom.Repository: the next message starts a new
+// chat session. What was already forwarded stays forwarded.
+func (r *ChatRepository) ResetAgentRun(ctx context.Context, channelID uuid.UUID) error {
+	if _, err := r.db.ExecContext(ctx, `UPDATE chat_agent_dms SET session_id = NULL, conversation_id = NULL,
+		bridged_index = -1, updated_at = NOW() WHERE channel_id = $1::uuid`, channelID.String()); err != nil {
+		return fmt.Errorf("chat: reset agent run: %w", err)
+	}
+	return nil
+}
+
+// ProjectMemberID implements chatdom.Repository.
+func (r *ChatRepository) ProjectMemberID(ctx context.Context, projectID, accountID uuid.UUID) (uuid.UUID, bool, error) {
+	var id string
+	err := r.db.GetContext(ctx, &id, `SELECT id::text FROM project_members
+		WHERE project_id = $1::uuid AND account_id = $2::uuid AND deleted_at IS NULL`, projectID.String(), accountID.String())
+	if errors.Is(err, sql.ErrNoRows) {
+		return uuid.Nil, false, nil
+	}
+	if err != nil {
+		return uuid.Nil, false, fmt.Errorf("chat: project member: %w", err)
+	}
+	return uuid.MustParse(id), true, nil
+}
+
+// AgentAccountOfMember implements chatdom.Repository.
+func (r *ChatRepository) AgentAccountOfMember(ctx context.Context, projectID, memberID uuid.UUID) (uuid.UUID, bool, error) {
+	var id string
+	err := r.db.GetContext(ctx, &id, `SELECT pm.account_id::text FROM project_members pm JOIN accounts a ON a.id = pm.account_id
+		WHERE pm.id = $1::uuid AND pm.project_id = $2::uuid AND pm.deleted_at IS NULL AND a.kind = 'agent'`, memberID.String(), projectID.String())
+	if errors.Is(err, sql.ErrNoRows) {
+		return uuid.Nil, false, nil
+	}
+	if err != nil {
+		return uuid.Nil, false, fmt.Errorf("chat: agent of member: %w", err)
+	}
+	return uuid.MustParse(id), true, nil
+}
+
+// CreateAgentRun implements chatdom.Repository.
+func (r *ChatRepository) CreateAgentRun(ctx context.Context, a *chatdom.ChannelAgentRun) error {
+	if _, err := r.db.ExecContext(ctx, `INSERT INTO chat_agent_runs
+		(conversation_id, channel_id, source_message_id, thread_root_id, agent_id, requester_id)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid) ON CONFLICT (conversation_id) DO NOTHING`,
+		a.ConversationID.String(), a.ChannelID.String(), a.SourceMessageID.String(), a.ThreadRootID.String(),
+		a.AgentID.String(), a.RequesterID.String()); err != nil {
+		return fmt.Errorf("chat: create agent run: %w", err)
+	}
+	return nil
+}
+
+// FindAgentRun implements chatdom.Repository.
+func (r *ChatRepository) FindAgentRun(ctx context.Context, conversationID uuid.UUID) (*chatdom.ChannelAgentRun, error) {
+	var row struct {
+		ConversationID  string `db:"conversation_id"`
+		ChannelID       string `db:"channel_id"`
+		SourceMessageID string `db:"source_message_id"`
+		ThreadRootID    string `db:"thread_root_id"`
+		AgentID         string `db:"agent_id"`
+		RequesterID     string `db:"requester_id"`
+		Posted          bool   `db:"posted"`
+		ProjectID       string `db:"project_id"`
+	}
+	err := r.db.GetContext(ctx, &row, `SELECT r.conversation_id::text, r.channel_id::text, r.source_message_id::text, r.thread_root_id::text,
+		r.agent_id::text, r.requester_id::text, r.posted, COALESCE(c.project_id::text, '') AS project_id
+		FROM chat_agent_runs r JOIN channels c ON c.id = r.channel_id WHERE r.conversation_id = $1::uuid`, conversationID.String())
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("chat: find agent run: %w", err)
+	}
+	project, _ := uuid.Parse(row.ProjectID)
+	return &chatdom.ChannelAgentRun{
+		ConversationID: uuid.MustParse(row.ConversationID), ProjectID: project, ChannelID: uuid.MustParse(row.ChannelID),
+		SourceMessageID: uuid.MustParse(row.SourceMessageID), ThreadRootID: uuid.MustParse(row.ThreadRootID),
+		AgentID: uuid.MustParse(row.AgentID), RequesterID: uuid.MustParse(row.RequesterID), Posted: row.Posted,
+	}, nil
+}
+
+// ClaimAgentRunPost implements chatdom.Repository.
+func (r *ChatRepository) ClaimAgentRunPost(ctx context.Context, conversationID uuid.UUID) (bool, error) {
+	res, err := r.db.ExecContext(ctx, `UPDATE chat_agent_runs SET posted = TRUE WHERE conversation_id = $1::uuid AND NOT posted`, conversationID.String())
+	if err != nil {
+		return false, fmt.Errorf("chat: claim agent run post: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n == 1, nil
+}
+
+// ReleaseAgentRunPost implements chatdom.Repository.
+func (r *ChatRepository) ReleaseAgentRunPost(ctx context.Context, conversationID uuid.UUID) error {
+	if _, err := r.db.ExecContext(ctx, `UPDATE chat_agent_runs SET posted = FALSE WHERE conversation_id = $1::uuid`, conversationID.String()); err != nil {
+		return fmt.Errorf("chat: release agent run post: %w", err)
+	}
+	return nil
 }
 
 // IsGlobalAgent implements chatdom.Repository.

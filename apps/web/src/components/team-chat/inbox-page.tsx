@@ -1,17 +1,28 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { CheckCheck, Hash, Inbox as InboxIcon, Lock } from "lucide-react";
+import {
+	CheckCheck,
+	Hash,
+	Inbox as InboxIcon,
+	Lock,
+	Search,
+	X,
+} from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import {
 	chatKeys,
 	type InboxItem,
 	inboxQueryOptions,
+	MIN_SEARCH_LENGTH,
 	markAllChatRead,
 	markChannelRead,
 	messageRefsQueryOptions,
 	scopeOf,
+	searchMessages,
 } from "@/lib/chat-api";
 import { relativeTime } from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
@@ -46,6 +57,21 @@ export function InboxPage({
 	const queryClient = useQueryClient();
 	const navigate = useNavigate();
 	const query = { unreadOnly: tab === "unread", projectId };
+	// Search replaces the tab's list while there is something to look for.
+	const [searchText, setSearchText] = useState("");
+	const [term, setTerm] = useState("");
+	useEffect(() => {
+		const id = setTimeout(() => setTerm(searchText.trim()), 300);
+		return () => clearTimeout(id);
+	}, [searchText]);
+	const searching = searchText.trim().length > 0;
+	const searchReady = term.length >= MIN_SEARCH_LENGTH;
+	const results = useQuery({
+		queryKey: ["chat", "search", term, projectId ?? ""],
+		queryFn: () => searchMessages(term, projectId),
+		enabled: searching && searchReady,
+		staleTime: 15_000,
+	});
 	const isRefTab = tab === "mentions" || tab === "threads" || tab === "saved";
 	const inbox = useQuery({ ...inboxQueryOptions(query), enabled: !isRefTab });
 	// Mentions and threads are fetched for the tab badges too.
@@ -134,6 +160,32 @@ export function InboxPage({
 				</Button>
 			</header>
 
+			<div className="relative border-b px-4 py-2">
+				<Search
+					className="pointer-events-none absolute left-6 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+					aria-hidden
+				/>
+				<Input
+					type="search"
+					value={searchText}
+					onChange={(e) => setSearchText(e.target.value)}
+					placeholder={t("inbox.search")}
+					aria-label={t("inbox.search")}
+					className="h-8 pl-8 pr-8"
+				/>
+				{searching ? (
+					<Button
+						size="icon-xs"
+						variant="ghost"
+						className="absolute right-5 top-1/2 -translate-y-1/2"
+						aria-label={t("inbox.searchClear")}
+						onClick={() => setSearchText("")}
+					>
+						<X />
+					</Button>
+				) : null}
+			</div>
+
 			<div
 				role="tablist"
 				aria-label={t("inbox.title")}
@@ -168,7 +220,39 @@ export function InboxPage({
 			</div>
 
 			<div className="min-h-0 flex-1 overflow-y-auto">
-				{isRefTab ? (
+				{searching ? (
+					!searchReady || (term !== searchText.trim() && !results.data) ? (
+						<p className="p-10 text-center text-sm text-muted-foreground">
+							{t("inbox.searchShort")}
+						</p>
+					) : results.isPending ? (
+						<div className="flex justify-center p-10">
+							<Spinner />
+						</div>
+					) : results.isError ? (
+						<div className="flex flex-col items-center gap-2 p-10 text-sm">
+							<p>{t("inbox.loadFailed")}</p>
+							<Button
+								size="sm"
+								variant="outline"
+								onClick={() => void results.refetch()}
+							>
+								{t("list.retry")}
+							</Button>
+						</div>
+					) : (results.data ?? []).length === 0 ? (
+						<div className="p-10 text-center">
+							<p className="text-sm font-medium">
+								{t("inbox.searchEmptyTitle")}
+							</p>
+							<p className="mt-1 text-sm text-muted-foreground">
+								{t("inbox.searchEmptyBody", { q: term })}
+							</p>
+						</div>
+					) : (
+						<MessageRefList list="search" items={results.data ?? []} />
+					)
+				) : isRefTab ? (
 					refQuery.isPending ? (
 						<div className="flex justify-center p-10">
 							<Spinner />

@@ -209,5 +209,19 @@
 	"paneResize": {
 		"sidebar": "Cambiar el tamaño de la barra lateral",
 		"taskColumn": "Cambiar el tamaño de la columna de tareas"
+	},
+	"commands": {
+		"task": {
+			"title": "Crear tarea",
+			"description": "Crea una tarea con este texto y enlázala aquí",
+			"created": "Tarea creada:"
+		},
+		"doc": {
+			"title": "Crear documento",
+			"description": "Crea un documento con este texto y enlázalo aquí",
+			"created": "Documento creado:"
+		},
+		"usage": "Uso: {{usage}}",
+		"failed": "El comando falló. Inténtalo de nuevo."
 	}
 }

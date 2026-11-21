@@ -209,5 +209,19 @@
 	"paneResize": {
 		"sidebar": "사이드바 크기 조절",
 		"taskColumn": "작업 열 크기 조절"
+	},
+	"commands": {
+		"task": {
+			"title": "작업 만들기",
+			"description": "이 텍스트로 작업을 만들고 여기에 연결합니다",
+			"created": "작업을 만들었습니다:"
+		},
+		"doc": {
+			"title": "문서 만들기",
+			"description": "이 텍스트로 문서를 만들고 여기에 연결합니다",
+			"created": "문서를 만들었습니다:"
+		},
+		"usage": "사용법: {{usage}}",
+		"failed": "명령에 실패했습니다. 다시 시도해 주세요."
 	}
 }

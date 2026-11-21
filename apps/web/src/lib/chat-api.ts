@@ -376,6 +376,22 @@ export async function getMessageRefs(
 	return data.data;
 }
 
+/** The shortest search the server accepts (shorter finds nothing). */
+export const MIN_SEARCH_LENGTH = 3;
+
+/** Messages whose text contains `q`, newest first, in channels the caller may
+ * read; `projectId` narrows to one project. */
+export async function searchMessages(
+	q: string,
+	projectId?: string,
+): Promise<MessageRef[]> {
+	const { data } = await apiClient.instance.get<SuccessEnvelope<MessageRef[]>>(
+		"/users/me/chat/search",
+		{ params: { q, project_id: projectId } },
+	);
+	return data.data;
+}
+
 export const messageRefsQueryOptions = (list: MessageRefList) =>
 	queryOptions({
 		queryKey: chatKeys.refs(list),
@@ -489,6 +505,8 @@ export const unreadSummaryQueryOptions = queryOptions({
 export interface AgentRun {
 	id: string;
 	title: string;
+	/** The channel whose @mention of the agent started this run, or "". */
+	channel_name?: string;
 	status: "queued" | "running" | "paused" | "finished" | "failed" | "stopped";
 	created_at: string;
 	updated_at: string;
@@ -509,6 +527,11 @@ export async function getAgentRuns(channelId: string): Promise<AgentRuns> {
 		`/chat/dms/${channelId}/agent`,
 	);
 	return data.data;
+}
+
+/** The next message to the agent starts a fresh conversation. */
+export async function newAgentConversation(channelId: string): Promise<void> {
+	await apiClient.instance.post(`/chat/dms/${channelId}/agent/new`);
 }
 
 /** The runs of a direct message's agent. While it works they are re-read, so

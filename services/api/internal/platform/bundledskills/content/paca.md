@@ -32,6 +32,7 @@ If the request clearly matches one of these, let the user know — they'll get a
 | Run a sprint retrospective and turn improvements into tasks | `/paca-retro` |
 | Turn page comments / UI annotations from an environment into tasks | `/paca-feedback` |
 | Set up or clean up task types, statuses, custom fields and views | `/paca-board` |
+| Catch up on, summarise or post in a project's team chat; answer an @mention in a channel | `/paca-chat` |
 | See who can do what, or add / change / remove project members | `/paca-team` |
 | Draft a role policy — read-only role, limit someone to a sprint, restrict an agent or environment (drafts JSON only, never saves a role) | `/paca-role-policy <what the role should allow>` |
 <!-- paca:plugin-routes -->

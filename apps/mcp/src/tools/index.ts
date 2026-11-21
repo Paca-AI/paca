@@ -23,6 +23,7 @@ import {
 	getAutomationTools,
 	handleAutomationTool,
 } from "./automation-tools.js";
+import { CHAT_TOOL_NAMES, getChatTools, handleChatTool } from "./chat-tools.js";
 import {
 	getConversationTools,
 	handleConversationTool,
@@ -100,6 +101,7 @@ export function getAllTools(): Tool[] {
 		...getConversationTools(),
 		...getAnnotationTools(),
 		...getAskTools(),
+		...getChatTools(),
 	];
 }
 
@@ -316,6 +318,11 @@ export async function handleToolCall(
 		// Conversation tools
 		if (name === "read_conversation") {
 			return handleConversationTool(name, args, clients.conversationClient);
+		}
+
+		// Team chat tools (list channels, read, post)
+		if ((CHAT_TOOL_NAMES as readonly string[]).includes(name)) {
+			return handleChatTool(name, args, clients.apiClient);
 		}
 
 		// Page annotation ("comment") tools
