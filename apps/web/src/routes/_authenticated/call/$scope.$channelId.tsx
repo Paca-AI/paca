@@ -82,7 +82,6 @@ function CallTab() {
 						projectId={scope}
 						channelId={channelId}
 						canModerate={scope !== "dm" && can("calls:moderate")}
-						onError={() => undefined}
 					/>
 				) : call.status === "idle" && wasIn.current ? (
 					<p className="p-6 text-center text-sm text-muted-foreground">

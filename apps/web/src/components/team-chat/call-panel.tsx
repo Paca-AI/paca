@@ -15,7 +15,7 @@ import {
 	Video,
 	VideoOff,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
@@ -166,27 +166,28 @@ export function CallPanel({
 	projectId,
 	channelId,
 	canModerate,
-	onError,
 }: {
 	projectId: string;
 	channelId: string;
 	/** The caller may mute and remove others (calls:moderate). */
 	canModerate: boolean;
-	onError: (message: string | null) => void;
 }) {
 	const { t } = useTranslation("chat");
 	const queryClient = useQueryClient();
 	const call = useCall();
 	const { room } = call;
+	// A failed mute or remove (the person already left, access was revoked,
+	// LiveKit is unreachable) is shown in the panel until the next attempt works.
+	const [moderationError, setModerationError] = useState<string | null>(null);
 
 	const moderate = useMutation({
 		mutationFn: (v: { accountId: string; remove: boolean }) =>
 			v.remove
 				? removeParticipant(projectId, channelId, v.accountId)
 				: muteParticipant(projectId, channelId, v.accountId),
-		onError: (e) => onError(t(`errors.${chatErrorKey(e)}`)),
+		onError: (e) => setModerationError(t(`errors.${chatErrorKey(e)}`)),
 		onSuccess: () => {
-			onError(null);
+			setModerationError(null);
 			void queryClient.invalidateQueries({
 				queryKey: callKeys.channel(projectId, channelId),
 			});
@@ -255,6 +256,11 @@ export function CallPanel({
 					/>
 				))}
 			</div>
+			{moderationError ? (
+				<p role="alert" className="mt-2 text-xs text-destructive">
+					{moderationError}
+				</p>
+			) : null}
 			{call.mediaBlocked ? (
 				<p role="alert" className="mt-2 text-xs text-destructive">
 					{t("call.mediaBlocked")}

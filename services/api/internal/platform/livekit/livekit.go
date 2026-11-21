@@ -248,7 +248,7 @@ func (c *Client) rpc(ctx context.Context, room, method string, in, out any) erro
 	if err != nil {
 		return fmt.Errorf("livekit: %s: %w", method, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode == http.StatusNotFound {
 		return ErrNotFound

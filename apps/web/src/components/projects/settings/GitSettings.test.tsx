@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -1069,9 +1069,14 @@ describe("GitSettings", () => {
 				await screen.findByText(/Couldn't load the list/),
 			).toBeInTheDocument();
 			expect(screen.getByText("the token needs read_api")).toBeInTheDocument();
-			await user.keyboard("{Escape}");
+			// Close only the browse dialog, with its own button: Escape can reach
+			// the link dialog behind it too and close both under CI load.
+			const browse = screen
+				.getByText(/Couldn't load the list/)
+				.closest('[role="dialog"]') as HTMLElement;
+			await user.click(within(browse).getByRole("button", { name: /close/i }));
 			// Let the browse dialog finish closing before touching the form
-			// behind it; under CI load the exit transition can lag the keypress.
+			// behind it; under CI load the exit transition can lag the click.
 			await waitFor(() =>
 				expect(
 					screen.queryByText(/Couldn't load the list/),
