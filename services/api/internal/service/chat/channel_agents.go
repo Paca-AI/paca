@@ -104,6 +104,9 @@ func (s *Service) triggerMentionedAgents(ctx context.Context, projectID uuid.UUI
 			if linkErr = s.repo.CreateAgentRun(ctx, link); linkErr == nil {
 				break
 			}
+			if attempt == linkAttempts-1 {
+				break
+			}
 			select {
 			case <-ctx.Done():
 				attempt = linkAttempts

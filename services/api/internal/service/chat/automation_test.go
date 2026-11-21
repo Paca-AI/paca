@@ -68,6 +68,7 @@ func TestAutomation_PrivateChannelsStayOut(t *testing.T) {
 
 func TestAutomation_SendMessageAsAgent(t *testing.T) {
 	f := setupChannel("public")
+	f.svc.WithPostGuard(allowGuard{})
 	agentMember := f.repo.members[f.agent]
 	run := func(cfg map[string]any) map[string]any {
 		b, _ := json.Marshal(cfg)
@@ -99,6 +100,10 @@ func TestAutomation_SendMessageAsAgent(t *testing.T) {
 		t.Errorf("an unrendered channel id is refused: %v", res)
 	}
 }
+
+type allowGuard struct{}
+
+func (allowGuard) AllowAgentPost(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error { return nil }
 
 type denyGuard struct{}
 

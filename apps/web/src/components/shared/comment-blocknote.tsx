@@ -296,6 +296,7 @@ export function stripUnsafeLinks(blocks: unknown[]): unknown[] {
 			return {
 				...table,
 				rows: table.rows.map((row) => {
+					if (!row || typeof row !== "object") return row;
 					const r = row as { cells?: unknown };
 					return Array.isArray(r.cells)
 						? { ...r, cells: r.cells.map(cleanCell) }

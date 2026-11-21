@@ -24,3 +24,5 @@ CREATE TABLE IF NOT EXISTS chat_agent_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_chat_agent_runs_channel ON chat_agent_runs (channel_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_chat_agent_runs_agent ON chat_agent_runs (agent_id, created_at DESC);
+-- The mention rate limit and the run list look runs up by who started them.
+CREATE INDEX IF NOT EXISTS idx_chat_agent_runs_requester ON chat_agent_runs (requester_id, created_at DESC);

@@ -35,7 +35,7 @@ const (
 
 // PostGuard decides whether an agent may post in a channel from an automation
 // (no HTTP route stands in front of that path, so the check is injected, like
-// the agent trigger gate). A nil guard allows it.
+// the agent trigger gate). With no guard wired the action is refused.
 type PostGuard interface {
 	AllowAgentPost(ctx context.Context, projectID, agentAccountID, channelID uuid.UUID) error
 }
@@ -202,10 +202,11 @@ func (s *Service) sendAsAgent(ctx context.Context, nodeType string, projectID uu
 	if _, err := s.repo.FindChannel(ctx, projectID, channelID, agent); err != nil {
 		return err
 	}
-	if s.postGuard != nil {
-		if err := s.postGuard.AllowAgentPost(ctx, projectID, agent, channelID); err != nil {
-			return err
-		}
+	if s.postGuard == nil {
+		return errors.New("chat.send_message is not available: no post guard is configured")
+	}
+	if err := s.postGuard.AllowAgentPost(ctx, projectID, agent, channelID); err != nil {
+		return err
 	}
 	if _, err := s.PostMessage(ctx, projectID, channelID, agent, blocksOf(text), thread); err != nil {
 		return err
