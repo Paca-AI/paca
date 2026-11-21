@@ -157,6 +157,10 @@ type TaskService interface {
 	// memberIDs, across their respective projects — see
 	// Repository.ListAssignedTasks for the keyset-pagination contract.
 	ListAssignedTasks(ctx context.Context, memberIDs []uuid.UUID, limit int, cursorAfter *string) ([]*Task, bool, error)
+	// ListWaitingTasks returns open (non-done) tasks in any of projectIDs,
+	// ordered by least-recently-updated first — see
+	// Repository.ListWaitingTasks.
+	ListWaitingTasks(ctx context.Context, projectIDs []uuid.UUID, limit int) ([]*Task, bool, error)
 	// CountOpenTasksByProjects returns the number of non-done tasks across all
 	// of projectIDs in a single query — see Repository.CountOpenTasksByProjects.
 	CountOpenTasksByProjects(ctx context.Context, projectIDs []uuid.UUID) (int64, error)

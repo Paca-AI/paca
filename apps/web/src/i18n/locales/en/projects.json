@@ -2142,6 +2142,7 @@
 				"dueDate": "Due Date",
 				"epic": "Epic",
 				"created": "Created",
+				"waiting": "Waiting",
 				"tags": "Tags"
 			},
 			"unassigned": "Unassigned",

@@ -2142,6 +2142,7 @@
 				"dueDate": "마감일",
 				"epic": "에픽",
 				"created": "생성일",
+				"waiting": "Waiting",
 				"tags": "태그"
 			},
 			"unassigned": "담당자 없음",

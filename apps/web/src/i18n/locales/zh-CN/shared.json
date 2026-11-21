@@ -84,6 +84,17 @@
 			"loadMore": "加载更多",
 			"loading": "加载中…"
 		},
+		"waitingTasks": {
+			"title": "Waiting tasks",
+			"description": "Open tasks with the least recent activity, across all your projects",
+			"subtitle": "Sorted by last activity",
+			"columns": "Columns",
+			"showCount": "Show {{count}}",
+			"emptyTitle": "Nothing is stuck",
+			"emptyDescription": "No open tasks are waiting on anyone right now.",
+			"loadError": "Couldn't load waiting tasks. Please try again.",
+			"moreHidden": "More waiting tasks are not shown"
+		},
 		"projectsSection": {
 			"title": "项目",
 			"countInWorkspace_one": "您的工作区中有 {{count}} 个项目",

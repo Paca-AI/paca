@@ -43,6 +43,15 @@ func (f *fakeScoper) ListScope(_ context.Context, p iam.Principal, action, proje
 	return f.node, f.err
 }
 
+func (f *fakeScoper) ListScopes(_ context.Context, p iam.Principal, action string, projectIDs []string, kind string) (map[string]*iam.Node, error) {
+	f.gotPrincipal, f.gotAction, f.gotKind = p, action, kind
+	out := map[string]*iam.Node{}
+	for _, id := range projectIDs {
+		out[id] = f.node
+	}
+	return out, f.err
+}
+
 func TestListSprints_AttachesScopeForTheRepository(t *testing.T) {
 	userID, projectID := uuid.New(), uuid.New()
 	onlyOne := &iam.Node{Kind: iam.NodeCond, Key: "resource.id", Op: "In", Values: iam.ValueList{"s1"}}

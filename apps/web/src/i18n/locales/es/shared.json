@@ -84,6 +84,17 @@
 			"loadMore": "Cargar más",
 			"loading": "Cargando…"
 		},
+		"waitingTasks": {
+			"title": "Waiting tasks",
+			"description": "Open tasks with the least recent activity, across all your projects",
+			"subtitle": "Sorted by last activity",
+			"columns": "Columns",
+			"showCount": "Show {{count}}",
+			"emptyTitle": "Nothing is stuck",
+			"emptyDescription": "No open tasks are waiting on anyone right now.",
+			"loadError": "Couldn't load waiting tasks. Please try again.",
+			"moreHidden": "More waiting tasks are not shown"
+		},
 		"projectsSection": {
 			"title": "Proyectos",
 			"countInWorkspace_one": "{{count}} proyecto en tu espacio de trabajo",

@@ -37,6 +37,7 @@ type fakeTaskSvc struct {
 	lastFilter            taskdom.TaskFilter
 	customFields          []*taskdom.CustomFieldDefinition
 	lastAssignedMemberIDs []uuid.UUID
+	lastWaitingProjectIDs []uuid.UUID
 	lastColumnsBy         string
 }
 
@@ -188,6 +189,32 @@ func (f *fakeTaskSvc) ListAssignedTasks(_ context.Context, memberIDs []uuid.UUID
 		out = out[:limit]
 	}
 	return out, false, nil
+}
+
+func (f *fakeTaskSvc) ListWaitingTasks(_ context.Context, projectIDs []uuid.UUID, limit int) ([]*taskdom.Task, bool, error) {
+	f.mu.Lock()
+	f.lastWaitingProjectIDs = projectIDs
+	f.mu.Unlock()
+
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	want := make(map[uuid.UUID]bool, len(projectIDs))
+	for _, id := range projectIDs {
+		want[id] = true
+	}
+	var out []*taskdom.Task
+	for _, t := range f.tasks {
+		if want[t.ProjectID] {
+			cp := *t
+			out = append(out, &cp)
+		}
+	}
+	hasMore := false
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+		hasMore = true
+	}
+	return out, hasMore, nil
 }
 
 func (f *fakeTaskSvc) CountOpenTasksByProjects(_ context.Context, _ []uuid.UUID) (int64, error) {
@@ -1173,6 +1200,152 @@ func TestTaskHandler_ListAssignedToMe_UnauthenticatedReturns401(t *testing.T) {
 	r.Get("/users/me/tasks", h.ListAssignedToMe)
 
 	w := doTaskRequest(r, http.MethodGet, "/users/me/tasks", nil)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ListWaitingTasks
+// ---------------------------------------------------------------------------
+
+func buildWaitingTasksRouter(taskSvc *fakeTaskSvc, projectSvc *mockProjectSvc, userID uuid.UUID) chi.Router {
+	h := handler.NewTaskHandler(taskSvc, &fakeViewSvcTask{}, newFakeActivitySvc(),
+		handler.WithTaskAssignedProjectService(projectSvc))
+	r := chi.NewRouter()
+	r.Use(claimsMiddleware(userID.String()))
+	r.Get("/users/me/waiting-tasks", h.ListWaitingTasks)
+	return r
+}
+
+func TestTaskHandler_ListWaitingTasks_ScopesToAccessibleProjects(t *testing.T) {
+	userID := uuid.New()
+	projectA := &projectdom.Project{ID: uuid.New(), Name: "A"}
+	projectB := &projectdom.Project{ID: uuid.New(), Name: "B"}
+
+	projectSvc := &mockProjectSvc{
+		listAccessible: func(_ context.Context, uid uuid.UUID, _, _ int) ([]*projectdom.Project, int64, error) {
+			if uid != userID {
+				t.Fatalf("unexpected userID passed to ListAccessible: %s", uid)
+			}
+			return []*projectdom.Project{projectA, projectB}, 2, nil
+		},
+	}
+
+	taskSvc := newFakeTaskSvc()
+	for _, title := range []string{"Stale in A", "Stale in B"} {
+		_, _ = taskSvc.CreateTask(context.Background(), taskdom.CreateTaskInput{
+			ProjectID: projectA.ID, Title: title,
+		})
+	}
+	// Task in a project the caller cannot access — must not leak.
+	_, _ = taskSvc.CreateTask(context.Background(), taskdom.CreateTaskInput{
+		ProjectID: uuid.New(), Title: "Secret project task",
+	})
+
+	r := buildWaitingTasksRouter(taskSvc, projectSvc, userID)
+	w := doTaskRequest(r, http.MethodGet, "/users/me/waiting-tasks", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var env struct {
+		Data struct {
+			Items []struct {
+				Title string `json:"title"`
+			} `json:"items"`
+			HasMore bool `json:"has_more"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if len(env.Data.Items) != 2 {
+		t.Fatalf("expected 2 waiting tasks, got %d: %+v", len(env.Data.Items), env.Data.Items)
+	}
+	for _, item := range env.Data.Items {
+		if item.Title == "Secret project task" {
+			t.Errorf("task from inaccessible project leaked into response")
+		}
+	}
+	if env.Data.HasMore {
+		t.Errorf("expected has_more=false, got true")
+	}
+	if len(taskSvc.lastWaitingProjectIDs) != 2 {
+		t.Fatalf("expected 2 accessible project ids passed to service, got %+v", taskSvc.lastWaitingProjectIDs)
+	}
+}
+
+func TestTaskHandler_ListWaitingTasks_HasMoreWhenCapped(t *testing.T) {
+	userID := uuid.New()
+	projectA := &projectdom.Project{ID: uuid.New(), Name: "A"}
+	projectSvc := &mockProjectSvc{
+		listAccessible: func(context.Context, uuid.UUID, int, int) ([]*projectdom.Project, int64, error) {
+			return []*projectdom.Project{projectA}, 1, nil
+		},
+	}
+	taskSvc := newFakeTaskSvc()
+	for i := 0; i < 11; i++ {
+		_, _ = taskSvc.CreateTask(context.Background(), taskdom.CreateTaskInput{
+			ProjectID: projectA.ID, Title: fmt.Sprintf("Task %d", i),
+		})
+	}
+
+	r := buildWaitingTasksRouter(taskSvc, projectSvc, userID)
+	w := doTaskRequest(r, http.MethodGet, "/users/me/waiting-tasks?page_size=10", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var env struct {
+		Data struct {
+			Items   []any `json:"items"`
+			HasMore bool  `json:"has_more"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if len(env.Data.Items) != 10 {
+		t.Fatalf("expected 10 items, got %d", len(env.Data.Items))
+	}
+	if !env.Data.HasMore {
+		t.Errorf("expected has_more=true, got false")
+	}
+}
+
+func TestTaskHandler_ListWaitingTasks_NoProjectsReturnsEmptyList(t *testing.T) {
+	userID := uuid.New()
+	projectSvc := &mockProjectSvc{
+		listAccessible: func(context.Context, uuid.UUID, int, int) ([]*projectdom.Project, int64, error) {
+			return nil, 0, nil
+		},
+	}
+	taskSvc := newFakeTaskSvc()
+	r := buildWaitingTasksRouter(taskSvc, projectSvc, userID)
+
+	w := doTaskRequest(r, http.MethodGet, "/users/me/waiting-tasks", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var env struct {
+		Data struct {
+			Items []any `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if len(env.Data.Items) != 0 {
+		t.Fatalf("expected empty items, got %+v", env.Data.Items)
+	}
+}
+
+func TestTaskHandler_ListWaitingTasks_UnauthenticatedReturns401(t *testing.T) {
+	h := handler.NewTaskHandler(newFakeTaskSvc(), &fakeViewSvcTask{}, newFakeActivitySvc())
+	r := chi.NewRouter()
+	r.Get("/users/me/waiting-tasks", h.ListWaitingTasks)
+
+	w := doTaskRequest(r, http.MethodGet, "/users/me/waiting-tasks", nil)
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d: %s", w.Code, w.Body.String())
 	}

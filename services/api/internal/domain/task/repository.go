@@ -121,6 +121,12 @@ type TaskRepository interface {
 	// (same cursor format as the "importance" ListTasks sort).
 	// Used by the cross-project "assigned to me" home page widget.
 	ListAssignedTasks(ctx context.Context, memberIDs []uuid.UUID, limit int, cursorAfter *string) ([]*Task, bool, error)
+	// ListWaitingTasks returns open (non-done) tasks in any of projectIDs,
+	// ordered by updated_at ascending (least recently active first) then id.
+	// Fetches limit+1 rows so the second return reports has_more; no keyset
+	// cursor in v1 — used by the cross-project "waiting tasks" home page
+	// widget, which shows at most limit items.
+	ListWaitingTasks(ctx context.Context, projectIDs []uuid.UUID, limit int) ([]*Task, bool, error)
 	// CountOpenTasksByProjects returns the number of non-done tasks across all
 	// of projectIDs in a single query, for cross-project aggregates like the
 	// home page's workspace stats widget — avoids an N-query per-project loop.

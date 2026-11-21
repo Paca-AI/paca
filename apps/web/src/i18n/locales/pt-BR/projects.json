@@ -2142,6 +2142,7 @@
 				"dueDate": "Data de entrega",
 				"epic": "Épico",
 				"created": "Criada",
+				"waiting": "Waiting",
 				"tags": "Tags"
 			},
 			"unassigned": "Sem responsável",

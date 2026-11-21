@@ -41,6 +41,7 @@ import {
 } from "@/lib/project-api";
 import { memberAvatar } from "@/lib/provider-logos";
 import { useHoveredTaskStore } from "@/lib/shortcuts/hovered-task-store";
+import { timeAgo } from "@/lib/time-ago";
 import { cn } from "@/lib/utils";
 import { AssigneePicker } from "./assignee-picker";
 import {
@@ -136,6 +137,12 @@ export function getRowColConfig(
 				headerLabel: t("board.taskRow.columnHeaders.created"),
 				responsive: true,
 			};
+		case "waiting":
+			return {
+				className: "w-16 shrink-0",
+				headerLabel: t("board.taskRow.columnHeaders.waiting"),
+				responsive: true,
+			};
 		default: {
 			const cf = customFields.find((f) => f.field_key === fieldKey);
 			const label = cf?.display_name ?? fieldKey;
@@ -215,6 +222,7 @@ export function TaskRow({
 	subtasks,
 }: TaskRowProps) {
 	const { t } = useTranslation("projects");
+	const { t: tCommon } = useTranslation("common");
 	const isMobile = useIsMobile();
 	// Touch screens have no drag handle and little width, so nest tighter.
 	const indentStep = isMobile ? 12 : 20;
@@ -551,6 +559,18 @@ export function TaskRow({
 					>
 						<span className="text-xs text-muted-foreground/90 truncate">
 							{formatDate(task.created_at, { month: "short", day: "numeric" })}
+						</span>
+					</div>
+				);
+
+			case "waiting":
+				return (
+					<div
+						key="waiting"
+						className={cn(col.className, responsiveClass, "items-center")}
+					>
+						<span className="text-xs text-muted-foreground/90 truncate">
+							{timeAgo(task.updated_at, tCommon)}
 						</span>
 					</div>
 				);

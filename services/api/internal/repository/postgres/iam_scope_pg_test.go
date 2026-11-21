@@ -394,6 +394,94 @@ func TestScopedAssignedTasksSpanProjectsWithOwnScopes(t *testing.T) {
 	}
 }
 
+// The home page's waiting-tasks widget spans projects: tasks are ordered by
+// updated_at ascending (stalest first), done tasks are excluded, a project
+// with no scope (or deny-all) contributes nothing, and task assignees are
+// attached so include=assignees returns real people.
+func TestScopedWaitingTasksSpanProjectsOrderAndAssignees(t *testing.T) {
+	f := newScopeFx(t)
+	p2 := f.fx.project()
+	m1 := f.fx.member(f.p, f.fx.user(false), false)
+	m2 := f.fx.member(p2, f.fx.user(false), false)
+
+	todo, done := uuid.New(), uuid.New()
+	for _, s := range []struct {
+		id       uuid.UUID
+		category string
+	}{{todo, "todo"}, {done, "done"}} {
+		pgExec(t, f.db, `INSERT INTO task_statuses (id, project_id, name, category) VALUES ($1,$2,'s',$3)`, s.id, f.p, s.category)
+	}
+
+	odd, recent, donet, other := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	n := 0
+	task := func(id uuid.UUID, project, status any, ageHours int) {
+		n++
+		pgExec(t, f.db, `INSERT INTO tasks (id, project_id, task_number, status_id, title, updated_at)
+			VALUES ($1,$2,$3,$4,'t', now() - $5 * interval '1 hour')`, id, project, n, status, ageHours)
+	}
+	task(odd, f.p, todo, 3) // stalest open task in the listed project
+	task(recent, f.p, todo, 1)
+	task(donet, f.p, done, 2) // done: never waiting
+	task(other, p2, nil, 4)   // stalest overall, in the other project
+	pgExec(t, f.db, `INSERT INTO task_assignees (task_id, member_id) VALUES ($1,$2), ($3,$4)`, odd, m1, recent, m2)
+
+	repo := NewTaskRepository(f.db)
+	both := []uuid.UUID{f.p, p2}
+	list := func(ctx context.Context, limit int) ([]*taskdom.Task, bool) {
+		ts, more, err := repo.ListWaitingTasks(ctx, both, limit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ts, more
+	}
+	order := func(ts []*taskdom.Task) []string {
+		var out []string
+		for _, tk := range ts {
+			out = append(out, tk.ID.String())
+		}
+		return out
+	}
+
+	// Scope limited to project 1: the done task and the other project are out,
+	// the remaining tasks come back stalest first with their assignees.
+	scoped := iam.WithProjectScopes(context.Background(), "task", map[string]*iam.Node{f.p.String(): iam.True()})
+	ts, more := list(scoped, 10)
+	if got := order(ts); fmt.Sprint(got) != fmt.Sprint([]string{odd.String(), recent.String()}) {
+		t.Fatalf("scoped order = %v, want [%s %s]", got, odd, recent)
+	}
+	if more {
+		t.Fatal("scoped: got has_more, want false")
+	}
+	if got, want := fmt.Sprint(ts[0].AssigneeIDs), fmt.Sprint([]uuid.UUID{m1}); got != want {
+		t.Fatalf("stalest task assignees = %s, want %s", got, want)
+	}
+	if got, want := fmt.Sprint(ts[1].AssigneeIDs), fmt.Sprint([]uuid.UUID{m2}); got != want {
+		t.Fatalf("second task assignees = %s, want %s", got, want)
+	}
+
+	// Unscoped (workers, internal callers): everything open, both projects.
+	ts, _ = list(context.Background(), 10)
+	if got := order(ts); fmt.Sprint(got) != fmt.Sprint([]string{other.String(), odd.String(), recent.String()}) {
+		t.Fatalf("unscoped order = %v, want [%s %s %s]", got, other, odd, recent)
+	}
+	if got := ts[0].AssigneeIDs; len(got) != 0 { // the unassigned other-project task
+		t.Fatalf("unassigned task got assignees %v", got)
+	}
+
+	// Full pages: limit 2 returns the 2 stalest with has_more.
+	allOpen := iam.WithProjectScopes(context.Background(), "task", map[string]*iam.Node{f.p.String(): iam.True(), p2.String(): iam.True()})
+	ts, more = list(allOpen, 2)
+	if len(ts) != 2 || !more {
+		t.Fatalf("limit 2: got %d tasks, has_more=%v, want 2/true", len(ts), more)
+	}
+
+	// Deny-all on the listed project, no scope for the other: nothing.
+	denied := iam.WithProjectScopes(context.Background(), "task", map[string]*iam.Node{f.p.String(): iam.False()})
+	if ts, _ = list(denied, 10); len(ts) != 0 {
+		t.Fatalf("denied = %v, want none", order(ts))
+	}
+}
+
 // annotationFx inserts n annotations on page "/p" of one port forward and
 // returns their ids, oldest first.
 func (s *scopeFx) annotations(n int) (env, pf uuid.UUID, ids []string) {

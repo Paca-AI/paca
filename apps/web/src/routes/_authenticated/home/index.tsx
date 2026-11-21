@@ -21,6 +21,7 @@ import { useTranslation } from "react-i18next";
 import { AssignedTasksList } from "@/components/home/assigned-tasks-list";
 import { LegacyPluginsBanner } from "@/components/home/LegacyPluginsBanner";
 import { UpdateBanner } from "@/components/home/UpdateBanner";
+import { WaitingTasksList } from "@/components/home/waiting-tasks-list";
 import { EntityAvatar } from "@/components/shared/entity-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -563,6 +564,22 @@ function HomePage() {
 							</p>
 						</div>
 						<AssignedTasksList />
+					</div>
+				) : null}
+
+				{/* Waiting tasks — least recently active open tasks across every
+				    project the viewer can access */}
+				{projectCount > 0 ? (
+					<div>
+						<div className="mb-4">
+							<h2 className="font-[Syne] text-base font-bold tracking-tight">
+								{t("home.waitingTasks.title")}
+							</h2>
+							<p className="text-xs text-muted-foreground mt-0.5">
+								{t("home.waitingTasks.description")}
+							</p>
+						</div>
+						<WaitingTasksList />
 					</div>
 				) : null}
 

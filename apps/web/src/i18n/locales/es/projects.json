@@ -2142,6 +2142,7 @@
 				"dueDate": "Fecha de vencimiento",
 				"epic": "Épica",
 				"created": "Creada",
+				"waiting": "Waiting",
 				"tags": "Etiquetas"
 			},
 			"unassigned": "Sin asignar",

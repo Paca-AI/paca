@@ -2142,6 +2142,7 @@
 				"dueDate": "Date d'échéance",
 				"epic": "Epic",
 				"created": "Créée",
+				"waiting": "Waiting",
 				"tags": "Étiquettes"
 			},
 			"unassigned": "Non attribué",

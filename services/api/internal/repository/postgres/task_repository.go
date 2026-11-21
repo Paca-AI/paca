@@ -1418,6 +1418,71 @@ func (r *TaskRepository) ListAssignedTasks(ctx context.Context, memberIDs []uuid
 	return tasks, hasMore, nil
 }
 
+// ListWaitingTasks returns open (non-done) tasks in any of projectIDs,
+// ordered by updated_at ascending (least recently active first) then id —
+// "waiting" defined pragmatically as no recent activity. Fetches limit+1 rows
+// to detect has_more; intentionally no keyset cursor in v1, the home page
+// widget shows at most `limit` items (see taskdom.Repository docs).
+func (r *TaskRepository) ListWaitingTasks(ctx context.Context, projectIDs []uuid.UUID, limit int) ([]*taskdom.Task, bool, error) {
+	if len(projectIDs) == 0 {
+		return nil, false, nil
+	}
+
+	b := newQueryBuilder()
+	b.addInClause("tasks.project_id", uuidSliceToStrSlice(projectIDs))
+
+	baseWhere := "tasks.deleted_at IS NULL" +
+		" AND NOT EXISTS (SELECT 1 FROM task_statuses ts WHERE ts.id = tasks.status_id AND ts.category = 'done')"
+
+	// The list spans projects, so the caller's IAM scope is one predicate per
+	// project, OR-ed: a project without one is not listed.
+	clause, none, err := projectScopesSQL(ctx, "task", taskScopeColumns, "tasks.project_id", b)
+	if err != nil {
+		return nil, false, err
+	}
+	if none {
+		return []*taskdom.Task{}, false, nil
+	}
+	if clause != "" {
+		baseWhere += " AND " + clause
+	}
+
+	limitP := b.placeholder()
+	b.args = append(b.args, limit+1)
+
+	whereSQL := baseWhere
+	if len(b.whereClauses) > 0 {
+		whereSQL += " AND " + strings.Join(b.whereClauses, " AND ")
+	}
+
+	selectCols := "tasks." + strings.ReplaceAll(taskCols, "\n	", "\n	tasks.")
+	query := fmt.Sprintf(`SELECT %s FROM tasks WHERE %s ORDER BY tasks.updated_at ASC, tasks.id ASC LIMIT %s`,
+		selectCols, whereSQL, limitP)
+
+	var records []taskRecord
+	if err := r.db.SelectContext(ctx, &records, query, b.args...); err != nil {
+		return nil, false, fmt.Errorf("task repo: list waiting: %w", err)
+	}
+
+	hasMore := len(records) > limit
+	if hasMore {
+		records = records[:limit]
+	}
+
+	tasks := make([]*taskdom.Task, 0, len(records))
+	for i := range records {
+		t, err := toTaskEntity(&records[i])
+		if err != nil {
+			return nil, false, err
+		}
+		tasks = append(tasks, t)
+	}
+	if err := r.attachAssigneeIDs(ctx, tasks); err != nil {
+		return nil, false, err
+	}
+	return tasks, hasMore, nil
+}
+
 // CountTasks returns the total number of tasks matching filter for a project.
 func (r *TaskRepository) CountTasks(ctx context.Context, projectID uuid.UUID, filter taskdom.TaskFilter) (int64, error) {
 	b := newQueryBuilder()

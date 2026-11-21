@@ -231,6 +231,7 @@ func New(deps Deps) http.Handler {
 					// Cross-project "assigned to me" tasks — home page widget.
 					if deps.Task != nil {
 						r.Get("/me/tasks", deps.Task.ListAssignedToMe)
+						r.Get("/me/waiting-tasks", deps.Task.ListWaitingTasks)
 					}
 
 					// API key management — JWT/cookie auth only.
