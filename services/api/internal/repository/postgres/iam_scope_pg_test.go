@@ -419,7 +419,7 @@ func TestScopedWaitingTasksSpanProjectsOrderAndAssignees(t *testing.T) {
 		pgExec(t, f.db, `INSERT INTO tasks (id, project_id, task_number, status_id, title, updated_at)
 			VALUES ($1,$2,$3,$4,'t', now() - $5 * interval '1 hour')`, id, project, n, status, ageHours)
 	}
-	task(odd, f.p, todo, 3)   // stalest open task in the listed project
+	task(odd, f.p, todo, 3) // stalest open task in the listed project
 	task(recent, f.p, todo, 1)
 	task(donet, f.p, done, 2) // done: never waiting
 	task(other, p2, nil, 4)   // stalest overall, in the other project

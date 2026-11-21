@@ -218,7 +218,9 @@ describe("WaitingTasksList", () => {
 
 	it("passes the default visible columns to the list and persists a count change", async () => {
 		mocks.listWaitingTasksMock.mockResolvedValue({
-			items: [makeTask({ id: "task-a1", project_id: "proj-a", title: "A task" })],
+			items: [
+				makeTask({ id: "task-a1", project_id: "proj-a", title: "A task" }),
+			],
 			page_size: 10,
 			has_more: false,
 		});
