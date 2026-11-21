@@ -295,6 +295,13 @@ api:
       storageClassName: ""
       size: 5Gi
 
+  jev:
+    # Comma-separated exact hostnames the Jev client (autofill / auto-assign /
+    # automations / the config test) may reach on a private address — for a
+    # Jev-compatible gateway hosted inside the cluster's network, which every
+    # project's Jev base URL can point at. Empty blocks all private addresses.
+    privateHosts: ""
+
 # ---------------------------------------------------------------------------
 # Web (React SPA served via Caddy)
 # ---------------------------------------------------------------------------

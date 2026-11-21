@@ -204,12 +204,24 @@ type AutomationConsumer struct {
 	encryptor      *secret.Encryptor
 	publisher      *messaging.Publisher
 	httpClient     *http.Client
-	log            *slog.Logger
-	groupName      string
-	groupStartID   string
-	consumerName   string
-	stopCh         chan struct{}
-	doneCh         chan struct{}
+	// jevPrivateHosts is the operator's JEV_PRIVATE_HOSTS set — the hostnames
+	// the Jev client may reach on a private network address. Nil keeps the
+	// guard strict — see WithJevPrivateHosts.
+	jevPrivateHosts *netguard.PrivateHosts
+	// jevHTTPClient overrides the transport resolveJevAnswer's Jev client
+	// uses; nil (the default) keeps the per-project client's own
+	// SSRF-safe client — see WithJevHTTPClient. Deliberately separate from
+	// httpClient: a transport shared with call_api would let a pooled
+	// connection a Jev request opened to an operator-listed private host
+	// serve an unkeyed call_api request without ever dialing (and without
+	// the context key the dial check requires).
+	jevHTTPClient *http.Client
+	log           *slog.Logger
+	groupName     string
+	groupStartID  string
+	consumerName  string
+	stopCh        chan struct{}
+	doneCh        chan struct{}
 }
 
 // WithPluginRuntime attaches the plugin runtime so plugin-contributed
@@ -240,6 +252,31 @@ func (c *AutomationConsumer) WithJevProjectService(svc projectSettingsReader, en
 // (which the default client would otherwise reject as a private address).
 func (c *AutomationConsumer) WithHTTPClient(client *http.Client) *AutomationConsumer {
 	c.httpClient = client
+	return c
+}
+
+// WithJevPrivateHosts lists the hostnames the Jev client may reach on a
+// private network address (JEV_PRIVATE_HOSTS) — for an instance that hosts
+// its own Jev-compatible gateway on an internal address. Nil (the default)
+// keeps the guard strict: every private address stays unreachable. The
+// consumer's shared outbound client must be built with the same set (see
+// bootstrap) — resolveJevAnswer swaps it in for the Jev client, and the
+// dialer only opens for a client that carries the set AND a request whose
+// context names the host.
+func (c *AutomationConsumer) WithJevPrivateHosts(hosts *netguard.PrivateHosts) *AutomationConsumer {
+	c.jevPrivateHosts = hosts
+	return c
+}
+
+// WithJevHTTPClient overrides the transport resolveJevAnswer's Jev client
+// uses. Nil (the default) keeps the per-project client's own SSRF-safe
+// client, built with the operator's JEV_PRIVATE_HOSTS set — never the pooled
+// transport call_api shares, whose idle connections would carry an unkeyed
+// call_api request to an operator-listed private host without dialing.
+// Test-only: the e2e harness points Jev at a local httptest.Server the
+// SSRF-safe client would reject.
+func (c *AutomationConsumer) WithJevHTTPClient(client *http.Client) *AutomationConsumer {
+	c.jevHTTPClient = client
 	return c
 }
 
@@ -1528,11 +1565,12 @@ func (w *walker) resolveJevAnswer(ctx context.Context, node *automationdom.Node)
 	if err != nil {
 		return automationdom.ElseHandle, nil, "load project: " + err.Error()
 	}
-	jevClient := jev.ClientForProject(project.JevAPIKeySecret, project.JevBaseURL, project.JevModel, w.consumer.encryptor)
-	if jevClient.Enabled() && w.consumer.httpClient != nil {
-		// Same transport as call_api (SSRF-safe by default); WithHTTPClient
-		// overrides both, so tests can point Jev at a local httptest.Server.
-		jevClient = jevClient.WithHTTPClient(w.consumer.httpClient)
+	jevClient := jev.ClientForProject(project.JevAPIKeySecret, project.JevBaseURL, project.JevModel, w.consumer.encryptor, w.consumer.jevPrivateHosts)
+	if jevClient.Enabled() && w.consumer.jevHTTPClient != nil {
+		// Test wiring only — see WithJevHTTPClient. Never the shared
+		// httpClient: its pooled connections would let a later unkeyed
+		// call_api request reuse a private-host connection without dialing.
+		jevClient = jevClient.WithHTTPClient(w.consumer.jevHTTPClient)
 	}
 	if !jevClient.Enabled() {
 		return automationdom.ElseHandle, nil, "this project has not configured Jev"

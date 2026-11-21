@@ -243,6 +243,11 @@ func Load() (*Config, error) {
 				MaxRequestBodyBytes: pluginMaxRequestBodyBytes,
 			},
 		},
+		Jev: JevConfig{
+			// JEV_PRIVATE_HOSTS relaxes the Jev client's SSRF guard for the
+			// listed hostnames only — see JevConfig.PrivateHosts.
+			PrivateHosts: parseCommaList(env("JEV_PRIVATE_HOSTS", "")),
+		},
 		Release: ReleaseConfig{
 			Version:      env("PACA_VERSION", "dev"),
 			UpstreamRepo: env("RELEASE_UPSTREAM_REPO", "Paca-AI/paca"),

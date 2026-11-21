@@ -200,8 +200,10 @@ func NewSafeHTTPClient(timeout time.Duration) *http.Client {
 // NewSafeHTTPClientWithPrivateHosts is NewSafeHTTPClient with the exception
 // described on PrivateHosts. The dial stays pinned to the IP it just checked.
 // A nil or empty hosts behaves exactly like NewSafeHTTPClient. Only the
-// paca.fetch client should use this: the exception is an operator opt-in for
-// plugin traffic, not a general relaxation of the guard.
+// paca.fetch client and the Jev API client (whose per-project base URL the
+// operator may host on an internal gateway, JEV_PRIVATE_HOSTS) should use
+// this: the exception is an operator opt-in for their traffic, not a general
+// relaxation of the guard.
 //
 // The exception further requires the request's context to name the host via
 // WithAllowedPrivateHosts. One client serves every plugin, so this is how a

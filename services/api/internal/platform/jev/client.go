@@ -106,10 +106,11 @@ func (e *APIError) Error() string {
 
 // Client calls the Jev System One API.
 type Client struct {
-	apiKey     string
-	baseURL    string
-	model      string
-	httpClient *http.Client
+	apiKey       string
+	baseURL      string
+	model        string
+	httpClient   *http.Client
+	privateHosts *netguard.PrivateHosts
 }
 
 // New returns a Client for the given API key, or nil if apiKey is empty.
@@ -124,7 +125,14 @@ type Client struct {
 // contract at a different host with a different default model name, so
 // supporting them is purely a matter of overriding these two — no request/
 // response shape differences to account for.
-func New(apiKey, baseURL, model string) *Client {
+//
+// privateHosts is the operator's set of exact hostnames the client may reach
+// on a private network address (JEV_PRIVATE_HOSTS, see config.JevConfig).
+// An operator hosts a Jev-compatible gateway on an internal address for
+// every project to point at, so unlike the plugin fetch client the set is
+// shared by all projects rather than named per plugin manifest; the guard
+// against every other private address is unchanged.
+func New(apiKey, baseURL, model string, privateHosts *netguard.PrivateHosts) *Client {
 	if apiKey == "" {
 		return nil
 	}
@@ -144,7 +152,13 @@ func New(apiKey, baseURL, model string) *Client {
 		// address and make the API process issue an authenticated POST there.
 		// Same client the automation engine's call_api action uses for its
 		// own user-configurable URL — see netguard's package doc.
-		httpClient: netguard.NewSafeHTTPClient(30 * time.Second),
+		// privateHosts is the operator opt-in for an instance that hosts its
+		// own Jev-compatible gateway on a private address: nil (or empty)
+		// keeps the guard strict. Like the plugin fetch client, the dialer
+		// only opens when the request context also names the host — see
+		// doRequest.
+		httpClient:   netguard.NewSafeHTTPClientWithPrivateHosts(30*time.Second, privateHosts),
+		privateHosts: privateHosts,
 	}
 }
 
@@ -226,6 +240,11 @@ func sleepBackoff(ctx context.Context, attempt int) error {
 }
 
 func (c *Client) doRequest(ctx context.Context, body []byte) (*Response, error) {
+	// The dialer only opens its private-host exception for a request that
+	// names the allowed host itself — see netguard.WithAllowedPrivateHosts.
+	if c.privateHosts != nil {
+		ctx = netguard.WithAllowedPrivateHosts(ctx, c.privateHosts)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("jev: build request: %w", err)

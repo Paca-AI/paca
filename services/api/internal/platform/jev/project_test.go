@@ -18,13 +18,13 @@ func newTestEncryptor(t *testing.T) *secret.Encryptor {
 }
 
 func TestClientForProject_EmptySecretIsDisabled(t *testing.T) {
-	if c := ClientForProject("", "https://example.test", "m", nil); c.Enabled() {
+	if c := ClientForProject("", "https://example.test", "m", nil, nil); c.Enabled() {
 		t.Fatal("expected a disabled client for an unconfigured project")
 	}
 }
 
 func TestClientForProject_PlaintextWithoutEncryptor(t *testing.T) {
-	c := ClientForProject("plain-key", "https://jev.example/v1", "custom-model", nil)
+	c := ClientForProject("plain-key", "https://jev.example/v1", "custom-model", nil, nil)
 	if !c.Enabled() {
 		t.Fatal("expected an enabled client")
 	}
@@ -34,7 +34,7 @@ func TestClientForProject_PlaintextWithoutEncryptor(t *testing.T) {
 }
 
 func TestClientForProject_DefaultsBaseURLAndModel(t *testing.T) {
-	c := ClientForProject("k", "", "", nil)
+	c := ClientForProject("k", "", "", nil, nil)
 	if c.baseURL != defaultBaseURL || c.model != DefaultModel {
 		t.Errorf("expected defaults, got base=%q model=%q", c.baseURL, c.model)
 	}
@@ -46,7 +46,7 @@ func TestClientForProject_DecryptsWithEncryptor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encrypt: %v", err)
 	}
-	c := ClientForProject(stored, "", "", enc)
+	c := ClientForProject(stored, "", "", enc, nil)
 	if !c.Enabled() {
 		t.Fatal("expected an enabled client")
 	}
@@ -57,7 +57,7 @@ func TestClientForProject_DecryptsWithEncryptor(t *testing.T) {
 
 func TestClientForProject_UndecryptableSecretIsDisabled(t *testing.T) {
 	enc := newTestEncryptor(t)
-	if c := ClientForProject("not-a-valid-ciphertext", "", "", enc); c.Enabled() {
+	if c := ClientForProject("not-a-valid-ciphertext", "", "", enc, nil); c.Enabled() {
 		t.Fatal("expected a disabled client when the stored key can't be decrypted")
 	}
 }

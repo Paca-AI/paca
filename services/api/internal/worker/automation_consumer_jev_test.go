@@ -169,11 +169,13 @@ func (s stubProjectReader) GetByID(context.Context, uuid.UUID) (*projectdom.Proj
 
 // newJevWalker builds a walker whose consumer reaches jevURL through a plain
 // (non-SSRF-guarded) transport, so the Jev call hits a local httptest.Server.
+// It must be the dedicated jevHTTPClient, never httpClient: resolveJevAnswer
+// must not inherit call_api's pooled transport (see WithJevHTTPClient).
 func newJevWalker(project *projectdom.Project, readErr error) *walker {
 	return &walker{
 		consumer: &AutomationConsumer{
-			projectSvc: stubProjectReader{project: project, err: readErr},
-			httpClient: &http.Client{Timeout: 5 * time.Second},
+			projectSvc:    stubProjectReader{project: project, err: readErr},
+			jevHTTPClient: &http.Client{Timeout: 5 * time.Second},
 		},
 		projectID: uuid.New(),
 		task:      &taskdom.Task{ID: uuid.New(), Title: "Refund request", Tags: []string{"billing"}},

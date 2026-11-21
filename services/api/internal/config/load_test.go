@@ -197,6 +197,27 @@ func TestLoad_PluginFetchPrivateHosts(t *testing.T) {
 	}
 }
 
+func TestLoad_JevPrivateHosts(t *testing.T) {
+	setLoadDefaults(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Jev.PrivateHosts) != 0 {
+		t.Fatalf("expected no private hosts by default, got %v", cfg.Jev.PrivateHosts)
+	}
+
+	t.Setenv("JEV_PRIVATE_HOSTS", " gateway.internal , ai.corp.example ,,")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := cfg.Jev.PrivateHosts; len(got) != 2 || got[0] != "gateway.internal" || got[1] != "ai.corp.example" {
+		t.Fatalf("unexpected private hosts: %v", got)
+	}
+}
+
 func TestLoad_PluginLimits_Defaults(t *testing.T) {
 	setLoadDefaults(t)
 

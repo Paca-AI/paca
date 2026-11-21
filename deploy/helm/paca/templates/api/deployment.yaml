@@ -131,6 +131,8 @@ spec:
             {{- end }}
             - name: PLUGIN_FETCH_PRIVATE_HOSTS
               value: {{ .Values.api.plugins.fetchPrivateHosts | quote }}
+            - name: JEV_PRIVATE_HOSTS
+              value: {{ .Values.api.jev.privateHosts | quote }}
             {{- if .Values.agentRunner.enabled }}
             - name: AI_AGENT_URL
               value: "http://{{ include "paca.fullname" . }}-agent-runner:8080"
