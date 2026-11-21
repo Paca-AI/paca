@@ -90,16 +90,18 @@ Presigned URLs are used for both uploads and downloads, so the object store is n
 
 ### Switching between RustFS and AWS S3
 
-`scripts/migrate-storage.sh` copies every object in the bucket to the other backend, verifies the object count and total size, then updates `.env` (a `.env.bak.<timestamp>` is kept, and restored if anything fails) and restarts the `api`. The source bucket is never modified. Run it from your install directory:
+`scripts/migrate-storage.sh` copies every object in the bucket to the other backend, verifies the object count and total size, then updates `.env` (a `.env.bak.<timestamp>` is kept, and restored if anything fails) and restarts the `api`. The source bucket is never modified. Download it into your install directory (the one holding `docker-compose.yml` and `.env`) and run it from there:
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/Paca-AI/paca/master/scripts/migrate-storage.sh -o migrate-storage.sh
+
 # RustFS -> AWS S3 (or any S3-compatible service via DEST_STORAGE_ENDPOINT)
 DEST_STORAGE_BUCKET=my-bucket DEST_STORAGE_REGION=eu-west-1 \
 DEST_STORAGE_ACCESS_KEY_ID=AKIA... DEST_STORAGE_SECRET_ACCESS_KEY=... \
-bash scripts/migrate-storage.sh --to s3
+bash migrate-storage.sh --to s3
 
 # AWS S3 -> bundled RustFS (credentials are generated unless DEST_STORAGE_* are set)
-bash scripts/migrate-storage.sh --to rustfs
+bash migrate-storage.sh --to rustfs
 ```
 
 Use `--dry-run` to preview. By default the `api` is stopped during the copy so nothing is uploaded mid-migration. After moving to S3, run future `docker compose up` with `--scale rustfs=0`. See the header of the script for all options.

@@ -6,6 +6,7 @@ on:
       - "scripts/install.sh"
       - "scripts/upgrade.sh"
       - "scripts/install-paca-skills.sh"
+      - "scripts/migrate-storage.sh"
       - "scripts/tests/test_external_valkey.py"
       - "docs/guides/install-skills.md"
       - "deploy/docker-compose.prod.yml"
@@ -48,7 +49,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run shellcheck
-        run: shellcheck --shell=bash scripts/install.sh scripts/upgrade.sh scripts/install-paca-skills.sh
+        run: shellcheck --shell=bash scripts/install.sh scripts/upgrade.sh scripts/install-paca-skills.sh scripts/migrate-storage.sh
 
   # ---------------------------------------------------------------------------
   # 2. install.sh smoke test — runs the real script fully non-interactively

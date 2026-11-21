@@ -56,6 +56,9 @@
 #
 #   bash migrate-storage.sh --to rustfs
 
+# The $VARS inside the single-quoted mc scripts are meant to expand in the
+# container, not here.
+# shellcheck disable=SC2016
 set -euo pipefail
 
 # ── Colours ───────────────────────────────────────────────────────────────────
@@ -232,10 +235,12 @@ ENV_SWITCHED="no"
 mc_run() {   # mc_run '<sh script>'
     local net_args=()
     [[ -n "$NETWORK" ]] && net_args=(--network "$NETWORK")
+    # `-e NAME` (no value) makes Docker read it from this process's environment,
+    # so secrets never appear in the docker argv visible via `ps`.
+    export SRC_URL SRC_AK SRC_SK DEST_URL DEST_AK DEST_SK SRC_BUCKET DEST_BUCKET DEST_REGION
     docker run --rm "${net_args[@]}" \
-        -e SRC_URL="$SRC_URL" -e SRC_AK="$SRC_AK" -e SRC_SK="$SRC_SK" \
-        -e DEST_URL="$DEST_URL" -e DEST_AK="$DEST_AK" -e DEST_SK="$DEST_SK" \
-        -e SRC_BUCKET="$SRC_BUCKET" -e DEST_BUCKET="$DEST_BUCKET" -e DEST_REGION="$DEST_REGION" \
+        -e SRC_URL -e SRC_AK -e SRC_SK -e DEST_URL -e DEST_AK -e DEST_SK \
+        -e SRC_BUCKET -e DEST_BUCKET -e DEST_REGION \
         --entrypoint /bin/sh "$MC_IMAGE" -c \
         'mc alias set src "$SRC_URL" "$SRC_AK" "$SRC_SK" >/dev/null && mc alias set dst "$DEST_URL" "$DEST_AK" "$DEST_SK" >/dev/null && '"$1"
 }
@@ -331,7 +336,7 @@ if $COMPOSE_CMD --env-file .env ps -q api 2>/dev/null | grep -q .; then
         API_STOPPED="yes"
         info "api stopped."
     else
-        warn "api left running: files uploaded during the copy may be missed — re-run this script afterwards to pick them up."
+        warn "api left running: a second copy pass runs right before switching to pick up files uploaded meanwhile; anything uploaded after that is not migrated."
     fi
 fi
 
@@ -346,6 +351,12 @@ mc_run "mc mb --ignore-existing $MB_REGION \"dst/\$DEST_BUCKET\" >/dev/null && m
 info "Copy finished."
 
 # ── Verify ────────────────────────────────────────────────────────────────────
+
+if [[ "$API_STOPPED" == "no" ]] && $COMPOSE_CMD --env-file .env ps -q api 2>/dev/null | grep -q .; then
+    heading "Second pass (api was running)"
+    mc_run 'mc mirror --overwrite "src/$SRC_BUCKET" "dst/$DEST_BUCKET"' \
+        || die "Second copy pass failed (see mc output above)."
+fi
 
 heading "Verifying"
 
@@ -390,8 +401,15 @@ set_env_var .env STORAGE_ACCESS_KEY_ID     "$DEST_AK"
 set_env_var .env STORAGE_SECRET_ACCESS_KEY "$DEST_SK"
 set_env_var .env STORAGE_USE_SSL    "$DEST_SSL"
 if [[ "$TARGET" == "s3" ]]; then
-    set_env_var .env STORAGE_ENDPOINT   "$DEST_ENDPOINT_ENV"
-    set_env_var .env STORAGE_PUBLIC_URL ""
+    # docker-compose.prod.yml declares these as ${VAR:-rustfs-default}, and
+    # Compose treats an empty value as unset — writing them empty would put the
+    # api back on rustfs:9000 / http://localhost/storage. So always write real
+    # values. STORAGE_PUBLIC_URL is set to the endpoint itself, which makes the
+    # api's presigned-URL rewrite a no-op (it only swaps the endpoint prefix for
+    # the public URL).
+    S3_ENDPOINT="${DEST_ENDPOINT_ENV:-s3.${DEST_REGION}.amazonaws.com}"
+    set_env_var .env STORAGE_ENDPOINT   "$S3_ENDPOINT"
+    set_env_var .env STORAGE_PUBLIC_URL "${DEST_SCHEME}://${S3_ENDPOINT}"
 else
     set_env_var .env STORAGE_ENDPOINT   "rustfs:9000"
     PUB="$(get_env_var .env PUBLIC_URL)"
