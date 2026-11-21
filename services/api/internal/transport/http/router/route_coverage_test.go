@@ -395,10 +395,10 @@ func (noRoleAttachments) MemberRoleIDs(context.Context, uuid.UUID, uuid.UUID) ([
 }
 
 // isAttrsGate reports whether resource names a request-attribute gate, which
-// sits after the route's action gate and authorizes the body's attributes.
+// sits after the route's action gate and authorizes what the request names.
 func isAttrsGate(resource string) bool {
 	return resource == resTaskAttrs || resource == resDocAttrs || resource == resTaskPositionItems ||
-		resource == resViewAttrs || resource == resViewReorderItems || resource == resChannelAttrs || resource == resDMAttrs
+		resource == resViewAttrs || resource == resViewReorderItems || resource == resDocView || resource == resChannelAttrs || resource == resDMAttrs
 }
 
 func isAssignGate(resource string) bool {
@@ -940,6 +940,39 @@ func TestRouteCoverage_ViewAttrGates(t *testing.T) {
 		}
 	}
 	for k := range viewAttrGates {
+		if !seen[k] {
+			t.Errorf("%q is not a registered route", k)
+		}
+	}
+}
+
+// Listing or creating the notes of a note view (view_id) also needs read
+// access to the view itself, so its notes follow the view's access.
+var docViewGates = map[string]bool{
+	"GET /api/v1/projects/{projectId}/docs/":  true,
+	"POST /api/v1/projects/{projectId}/docs/": true,
+}
+
+func TestRouteCoverage_DocViewGates(t *testing.T) {
+	seen := map[string]bool{}
+	for _, rt := range walkGates(t, coverageDeps(newTestIAM(&iamUserStore{}))) {
+		got := 0
+		for _, g := range rt.gates {
+			if g.resource == resDocView {
+				got++
+			}
+		}
+		switch {
+		case docViewGates[rt.key()] && got != 1:
+			t.Errorf("%s: %d note view gates, want 1", rt.key(), got)
+		case !docViewGates[rt.key()] && got > 0:
+			t.Errorf("%s: unexpected note view gate", rt.key())
+		}
+		if docViewGates[rt.key()] {
+			seen[rt.key()] = true
+		}
+	}
+	for k := range docViewGates {
 		if !seen[k] {
 			t.Errorf("%q is not a registered route", k)
 		}

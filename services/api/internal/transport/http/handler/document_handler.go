@@ -248,7 +248,9 @@ func (h *DocumentHandler) DeleteFolder(w http.ResponseWriter, r *http.Request) {
 // ListDocuments handles GET /projects/:projectId/docs — one cursor-paginated
 // page of documents in manual order (position, title), without their bodies:
 //   - folder_id=<uuid>|null  only documents directly in that folder / outside any
-//     folder; omit for documents anywhere in the project
+//     folder; omit for documents anywhere in the docs tree
+//   - view_id=<uuid>         only the notes of that note view (notes are never
+//     part of the docs tree); not combinable with folder_id
 //   - search=<text>          case-insensitive title match (substring)
 //   - title=<text>           case-insensitive exact title match
 //   - page_size=<1-200>      (default 50)
@@ -263,6 +265,18 @@ func (h *DocumentHandler) ListDocuments(w http.ResponseWriter, r *http.Request) 
 	}
 	q := r.URL.Query()
 	var filter docdom.DocumentFilter
+	if raw := q.Get("view_id"); raw != "" {
+		viewID, err := uuid.Parse(raw)
+		if err != nil {
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "invalid view id"))
+			return
+		}
+		if q.Get("folder_id") != "" {
+			presenter.Error(w, r, docdom.ErrNoteInFolder)
+			return
+		}
+		filter.ViewID = &viewID
+	}
 	if raw, ok := q["folder_id"]; ok && len(raw) > 0 && raw[0] != "" {
 		folderID, err := parseTreeParent(raw[0])
 		if err != nil {
@@ -407,6 +421,7 @@ func (h *DocumentHandler) CreateDocument(w http.ResponseWriter, r *http.Request)
 	d, err := h.svc.CreateDocument(r.Context(), docdom.CreateDocumentInput{
 		ProjectID: projectID,
 		FolderID:  req.FolderID,
+		ViewID:    req.ViewID,
 		Title:     req.Title,
 		Content:   req.Content,
 		CreatedBy: createdBy,

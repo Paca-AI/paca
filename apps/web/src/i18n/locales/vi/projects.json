@@ -2370,7 +2370,40 @@
 				"board": "Bảng",
 				"table": "Bảng dữ liệu",
 				"gantt": "Gantt",
-				"plugin": "Plugin"
+				"plugin": "Plugin",
+				"note": "Ghi chú"
+			}
+		},
+		"noteView": {
+			"title": "Ghi chú",
+			"newNote": "Ghi chú mới",
+			"untitled": "Không có tiêu đề",
+			"titleLabel": "Tiêu đề ghi chú",
+			"actions": "Thao tác cho {{title}}",
+			"rename": "Đổi tên",
+			"moveUp": "Di chuyển lên",
+			"moveDown": "Di chuyển xuống",
+			"delete": "Xóa",
+			"empty": {
+				"title": "Chưa có ghi chú nào",
+				"description": "Viết mục tiêu sprint, biên bản cuộc họp hoặc danh sách kiểm tra thuộc về chế độ xem này.",
+				"readOnly": "Chế độ xem này chưa có ghi chú nào."
+			},
+			"noPermission": {
+				"title": "Bạn không thể xem các ghi chú này",
+				"description": "Ghi chú là tài liệu. Hãy yêu cầu quản trị viên dự án cấp quyền truy cập tài liệu của dự án."
+			},
+			"deleteDialog": {
+				"title": "Xóa ghi chú?",
+				"description": "“{{title}}” sẽ bị xóa đối với tất cả mọi người.",
+				"cancel": "Hủy",
+				"delete": "Xóa"
+			},
+			"errors": {
+				"titleInvalid": "Tiêu đề không được để trống hoặc chứa “/”.",
+				"renameFailed": "Không thể đổi tên ghi chú. Vui lòng thử lại.",
+				"reorderFailed": "Không thể sắp xếp lại các ghi chú",
+				"loadFailed": "Không thể tải các ghi chú."
 			}
 		},
 		"renameViewDialog": {

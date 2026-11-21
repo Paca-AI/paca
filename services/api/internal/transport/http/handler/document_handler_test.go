@@ -45,6 +45,8 @@ type fakeDocSvc struct {
 	// by-path writes
 	lastUpsert   *docdom.UpsertByPathInput
 	upsertFolder *uuid.UUID
+	// creates
+	lastCreate *docdom.CreateDocumentInput
 }
 
 func (f *fakeDocSvc) ListFolders(_ context.Context, _ uuid.UUID, parent *uuid.UUID, _ docdom.FolderFilter, cursor *string, limit int) ([]*docdom.DocFolder, bool, error) {
@@ -80,8 +82,9 @@ func (f *fakeDocSvc) GetDocument(_ context.Context, _ uuid.UUID) (*docdom.Docume
 	}
 	return nil, docdom.ErrDocNotFound
 }
-func (f *fakeDocSvc) CreateDocument(_ context.Context, _ docdom.CreateDocumentInput) (*docdom.Document, error) {
-	return &docdom.Document{ID: uuid.New()}, nil
+func (f *fakeDocSvc) CreateDocument(_ context.Context, in docdom.CreateDocumentInput) (*docdom.Document, error) {
+	f.lastCreate = &in
+	return &docdom.Document{ID: uuid.New(), ProjectID: in.ProjectID, FolderID: in.FolderID, ViewID: in.ViewID}, nil
 }
 func (f *fakeDocSvc) UpdateDocument(_ context.Context, _, _ uuid.UUID, in docdom.UpdateDocumentInput) (*docdom.Document, docdom.DocChange, error) {
 	f.lastUpdate = &in

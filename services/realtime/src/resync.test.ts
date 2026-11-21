@@ -60,7 +60,42 @@ function api(handler: (token: string, url: string) => Response) {
 const actions = (...a: string[]) =>
 	new Response(JSON.stringify({ data: { actions: a } }));
 
+const isProjectPermissions = (u: string) =>
+	u.includes("/members/me/permissions");
+
+// A JWT whose payload the API client can decode (the signature is never checked).
+const jwt = () =>
+	`h.${Buffer.from(JSON.stringify({ sub: "u", username: "u", role: "r" })).toString("base64url")}.s`;
+
 describe("resyncer", () => {
+	it("keeps the workspace files room true to the account's platform files:read", async () => {
+		const u = fakeSocket("u", [], ["workspace:files"]);
+		u.s.data.rawToken = jwt();
+		api((_token, url) =>
+			url.includes("global-permissions")
+				? actions("tasks:read")
+				: new Response("{}", { status: 404 }),
+		);
+		createResyncer(
+			ioOf(u),
+			"http://api",
+			new AccessDecider("http://api"),
+			log,
+		).onIamChanged();
+		await sleep(30);
+		expect([...u.s.rooms]).toEqual([]);
+
+		api(() => actions("files:read"));
+		createResyncer(
+			ioOf(u),
+			"http://api",
+			new AccessDecider("http://api"),
+			log,
+		).onIamChanged();
+		await sleep(30);
+		expect([...u.s.rooms]).toEqual(["workspace:files"]);
+	});
+
 	it("on iam.changed drops cached decisions, takes a revoked room away and tells the client", async () => {
 		const u = fakeSocket("u", ["p1"], ["project:p1:tasks", "project:p1:docs"]);
 		let flushed = 0;
@@ -90,7 +125,7 @@ describe("resyncer", () => {
 			log,
 		).onIamChanged();
 		await sleep(30);
-		expect(urls.length).toBe(1);
+		expect(urls.filter(isProjectPermissions).length).toBe(1);
 		expect(a.emitted.length).toBe(1);
 		expect(b.emitted.length).toBe(1);
 	});
@@ -141,7 +176,8 @@ describe("resyncer", () => {
 		// The healthy socket was re-synced on the account's answer.
 		expect([...fresh.s.rooms]).toEqual(["project:p1:tasks"]);
 		expect(fresh.emitted.length).toBe(1);
-		expect(urls.length).toBe(2); // the stale token, then the fresh one
+		// the stale token, then the fresh one
+		expect(urls.filter(isProjectPermissions).length).toBe(2);
 	});
 
 	it("ends every socket of the account when all of its tokens are rejected", async () => {

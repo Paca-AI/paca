@@ -21,6 +21,28 @@ function route(
 	return { rule, queryClient };
 }
 
+describe("files rule", () => {
+	it("applies a change of its own project", () => {
+		const { rule, queryClient } = route("file.changed", {
+			scope: "project",
+			project_id: "p",
+			root: true,
+		});
+		expect(rule).toBe("files");
+		expect(queryClient.invalidateQueries).toHaveBeenCalled();
+	});
+
+	it("ignores the general scope's and another project's changes", () => {
+		for (const payload of [
+			{ scope: "general", root: true },
+			{ scope: "project", project_id: "other", root: true },
+		]) {
+			const { queryClient } = route("file.changed", payload);
+			expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
+		}
+	});
+});
+
 describe("EVENT_RULES", () => {
 	it("has unique rule names", () => {
 		const names = EVENT_RULES.map((r) => r.name);

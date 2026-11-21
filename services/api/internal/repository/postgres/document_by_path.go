@@ -36,9 +36,10 @@ const resolveFolderPathSQL = `
 	SELECT depth, id::text AS id FROM walk WHERE id IS NOT NULL ORDER BY depth`
 
 // findDocInFolderSQL finds the live document titled $3 in folder $2 (NULL =
-// the root), with the same tie-breaking as the folder walk.
+// the root), with the same tie-breaking as the folder walk. Notes belong to a
+// view, not to the tree, so no path reaches one.
 const findDocInFolderSQL = `SELECT ` + documentCols + ` FROM documents
-	WHERE project_id = $1 AND folder_id IS NOT DISTINCT FROM $2::uuid AND deleted_at IS NULL
+	WHERE project_id = $1 AND folder_id IS NOT DISTINCT FROM $2::uuid AND view_id IS NULL AND deleted_at IS NULL
 	  AND LOWER(title) = LOWER($3)
 	ORDER BY (title = $3) DESC, position, title, id
 	LIMIT 1`

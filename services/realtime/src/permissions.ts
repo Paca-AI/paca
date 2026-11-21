@@ -12,6 +12,8 @@
 //   project:<projectId>:project      — project.updated (name, settings)
 //   project:<projectId>:members      — member.* events
 //   project:<projectId>:agents       — project_agent.* (agent configuration)
+//   project:<projectId>:files        — file.changed (the file manager's listings)
+//   workspace:files                  — file.changed of the general file scope
 //
 // Room membership is a prefilter, not the authorization: the server fetches
 // the account's effective project actions, which include an action allowed
@@ -33,7 +35,8 @@ export type EventNamespace =
 	| "project"
 	| "members"
 	| "agents"
-	| "chat";
+	| "chat"
+	| "files";
 
 // NAMESPACE_PERMISSIONS maps each namespace to the project permission required
 // to receive events in that namespace.
@@ -51,7 +54,14 @@ export const NAMESPACE_PERMISSIONS: Record<EventNamespace, string> = {
 	// Chat channel lifecycle events (a channel created, renamed, archived).
 	// Message traffic never uses this room: see chat.ts.
 	chat: "channels:read",
+	files: "files:read",
 };
+
+// WORKSPACE_FILES_ROOM receives file.changed of the general (workspace-wide)
+// file scope, which belongs to no project. A socket joins it when its account
+// holds files:read on the platform root (see server.ts); the message carries
+// folder ids only, never names.
+export const WORKSPACE_FILES_ROOM = "workspace:files";
 
 // projectRoomName returns the Socket.IO room name for a project + namespace pair.
 export function projectRoomName(
@@ -154,6 +164,7 @@ export function eventNamespace(type: string): EventNamespace | undefined {
 	// conversation content.
 	if (type.startsWith("project_agent.")) return "agents";
 	if (type.startsWith("chat.channel.")) return "chat";
+	if (type === "file.changed") return "files";
 	return undefined;
 }
 

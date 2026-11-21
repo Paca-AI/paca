@@ -349,6 +349,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeViewReorderInvalid
 	case errors.Is(err, sprintdom.ErrViewPluginConfigRequired):
 		return http.StatusBadRequest, apierr.CodeViewPluginConfigRequired
+	case errors.Is(err, sprintdom.ErrViewNoteTypeChange):
+		return http.StatusBadRequest, apierr.CodeViewNoteTypeChange
 	case errors.Is(err, taskdom.ErrCustomFieldNotFound):
 		return http.StatusNotFound, apierr.CodeCustomFieldNotFound
 	case errors.Is(err, taskdom.ErrCustomFieldKeyInvalid):
@@ -458,6 +460,10 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusConflict, apierr.CodeDocLocked
 	case errors.Is(err, docdom.ErrDocLockNeedsSource):
 		return http.StatusBadRequest, apierr.CodeDocLockNeedsSource
+	case errors.Is(err, docdom.ErrNoteViewInvalid):
+		return http.StatusBadRequest, apierr.CodeDocNoteViewInvalid
+	case errors.Is(err, docdom.ErrNoteInFolder):
+		return http.StatusBadRequest, apierr.CodeDocNoteInFolder
 	case errors.Is(err, docdom.ErrDocPathInvalid):
 		return http.StatusBadRequest, apierr.CodeDocPathInvalid
 	case errors.Is(err, docdom.ErrDocPathIsFolder):

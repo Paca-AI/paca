@@ -30,10 +30,12 @@ const PREFIX = "E2E_SESSIONS_";
 const RUN_ID = newRunId();
 let counter = 0;
 
-const FIREFOX_WINDOWS =
-	"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Gecko/20100101 Firefox/130.0";
-const SAFARI_IOS =
-	"Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
+// Edge: no Playwright browser project reports as Edge, so this device never
+// shares a label with the "This device" row, whatever project runs.
+const EDGE_WINDOWS =
+	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0";
+const EDGE_IOS =
+	"Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 EdgiOS/126.0.0.0 Mobile/15E148 Safari/605.1.15";
 
 function uniqueName(label: string): string {
 	counter += 1;
@@ -122,18 +124,18 @@ test.describe("Seeing devices", () => {
 	}) => {
 		const username = await newUser(request, playwright, "SEE");
 		await signIn(page, username, RESTRICTED_PASSWORD);
-		const other = await signInOnNewDevice(browser, username, FIREFOX_WINDOWS);
+		const other = await signInOnNewDevice(browser, username, EDGE_WINDOWS);
 		try {
 			await openSecurity(page);
 			const card = devicesCard(page);
 			await expect(card.getByRole("listitem")).toHaveCount(2);
-			await expect(card.getByText("Firefox on Windows")).toBeVisible();
+			await expect(card.getByText("Edge on Windows")).toBeVisible();
 
 			// Seen from the other device, roles swap.
 			await openSecurity(other.page);
 			const row = devicesCard(other.page)
 				.getByRole("listitem")
-				.filter({ hasText: "Firefox on Windows" });
+				.filter({ hasText: "Edge on Windows" });
 			await expect(row.getByText("This device")).toBeVisible();
 		} finally {
 			await other.context.close();
@@ -148,7 +150,7 @@ test.describe("Seeing devices", () => {
 	}) => {
 		const username = await newUser(request, playwright, "GONE");
 		await signIn(page, username, RESTRICTED_PASSWORD);
-		const other = await signInOnNewDevice(browser, username, FIREFOX_WINDOWS);
+		const other = await signInOnNewDevice(browser, username, EDGE_WINDOWS);
 		try {
 			await openSecurity(page);
 			await expect(devicesCard(page).getByRole("listitem")).toHaveCount(2);
@@ -159,7 +161,7 @@ test.describe("Seeing devices", () => {
 			await openSecurity(page);
 			await expect(devicesCard(page).getByRole("listitem")).toHaveCount(1);
 			await expect(
-				devicesCard(page).getByText("Firefox on Windows"),
+				devicesCard(page).getByText("Edge on Windows"),
 			).toHaveCount(0);
 		} finally {
 			await other.context.close();
@@ -176,18 +178,18 @@ test.describe("Signing a device out", () => {
 	}) => {
 		const username = await newUser(request, playwright, "REVOKE");
 		await signIn(page, username, RESTRICTED_PASSWORD);
-		const other = await signInOnNewDevice(browser, username, FIREFOX_WINDOWS);
+		const other = await signInOnNewDevice(browser, username, EDGE_WINDOWS);
 		try {
 			expect(await whoAmIStatus(other.context)).toBe(200);
 
 			await openSecurity(page);
 			await page
-				.getByRole("button", { name: "Sign out Firefox on Windows" })
+				.getByRole("button", { name: "Sign out Edge on Windows" })
 				.click();
 			await confirmSignOut(page);
 
 			const card = devicesCard(page);
-			await expect(card.getByText("Firefox on Windows")).toHaveCount(0);
+			await expect(card.getByText("Edge on Windows")).toHaveCount(0);
 
 			// Its access token is nowhere near expiry, yet it no longer works.
 			expect(await whoAmIStatus(other.context)).toBe(401);
@@ -212,18 +214,18 @@ test.describe("Signing a device out", () => {
 	}) => {
 		const username = await newUser(request, playwright, "CANCEL");
 		await signIn(page, username, RESTRICTED_PASSWORD);
-		const other = await signInOnNewDevice(browser, username, FIREFOX_WINDOWS);
+		const other = await signInOnNewDevice(browser, username, EDGE_WINDOWS);
 		try {
 			await openSecurity(page);
 			await page
-				.getByRole("button", { name: "Sign out Firefox on Windows" })
+				.getByRole("button", { name: "Sign out Edge on Windows" })
 				.click();
 			const dialog = dialogPanel(page);
 			await dialog.getByRole("button", { name: "Cancel" }).click();
 			await expect(dialog).toBeHidden();
 
 			await expect(
-				devicesCard(page).getByText("Firefox on Windows"),
+				devicesCard(page).getByText("Edge on Windows"),
 			).toBeVisible();
 			expect(await whoAmIStatus(other.context)).toBe(200);
 		} finally {
@@ -239,13 +241,13 @@ test.describe("Signing a device out", () => {
 	}) => {
 		const username = await newUser(request, playwright, "ALL");
 		await signIn(page, username, RESTRICTED_PASSWORD);
-		const desktop = await signInOnNewDevice(browser, username, FIREFOX_WINDOWS);
-		const phone = await signInOnNewDevice(browser, username, SAFARI_IOS);
+		const desktop = await signInOnNewDevice(browser, username, EDGE_WINDOWS);
+		const phone = await signInOnNewDevice(browser, username, EDGE_IOS);
 		try {
 			await openSecurity(page);
 			const card = devicesCard(page);
 			await expect(card.getByRole("listitem")).toHaveCount(3);
-			await expect(card.getByText("Safari on iOS")).toBeVisible();
+			await expect(card.getByText("Edge on iOS")).toBeVisible();
 
 			await page
 				.getByRole("button", { name: "Sign out all other devices" })

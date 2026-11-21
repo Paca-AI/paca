@@ -186,6 +186,7 @@ const PLATFORM_RESOURCES = [
 	"service_account",
 	"service_account/*",
 	"git_identity/*",
+	"file/*",
 	"project",
 ];
 

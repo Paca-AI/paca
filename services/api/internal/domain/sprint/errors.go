@@ -20,4 +20,8 @@ var (
 	ErrViewIsLastView           = errors.New("sprint view: cannot delete the last remaining view")
 	ErrViewReorderInvalid       = errors.New("sprint view: provided view IDs do not match interaction views")
 	ErrViewPluginConfigRequired = errors.New("sprint view: plugin_id and plugin_component are required when view_type is 'plugin'")
+	// ErrViewNoteTypeChange means an update would turn a note view into a
+	// task view or the reverse: its notes would be left without a view to
+	// show them, or a task view would start holding notes.
+	ErrViewNoteTypeChange = errors.New("sprint view: a note view cannot change its type, and no other view can become a note view")
 )

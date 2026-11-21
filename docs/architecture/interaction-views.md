@@ -142,6 +142,8 @@ For every interaction page:
 5. if the view uses manual sorting, load its task positions from the shared task-positions endpoint
 6. render Board, Table, or Gantt using the same task payload
 
+A note view (below) skips steps 3 to 6: it loads no tasks, and lists its notes instead.
+
 ## Gantt view
 
 The Gantt view (`view_type = "gantt"`) draws each task as a bar from its start date to its due date, both days included. A task with only one of the two dates is drawn as a one-day bar on that date. Rows keep the view's grouping and sorting, and nested subtasks follow the view's `subtask_mode`, just as in the Table view.
@@ -153,6 +155,16 @@ The Gantt view (`view_type = "gantt"`) draws each task as a bar from its start d
 - Dragging a row by its task name still reorders it (under manual sort) or moves the task to another group, as before.
 
 `roadmap` is the former name of this layout. Migration `000090` renamed existing views and kept their config. For one release the API still accepts `roadmap` in a create or update request and stores it as `gantt`.
+
+## Note view
+
+A note view (`view_type = "note"`) holds free-form writing instead of tasks: sprint goals, planning notes, meeting minutes, a release checklist. It can be added in the Sprint, Backlog and Timeline contexts like any other view. Its notes are ordinary documents (BlockNote content, snapshots, activity, comments, file uploads and live collaboration) that belong to the view instead of to a folder of the project's docs (migration `000094`, `documents.view_id`).
+
+- **Where notes live.** A document lives either in the docs tree (`view_id` null) or in one note view (`view_id` set, no folder), never both. Notes do not appear in the Docs sidebar, in tree listings (`GET /docs` without `view_id`), in path lookups (`/docs/by-path`), in search (`/docs/search`, whose hits are located by path) or in the change feed that mirrors the tree. Moving a note into a folder is refused (`DOC_NOTE_IN_FOLDER`).
+- **API.** The document endpoints serve notes too. `GET /api/v1/projects/:projectId/docs?view_id=:viewId` lists a view's notes in manual order, and `POST /api/v1/projects/:projectId/docs` with `view_id` in the body creates one (`DOC_NOTE_VIEW_INVALID` when the view is not a note view of the project). Everything else (read, update, rename, reorder by `position`, delete, snapshots, activity, comments) goes through the usual `/docs/:docId` routes.
+- **Access.** Notes are documents, so the routes check `docs:read` and `docs:write` as for any document, and the IAM document scope applies. Listing a view's notes and creating one also needs `views:read` on the view itself, so a `Deny` on the view or a role limited to the views of one sprint (`view.sprint_id`) also covers its notes.
+- **Deleting.** Deleting the view, or the sprint it belongs to, soft-deletes its notes, as deleting a document does. A note view keeps its type: an update cannot turn it into a task view, or a task view into a note view (`VIEW_NOTE_TYPE_CHANGE`), so notes are never left in a view that cannot show them.
+- **Web app.** The view lists its notes on the left, with **New note**, rename, move up or down, and delete (with confirmation) for people with `docs:write`. The selected note opens on the right in the same editor and comments pane as the project's docs. The task search and view settings are hidden, since a note view has no tasks.
 
 ## Maintenance guidance
 

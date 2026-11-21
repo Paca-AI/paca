@@ -27,6 +27,8 @@ import { editDocument, type LoadedDoc } from "./doc-edit.js";
 const ListDocsSchema = z.object({
 	projectId: z.string(),
 	path: z.string().optional(),
+	// Lists the notes of a note view instead of a folder of the docs tree.
+	viewId: z.string().optional(),
 	...pagingFields,
 });
 
@@ -77,6 +79,8 @@ const EditDocSchema = z
 const WriteDocSchema = z.object({
 	projectId: z.string(),
 	path: z.string(),
+	// Writes a note of this note view: path is then the note's title.
+	viewId: z.string().optional(),
 	content: z.string(),
 	note: z.string().max(500).optional(),
 	task: z.string().max(50).optional(),
@@ -93,10 +97,17 @@ function writeNote(note?: string, task?: string) {
 	return out;
 }
 
-const DeleteDocSchema = z.object({
-	projectId: z.string(),
-	path: z.string(),
-});
+const DeleteDocSchema = z
+	.object({
+		projectId: z.string(),
+		path: z.string().optional(),
+		// A note has no path: it is deleted by id.
+		docId: z.string().optional(),
+	})
+	.refine((data) => !!data.path !== !!data.docId, {
+		message: "Provide exactly one of path or docId",
+		path: ["path"],
+	});
 
 const MoveDocSchema = z.object({
 	projectId: z.string(),
@@ -152,6 +163,68 @@ async function findDoc(
 		pageSize: 1,
 	});
 	return page.items[0];
+}
+
+/** write_doc with viewId: updates the note of the view titled `title`, or
+ *  creates it. Notes have no path (they are not in the docs tree), so the
+ *  by-path write cannot reach them. */
+async function writeViewNote(
+	projectId: string,
+	viewId: string,
+	title: string,
+	content: string,
+	note: string | undefined,
+	task: string | undefined,
+	clients: { apiClient: PacaAPIClient; docClient: PacaAPIDocClient },
+) {
+	const name = title.trim();
+	if (name === "" || name.includes("/")) {
+		return {
+			content: [
+				{
+					type: "text",
+					text: "With viewId, path is the note's title: it cannot be empty or contain '/'.",
+				},
+			],
+			isError: true,
+		};
+	}
+	const existing = (
+		await clients.apiClient.listDocuments(projectId, {
+			viewId,
+			title: name,
+			pageSize: 1,
+		})
+	).items[0];
+	if (existing) {
+		await clients.docClient.patchDocument(projectId, existing.id, {
+			content: content ? markdownToBlocknote(content) : [],
+			...writeNote(note, task),
+		});
+		return {
+			content: [
+				{
+					type: "text",
+					text: `Updated note: ${existing.title} (docId: ${existing.id})`,
+				},
+			],
+		};
+	}
+	const created = await clients.apiClient.createDocument({
+		project_id: projectId,
+		title: name,
+		content,
+		view_id: viewId,
+		...writeNote(note, task),
+	});
+	return {
+		content: [
+			{
+				type: "text",
+				text: `Created note: ${created.title} (docId: ${created.id})`,
+			},
+		],
+	};
 }
 
 async function resolvePath(
@@ -587,6 +660,8 @@ export function getFilesystemDocTools(): Tool[] {
 			description:
 				"List one folder of a project's documentation: its subfolders first, then its documents, one page at a time. " +
 				"Optionally name the folder by path (the top level when omitted) and open subfolders with further calls. " +
+				"With viewId instead of path, list the notes of a note view (documents that belong to the view, not to any folder) with their docId, " +
+				"for read_doc, edit_doc and delete_doc. " +
 				"When more remain, the reply says so and gives a cursor to pass to the next call.",
 			inputSchema: {
 				type: "object",
@@ -601,6 +676,11 @@ export function getFilesystemDocTools(): Tool[] {
 						description:
 							"Optional folder path to list from (e.g. 'Architecture' or 'Guides/Setup'). " +
 							"Omit or leave empty to list from the root.",
+					},
+					viewId: {
+						type: "string",
+						description:
+							"Optional: the ID of a note view (view type 'note', see list_views) whose notes to list. Not combinable with path.",
 					},
 					...pagingProperties,
 				},
@@ -768,7 +848,9 @@ export function getFilesystemDocTools(): Tool[] {
 				"If the document already exists it will be updated; otherwise it will be created. " +
 				"Missing intermediate folders are created automatically. " +
 				"Always prefer this over creating local files when writing project documentation. " +
-				"To change part of an existing document, use edit_doc instead: it rewrites only what changed.",
+				"To change part of an existing document, use edit_doc instead: it rewrites only what changed. " +
+				"With viewId, write a note of that note view instead: path is the note's title (no '/'), " +
+				"and the view's note with that title is updated, or created when there is none.",
 			inputSchema: {
 				type: "object",
 				properties: {
@@ -781,7 +863,13 @@ export function getFilesystemDocTools(): Tool[] {
 						type: "string",
 						description:
 							"Full path for the document (e.g. 'Architecture/API Design' or 'README'). " +
-							"The last segment is the document title; preceding segments are folder names.",
+							"The last segment is the document title; preceding segments are folder names. " +
+							"With viewId, just the note's title (e.g. 'Sprint goals').",
+					},
+					viewId: {
+						type: "string",
+						description:
+							"Optional: the ID of a note view (view type 'note', see list_views) to write a note of.",
 					},
 					content: {
 						type: "string",
@@ -805,8 +893,8 @@ export function getFilesystemDocTools(): Tool[] {
 		{
 			name: "delete_doc",
 			description:
-				"Delete a document or folder by path. " +
-				"Deleting a folder also removes all documents and subfolders inside it.",
+				"Delete a document or folder by path, or a document by docId (a note of a note view has no path: use the docId list_docs gives with viewId). " +
+				"Deleting a folder also removes all documents and subfolders inside it. Provide exactly one of path or docId.",
 			inputSchema: {
 				type: "object",
 				properties: {
@@ -817,10 +905,16 @@ export function getFilesystemDocTools(): Tool[] {
 					},
 					path: {
 						type: "string",
-						description: "Path to the document or folder to delete.",
+						description:
+							"Path to the document or folder to delete. Omit if docId is provided.",
+					},
+					docId: {
+						type: "string",
+						description:
+							"The technical UUID of the document to delete. Omit if path is provided.",
 					},
 				},
-				required: ["projectId", "path"],
+				required: ["projectId"],
 			},
 		},
 		{
@@ -863,7 +957,43 @@ export async function handleFilesystemDocTool(
 ): Promise<any> {
 	switch (toolName) {
 		case "list_docs": {
-			const { projectId, path, cursor, pageSize } = ListDocsSchema.parse(args);
+			const { projectId, path, viewId, cursor, pageSize } =
+				ListDocsSchema.parse(args);
+
+			if (viewId) {
+				if (path && path.trim() !== "" && path.trim() !== "/") {
+					return {
+						content: [
+							{ type: "text", text: "Pass either path or viewId, not both." },
+						],
+						isError: true,
+					};
+				}
+				// Notes have no folders, so the cursor is the document cursor.
+				const position = decodeDirCursor(cursor);
+				const notes = await apiClient.listDocuments(projectId, {
+					viewId,
+					cursor: position.phase === "docs" ? position.cursor : undefined,
+					pageSize,
+				});
+				const listing =
+					notes.items.length > 0
+						? notes.items
+								.map((d) => `📄 ${d.title} (docId: ${d.id})`)
+								.join("\n")
+						: "(no notes)";
+				const notice = notes.nextCursor
+					? `\n\n_More notes available — call list_docs again with cursor="${encodeDirCursor({ phase: "docs", cursor: notes.nextCursor })}" for the next page._`
+					: "";
+				return {
+					content: [
+						{
+							type: "text",
+							text: `📝 Notes of view ${viewId}\n${listing}${notice}`,
+						},
+					],
+				};
+			}
 
 			let folderId: string | null = null;
 			let header = "/";
@@ -1196,8 +1326,14 @@ export async function handleFilesystemDocTool(
 		}
 
 		case "write_doc": {
-			const { projectId, path, content, note, task } =
+			const { projectId, path, viewId, content, note, task } =
 				WriteDocSchema.parse(args);
+			if (viewId) {
+				return writeViewNote(projectId, viewId, path, content, note, task, {
+					apiClient,
+					docClient,
+				});
+			}
 			const parts = parsePath(path);
 
 			if (parts.length === 0) {
@@ -1259,7 +1395,14 @@ export async function handleFilesystemDocTool(
 		}
 
 		case "delete_doc": {
-			const { projectId, path } = DeleteDocSchema.parse(args);
+			const { projectId, path, docId } = DeleteDocSchema.parse(args);
+			if (docId) {
+				await apiClient.deleteDocument(projectId, docId);
+				return {
+					content: [{ type: "text", text: `Deleted document: ${docId}` }],
+				};
+			}
+			if (!path) throw new Error("path is required without docId");
 			const resolved = await resolveDocOrFolder(
 				projectId,
 				path,

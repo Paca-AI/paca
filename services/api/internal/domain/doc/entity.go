@@ -26,8 +26,11 @@ type Document struct {
 	ID        uuid.UUID
 	ProjectID uuid.UUID
 	FolderID  *uuid.UUID // nil = root (not in any folder)
-	Title     string
-	Content   json.RawMessage // BlockNote JSON array of block objects; nil = no content
+	// ViewID is the note view the document belongs to (a note); nil for a
+	// document of the docs tree. A note has no folder.
+	ViewID  *uuid.UUID
+	Title   string
+	Content json.RawMessage // BlockNote JSON array of block objects; nil = no content
 	// ContentHash is the stored ContentHash(Content); nil on rows written
 	// before the column existed (use Hash, which computes it then).
 	ContentHash *string

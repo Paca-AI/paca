@@ -557,6 +557,9 @@ describe("interaction-api", () => {
 		it("maps Gantt → gantt", () => {
 			expect(layoutToViewType("Gantt")).toBe("gantt");
 		});
+		it("maps Note → note", () => {
+			expect(layoutToViewType("Note")).toBe("note");
+		});
 	});
 });
 

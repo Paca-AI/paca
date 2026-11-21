@@ -88,6 +88,11 @@ func AuthzFor(e Event) (Authz, bool) {
 		// A project agent's own configuration (not its conversations, which
 		// are agent.*); GET /agents is gated on agents:read.
 		return Authz{string(iam.ActionAgentsRead), project}, true
+	case t == "file.changed":
+		// A project's files are listed through files:read on the project (the
+		// route gate), so that is what a viewer needs. The general scope has no
+		// project and is routed by services/realtime on its own.
+		return Authz{string(iam.ActionFilesRead), project}, true
 	case strings.HasPrefix(t, "doc.folder."):
 		return Authz{string(iam.ActionDocsRead), project}, true
 	case strings.HasPrefix(t, "doc."):

@@ -83,7 +83,11 @@ import {
 	type LeaseStore,
 } from "./collab-cluster.ts";
 import type { Config } from "./config.ts";
-import { agentChatRoomName, userChatRoomName } from "./permissions.ts";
+import {
+	agentChatRoomName,
+	userChatRoomName,
+	WORKSPACE_FILES_ROOM,
+} from "./permissions.ts";
 import {
 	liveRoomName,
 	type PresenceBus,
@@ -225,6 +229,11 @@ export function createSocketServer(
 			socket.data.projects = new Set();
 			socket.data.syncProjects = new Set();
 			socket.data.chatChannels = new Map();
+			// The general file scope has no project room: the account's
+			// platform-level files:read decides (kept current by resync.ts).
+			if (authResult.globalPermissions.includes("files:read")) {
+				socket.join(WORKSPACE_FILES_ROOM);
+			}
 
 			next();
 		} catch (err) {

@@ -46,6 +46,7 @@ import {
 	eventNamespace,
 	namespaceForAction,
 	projectRoomName,
+	WORKSPACE_FILES_ROOM,
 } from "./permissions.ts";
 
 // CHANNEL is the Valkey Pub/Sub channel the API publishes to.
@@ -244,6 +245,15 @@ export function routeEvent(
 	}
 
 	const event = { type, payload };
+
+	// A change in the general file scope belongs to no project: it goes to the
+	// room of the sockets whose account may read the workspace's files. It
+	// carries folder ids only. (A project's file.changed has an authz and is
+	// handled below like any project event.)
+	if (type === "file.changed" && !msg.authz && payload.scope === "general") {
+		io.to(WORKSPACE_FILES_ROOM).emit("event", event);
+		return;
+	}
 
 	// The API said what IAM must allow: check each candidate socket on it.
 	const authz = parseAuthz(msg.authz);

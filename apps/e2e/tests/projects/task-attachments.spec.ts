@@ -400,31 +400,29 @@ test.describe('Task detail – Attachments section – preview and download', ()
     await cleanupTestProjects(request);
   });
 
-  test('Clicking the file extension badge opens the attachment for preview in a new browser tab', async ({ page }) => {
+  test('Clicking the file extension badge opens the attachment in the in-app preview', async ({ page }) => {
     await signIn(page);
     await openTaskDetail(page, projectId, taskId);
 
     // The extension badge button has aria-label="Preview {filename}"
-    const [popup] = await Promise.all([
-      page.waitForEvent('popup'),
-      page.getByRole('button', { name: 'Preview design.png' }).click(),
-    ]);
-    expect(popup).toBeTruthy();
-    await popup.close();
+    const popups: string[] = [];
+    page.context().on('page', (p) => popups.push(p.url()));
+    await page.getByRole('button', { name: 'Preview design.png' }).click();
+    await expect(page.getByText('1/1')).toBeVisible({ timeout: 30_000 });
+    expect(popups).toHaveLength(0);
   });
 
-  test('Clicking the file name opens the attachment for preview in a new browser tab', async ({ page }) => {
+  test('Clicking the file name opens the attachment in the in-app preview', async ({ page }) => {
     await signIn(page);
     await openTaskDetail(page, projectId, taskId);
 
     // The file name button has an accessible name that starts with the file name (e.g. "design.png 16 B · just now")
     const fileNameBtn = page.getByRole('button', { name: /^design\.png/ });
-    const [popup] = await Promise.all([
-      page.waitForEvent('popup'),
-      fileNameBtn.click(),
-    ]);
-    expect(popup).toBeTruthy();
-    await popup.close();
+    const popups: string[] = [];
+    page.context().on('page', (p) => popups.push(p.url()));
+    await fileNameBtn.click();
+    await expect(page.getByText('1/1')).toBeVisible({ timeout: 30_000 });
+    expect(popups).toHaveLength(0);
   });
 
   test('A download button is present for each attachment row', async ({ page }) => {

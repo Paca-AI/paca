@@ -35,8 +35,11 @@ interface ApiEnvelope<T> {
 	data: T;
 }
 
+// The API names the list "actions"; "permissions" is what this client read
+// before, which never matched, so both are accepted.
 interface GlobalPermissionsData {
-	permissions: string[];
+	actions?: string[];
+	permissions?: string[];
 }
 
 interface ProjectPermissionsData {
@@ -76,9 +79,11 @@ export async function verifyTokenWithAPI(
 		username,
 		role,
 		expiresAt: exp === undefined ? undefined : exp * 1000,
-		globalPermissions: Array.isArray(envelope.data?.permissions)
-			? envelope.data.permissions
-			: [],
+		globalPermissions: Array.isArray(envelope.data?.actions)
+			? envelope.data.actions
+			: Array.isArray(envelope.data?.permissions)
+				? envelope.data.permissions
+				: [],
 	};
 }
 

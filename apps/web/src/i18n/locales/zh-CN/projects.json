@@ -2370,7 +2370,40 @@
 				"board": "看板",
 				"table": "表格",
 				"gantt": "甘特图",
-				"plugin": "插件"
+				"plugin": "插件",
+				"note": "笔记"
+			}
+		},
+		"noteView": {
+			"title": "笔记",
+			"newNote": "新建笔记",
+			"untitled": "无标题",
+			"titleLabel": "笔记标题",
+			"actions": "{{title}} 的操作",
+			"rename": "重命名",
+			"moveUp": "上移",
+			"moveDown": "下移",
+			"delete": "删除",
+			"empty": {
+				"title": "还没有笔记",
+				"description": "记录属于此视图的冲刺目标、会议纪要或检查清单。",
+				"readOnly": "此视图还没有笔记。"
+			},
+			"noPermission": {
+				"title": "你无权查看这些笔记",
+				"description": "笔记属于文档。请向项目管理员申请访问项目文档的权限。"
+			},
+			"deleteDialog": {
+				"title": "删除笔记？",
+				"description": "“{{title}}”将对所有人删除。",
+				"cancel": "取消",
+				"delete": "删除"
+			},
+			"errors": {
+				"titleInvalid": "标题不能为空，也不能包含“/”。",
+				"renameFailed": "无法重命名笔记，请重试。",
+				"reorderFailed": "无法调整笔记顺序",
+				"loadFailed": "无法加载笔记。"
 			}
 		},
 		"renameViewDialog": {

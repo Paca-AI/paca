@@ -301,7 +301,7 @@ test.describe("File manager", () => {
 		await page.goto(`${BASE_URL}/projects/${projectId}/tasks/${taskId}`);
 		const popups: string[] = [];
 		page.context().on("page", (p) => popups.push(p.url()));
-		await page.locator(".bn-visual-media").first().click();
+		await page.locator(".bn-visual-media-wrapper").first().click();
 		// The viewer overlay shows the file name with a "1/1" position counter.
 		await expect(page.getByText("1/1")).toBeVisible({ timeout: 30_000 });
 		await expect(page.getByText("pixel.png").first()).toBeVisible();
@@ -434,7 +434,7 @@ test.describe("File manager", () => {
 		await expect(page.locator(".bn-visual-media").first()).toBeVisible({
 			timeout: 30_000,
 		});
-		await page.locator(".bn-visual-media").first().click();
+		await page.locator(".bn-visual-media-wrapper").first().click();
 		await expect(page.getByText("1/1")).toBeVisible({ timeout: 30_000 });
 		await expect(page.getByText("from-files.png").first()).toBeVisible();
 	});

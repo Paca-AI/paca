@@ -13,7 +13,9 @@ import (
 )
 
 // The document change feed and batch read (docdom.ChangeRepository). The
-// sequence columns and counters are described in migration 000088.
+// sequence columns and counters are described in migration 000088. The feed
+// mirrors the docs tree, so notes (documents of a note view, migration 000094)
+// are not part of it.
 
 // documentFeedCols is documentTreeCols plus the body of the rows that have no
 // stored hash yet: a live row written before migration 000087 and not reached
@@ -70,7 +72,7 @@ const emptyFingerprint = "d41d8cd98f00b204e9800998ecf8427e"
 
 func (c *docChangeReader) VisibleFingerprint(ctx context.Context, projectID uuid.UUID, upToSeq *int64) (string, error) {
 	sink := &argList{args: []any{projectID.String()}}
-	where := `project_id = $1`
+	where := `project_id = $1 AND view_id IS NULL`
 	if upToSeq == nil {
 		where += ` AND deleted_at IS NULL`
 	} else {
@@ -119,7 +121,7 @@ func (c *docChangeReader) listFeedDocs(ctx context.Context, projectID uuid.UUID,
 	if none {
 		return []*docdom.Document{}, nil
 	}
-	query := `SELECT ` + documentFeedCols + ` FROM documents WHERE project_id = $1 AND ` + cond
+	query := `SELECT ` + documentFeedCols + ` FROM documents WHERE project_id = $1 AND view_id IS NULL AND ` + cond
 	if clause != "" {
 		query += ` AND ` + clause
 	}

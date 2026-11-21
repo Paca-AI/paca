@@ -37,6 +37,7 @@
 				"userSecurity": "用户安全设置",
 				"userMfa": "用户两步验证",
 				"document": "文档",
+				"note": "笔记",
 				"folder": "文件夹",
 				"pluginPreferences": "插件偏好设置",
 				"agent": "智能体",

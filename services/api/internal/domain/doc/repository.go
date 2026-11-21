@@ -42,8 +42,12 @@ type DocFolderRepository interface {
 	DeleteFolder(ctx context.Context, id uuid.UUID) error
 }
 
-// DocumentFilter narrows a document listing. Zero values match everything.
+// DocumentFilter narrows a document listing. Zero values match every document
+// of the docs tree; notes are listed only by their view (ViewID).
 type DocumentFilter struct {
+	// ViewID, when set, keeps only the notes of that note view; FolderID and
+	// RootOnly are then ignored. When nil, notes are left out.
+	ViewID *uuid.UUID
 	// FolderID, when set, keeps only documents directly inside that folder.
 	FolderID *uuid.UUID
 	// RootOnly keeps only documents outside any folder (ignored when FolderID is set).
@@ -81,10 +85,12 @@ type DocumentRepository interface {
 	// yet, or content changed by a writer that did not fill it) is matched
 	// against each "text" string of its JSON instead. Results include Content
 	// so the caller can build snippets; ordered updated_at DESC, id ASC.
+	// Search covers the docs tree: notes are left out.
 	SearchDocuments(ctx context.Context, projectID uuid.UUID, query string, limit int) ([]*Document, error)
 	// FindDocumentByID returns a single non-deleted document.
 	FindDocumentByID(ctx context.Context, id uuid.UUID) (*Document, error)
-	// CreateDocument persists a new document.
+	// CreateDocument persists a new document. A note (ViewID set) whose view
+	// is not in the document's project, or is gone, is ErrNoteViewInvalid.
 	CreateDocument(ctx context.Context, d *Document) error
 	// UpdateDocumentAtomic loads the non-deleted document id under a row lock,
 	// calls decide to validate and mutate it, and writes it back in the same

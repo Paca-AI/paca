@@ -102,7 +102,7 @@ interface TaskPositionListResult {
 }
 
 // ── View types ─────────────────────────────────────────────────────────────────
-export type ViewType = "table" | "board" | "gantt" | "plugin";
+export type ViewType = "table" | "board" | "gantt" | "plugin" | "note";
 
 /** The time span one step of the Gantt chart's scale covers. */
 export type GanttZoom = "day" | "week" | "month" | "quarter" | "year";
@@ -227,7 +227,8 @@ export interface ViewConfig {
 	plugin_component?: string;
 }
 
-export type ViewLayout = "Board" | "Table" | "Gantt" | "Plugin";
+/** "Note" views hold documents (notes) instead of tasks. */
+export type ViewLayout = "Board" | "Table" | "Gantt" | "Plugin" | "Note";
 
 // ── Filter resolver helpers ───────────────────────────────────────────────────
 
@@ -308,6 +309,7 @@ function viewTypeToLayout(vt: ViewType): ViewLayout {
 	if (vt === "board") return "Board";
 	if (vt === "gantt") return "Gantt";
 	if (vt === "plugin") return "Plugin";
+	if (vt === "note") return "Note";
 	return "Table";
 }
 
@@ -315,6 +317,7 @@ export function layoutToViewType(l: ViewLayout): ViewType {
 	if (l === "Board") return "board";
 	if (l === "Gantt") return "gantt";
 	if (l === "Plugin") return "plugin";
+	if (l === "Note") return "note";
 	return "table";
 }
 
