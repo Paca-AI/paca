@@ -147,6 +147,29 @@ From the directory holding your `docker-compose.yml` and `.env`:
 
 Verified end-to-end (a real object round-tripped byte-for-byte through this exact sequence, against a MinIO container with no published port) before writing it up here.
 
+**Can't pull `quay.io/minio/mc`?** (for example a `401 UNAUTHORIZED` from quay.io on your host) Steps 2 and 4 work the same with [rclone](https://rclone.org), whose image is on Docker Hub. Remotes are defined through environment variables passed to Docker by name, so the secrets stay out of the process list. Run this after step 1, and use these in place of the `mc` commands:
+
+```bash
+# Step 2 — back up out of MinIO
+export RCLONE_CONFIG_OLD_TYPE=s3 RCLONE_CONFIG_OLD_PROVIDER=Other RCLONE_CONFIG_OLD_ENDPOINT=http://minio:9000 \
+  RCLONE_CONFIG_OLD_ACCESS_KEY_ID="$STORAGE_ACCESS_KEY_ID" RCLONE_CONFIG_OLD_SECRET_ACCESS_KEY="$STORAGE_SECRET_ACCESS_KEY" \
+  RCLONE_CONFIG_OLD_FORCE_PATH_STYLE=true
+docker run --rm --network paca_default -v "$PWD/paca-attachments-backup:/backup" \
+  -e RCLONE_CONFIG_OLD_TYPE -e RCLONE_CONFIG_OLD_PROVIDER -e RCLONE_CONFIG_OLD_ENDPOINT \
+  -e RCLONE_CONFIG_OLD_ACCESS_KEY_ID -e RCLONE_CONFIG_OLD_SECRET_ACCESS_KEY -e RCLONE_CONFIG_OLD_FORCE_PATH_STYLE \
+  rclone/rclone copy old:paca /backup
+
+# Step 4 — restore into RustFS (after running the upgrade in step 3)
+export RCLONE_CONFIG_NEW_TYPE=s3 RCLONE_CONFIG_NEW_PROVIDER=Other RCLONE_CONFIG_NEW_ENDPOINT=http://rustfs:9000 \
+  RCLONE_CONFIG_NEW_ACCESS_KEY_ID="$STORAGE_ACCESS_KEY_ID" RCLONE_CONFIG_NEW_SECRET_ACCESS_KEY="$STORAGE_SECRET_ACCESS_KEY" \
+  RCLONE_CONFIG_NEW_FORCE_PATH_STYLE=true
+RC_NEW=(-e RCLONE_CONFIG_NEW_TYPE -e RCLONE_CONFIG_NEW_PROVIDER -e RCLONE_CONFIG_NEW_ENDPOINT -e RCLONE_CONFIG_NEW_ACCESS_KEY_ID -e RCLONE_CONFIG_NEW_SECRET_ACCESS_KEY -e RCLONE_CONFIG_NEW_FORCE_PATH_STYLE)
+docker run --rm --network paca_default "${RC_NEW[@]}" rclone/rclone mkdir new:paca
+docker run --rm --network paca_default -v "$PWD/paca-attachments-backup:/backup" "${RC_NEW[@]}" rclone/rclone copy /backup new:paca
+```
+
+(Verified against two S3-compatible containers standing in for MinIO and RustFS, not against a real MinIO.)
+
 If you'd rather not migrate right now, that's fine — the check runs before `upgrade.sh` touches anything, so your existing `docker-compose.yml` (still defining the working `minio` service) is left completely untouched. Keep running it until you're ready.
 
 ### Prefer to keep running your existing MinIO container for now?
