@@ -1580,9 +1580,16 @@ func (r *ChatRepository) FindAgentRun(ctx context.Context, conversationID uuid.U
 	}, nil
 }
 
+// agentRunPostLease is how long a claim holds before another delivery may take
+// it over: a worker that died between claiming and posting must not lose the
+// answer for good.
+const agentRunPostLease = "2 minutes"
+
 // ClaimAgentRunPost implements chatdom.Repository.
 func (r *ChatRepository) ClaimAgentRunPost(ctx context.Context, conversationID uuid.UUID) (bool, error) {
-	res, err := r.db.ExecContext(ctx, `UPDATE chat_agent_runs SET posted = TRUE WHERE conversation_id = $1::uuid AND NOT posted`, conversationID.String())
+	res, err := r.db.ExecContext(ctx, `UPDATE chat_agent_runs SET post_claimed_at = NOW()
+		WHERE conversation_id = $1::uuid AND NOT posted
+		  AND (post_claimed_at IS NULL OR post_claimed_at < NOW() - INTERVAL '`+agentRunPostLease+`')`, conversationID.String())
 	if err != nil {
 		return false, fmt.Errorf("chat: claim agent run post: %w", err)
 	}
@@ -1592,8 +1599,16 @@ func (r *ChatRepository) ClaimAgentRunPost(ctx context.Context, conversationID u
 
 // ReleaseAgentRunPost implements chatdom.Repository.
 func (r *ChatRepository) ReleaseAgentRunPost(ctx context.Context, conversationID uuid.UUID) error {
-	if _, err := r.db.ExecContext(ctx, `UPDATE chat_agent_runs SET posted = FALSE WHERE conversation_id = $1::uuid`, conversationID.String()); err != nil {
+	if _, err := r.db.ExecContext(ctx, `UPDATE chat_agent_runs SET post_claimed_at = NULL WHERE conversation_id = $1::uuid AND NOT posted`, conversationID.String()); err != nil {
 		return fmt.Errorf("chat: release agent run post: %w", err)
+	}
+	return nil
+}
+
+// MarkAgentRunPosted implements chatdom.Repository.
+func (r *ChatRepository) MarkAgentRunPosted(ctx context.Context, conversationID uuid.UUID) error {
+	if _, err := r.db.ExecContext(ctx, `UPDATE chat_agent_runs SET posted = TRUE WHERE conversation_id = $1::uuid`, conversationID.String()); err != nil {
+		return fmt.Errorf("chat: mark agent run posted: %w", err)
 	}
 	return nil
 }

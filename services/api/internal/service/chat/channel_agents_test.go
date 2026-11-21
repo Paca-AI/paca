@@ -19,6 +19,7 @@ type channelRepo struct {
 	members  map[uuid.UUID]uuid.UUID // account -> project_members id
 	messages []*chatdom.Message
 	runs     map[uuid.UUID]*chatdom.ChannelAgentRun
+	claimed  map[uuid.UUID]bool
 	reply    string
 }
 
@@ -71,14 +72,21 @@ func (r *channelRepo) FindAgentRun(_ context.Context, id uuid.UUID) (*chatdom.Ch
 	return r.runs[id], nil
 }
 func (r *channelRepo) ClaimAgentRunPost(_ context.Context, id uuid.UUID) (bool, error) {
-	if r.runs[id].Posted {
+	if r.runs[id].Posted || r.claimed[id] {
 		return false, nil
 	}
-	r.runs[id].Posted = true
+	if r.claimed == nil {
+		r.claimed = map[uuid.UUID]bool{}
+	}
+	r.claimed[id] = true
 	return true, nil
 }
 func (r *channelRepo) ReleaseAgentRunPost(_ context.Context, id uuid.UUID) error {
-	r.runs[id].Posted = false
+	delete(r.claimed, id)
+	return nil
+}
+func (r *channelRepo) MarkAgentRunPosted(_ context.Context, id uuid.UUID) error {
+	r.runs[id].Posted = true
 	return nil
 }
 func (r *channelRepo) AgentReply(context.Context, uuid.UUID, int, int) (string, error) {
@@ -238,5 +246,24 @@ func TestRunEnd_PostsTheAnswerInTheThreadOnce(t *testing.T) {
 	}
 	if err := f.svc.OnChannelRunEnd(context.Background(), uuid.New(), 1); err != nil {
 		t.Error("a run no channel started is ignored")
+	}
+}
+
+func TestRunEnd_ADeadWorkersClaimDoesNotLoseTheAnswer(t *testing.T) {
+	f := setupChannel(chatdom.KindPublic)
+	if _, err := f.svc.PostMessage(context.Background(), f.project, f.ch, f.person, mentionOf(f.agent, "Atlas"), nil); err != nil {
+		t.Fatal(err)
+	}
+	f.repo.reply = "Done."
+	// Another delivery holds the claim: this one must be retried, not acked.
+	f.repo.claimed = map[uuid.UUID]bool{f.trig.conv: true}
+	n := len(f.repo.messages)
+	if err := f.svc.OnChannelRunEnd(context.Background(), f.trig.conv, 7); !errors.Is(err, errReplyInFlight) || len(f.repo.messages) != n {
+		t.Fatalf("a held claim is retried, not dropped: %v", err)
+	}
+	// Once the claim is gone (lease over) the retry posts the answer.
+	delete(f.repo.claimed, f.trig.conv)
+	if err := f.svc.OnChannelRunEnd(context.Background(), f.trig.conv, 7); err != nil || len(f.repo.messages) != n+1 {
+		t.Fatalf("the retry posts it: %v", err)
 	}
 }

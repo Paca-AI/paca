@@ -1001,3 +1001,53 @@ func TestChatAgentDirectMessage(t *testing.T) {
 		t.Fatalf("message with run: %+v %v", got, err)
 	}
 }
+
+// SearchMessages matches message text with a trigram ILIKE. The query argument
+// is $2 (the account is $1) and the optional project is $3, so a project
+// filter, the LIKE escape and the LIMIT must all line up.
+func TestChatSearchMessages(t *testing.T) {
+	db := newIAMPGTestDB(t)
+	fx := newIAMFx(t, db)
+	ctx := context.Background()
+	p1, p2 := fx.project(), fx.project()
+	alice := fx.user(false)
+	repo := NewChatRepository(db)
+	svc := chatsvc.New(repo)
+	var chans [2]*chatdom.Channel
+	for i, p := range []uuid.UUID{p1, p2} {
+		fx.member(p, alice, false)
+		list, err := svc.ListChannels(ctx, p, alice, chatdom.ChannelFilter{})
+		if err != nil || len(list) != 1 {
+			t.Fatalf("project %d channels: %v %v", i, list, err)
+		}
+		chans[i] = list[0]
+	}
+	post := func(p uuid.UUID, ch *chatdom.Channel, s string) {
+		t.Helper()
+		if _, err := svc.PostMessage(ctx, p, ch.ID, alice, text(s), nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	post(p1, chans[0], "the rollback plan for the migration")
+	post(p1, chans[0], "we are 100% sure about it")
+	post(p1, chans[0], "we are 1000 sure about it")
+	post(p2, chans[1], "another rollback plan elsewhere")
+
+	all, err := repo.SearchMessages(ctx, alice, "rollback", nil, 10)
+	if err != nil || len(all) != 2 {
+		t.Fatalf("without a project filter both rollback messages match: %d %v", len(all), err)
+	}
+	one, err := repo.SearchMessages(ctx, alice, "rollback", &p1, 10)
+	if err != nil || len(one) != 1 || one[0].ProjectID == nil || *one[0].ProjectID != p1 {
+		t.Fatalf("a project filter keeps that project's match: %v %v", one, err)
+	}
+	limited, err := repo.SearchMessages(ctx, alice, "rollback", nil, 1)
+	if err != nil || len(limited) != 1 {
+		t.Fatalf("the limit applies: %d %v", len(limited), err)
+	}
+	// "%" in the query is text, not a wildcard.
+	pct, err := repo.SearchMessages(ctx, alice, "100%", nil, 10)
+	if err != nil || len(pct) != 1 {
+		t.Fatalf("100%% matches only the literal text: %d %v", len(pct), err)
+	}
+}

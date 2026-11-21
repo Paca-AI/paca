@@ -3,6 +3,7 @@ package chatsvc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -15,6 +16,9 @@ import (
 
 // contextMessages is how many earlier messages an agent is shown with a mention.
 const contextMessages = 8
+
+// linkAttempts is how often the run link is written before it is given up on.
+const linkAttempts = 3
 
 // WithAgentTrigger lets an @mention of an agent in a project channel start a
 // run of that agent (see chat_agent_runs).
@@ -67,10 +71,19 @@ func (s *Service) triggerMentionedAgents(ctx context.Context, projectID uuid.UUI
 		if m.ThreadRootID != nil {
 			root = *m.ThreadRootID
 		}
-		if err := s.repo.CreateAgentRun(ctx, &chatdom.ChannelAgentRun{
+		link := &chatdom.ChannelAgentRun{
 			ConversationID: convID, ChannelID: ch.ID, SourceMessageID: m.ID, ThreadRootID: root, AgentID: id, RequesterID: m.AuthorID,
-		}); err != nil {
-			slog.ErrorContext(ctx, "chat: link agent run", "conversation_id", convID, "err", err)
+		}
+		// Without this row the run's answer is never posted, so a failed write
+		// is retried before it is given up on.
+		var linkErr error
+		for attempt := 0; attempt < linkAttempts; attempt++ {
+			if linkErr = s.repo.CreateAgentRun(ctx, link); linkErr == nil {
+				break
+			}
+		}
+		if linkErr != nil {
+			slog.ErrorContext(ctx, "chat: link agent run", "conversation_id", convID, "err", linkErr)
 		}
 	}
 }
@@ -130,8 +143,13 @@ func (s *Service) OnChannelRunEnd(ctx context.Context, conversationID uuid.UUID,
 		return err
 	}
 	claimed, err := s.repo.ClaimAgentRunPost(ctx, conversationID)
-	if err != nil || !claimed {
-		return err // another delivery posts it
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		// Another delivery is posting it. Not acked as done: if that worker
+		// dies, this one is retried and takes the claim over once its lease ends.
+		return errReplyInFlight
 	}
 	release := func() {
 		if rerr := s.repo.ReleaseAgentRunPost(ctx, conversationID); rerr != nil {
@@ -160,12 +178,21 @@ func (s *Service) OnChannelRunEnd(ctx context.Context, conversationID uuid.UUID,
 		release()
 		return err
 	}
+	// The reply is stored: record it so a repeated turn_end adds nothing. If
+	// this write fails the claim's lease runs out and the delivery is retried,
+	// which can post the reply twice; that is better than losing it.
+	if err := s.repo.MarkAgentRunPosted(ctx, conversationID); err != nil {
+		slog.ErrorContext(ctx, "chat: mark agent run posted", "conversation_id", conversationID, "err", err)
+	}
 	_ = s.repo.RecordMessageEffects(ctx, m, []uuid.UUID{run.RequesterID})
 	if full, err := s.repo.FindMessage(ctx, run.ChannelID, m.ID, run.AgentID); err == nil {
 		s.notifyMessage(ctx, chatdom.EventMessageNew, run.ProjectID, full, run.AgentID)
 	}
 	return nil
 }
+
+// errReplyInFlight: another delivery of the same turn_end holds the claim.
+var errReplyInFlight = errors.New("chat: agent reply is being posted by another delivery")
 
 // replyBlocks is text as block content, the first paragraph opening with a
 // mention of the person who asked so the answer reaches their Inbox.

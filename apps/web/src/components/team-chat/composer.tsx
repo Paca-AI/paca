@@ -56,16 +56,7 @@ function writeDraft(id: string, blocks: ChatBlock[]): void {
  * "@" suggests people, "#" the project's tasks and documents, and "/" the
  * `commands` it is given (a command runs instead of sending its text).
  */
-export function Composer({
-	draftId,
-	placeholder,
-	disabledReason,
-	onSend,
-	autoFocus,
-	mentionProjectId,
-	onTyping,
-	extraCommands,
-}: {
+interface ComposerProps {
 	/** Reports whether the box has text, for the "is typing" indicator. */
 	onTyping?: (typing: boolean) => void;
 	/** Offers "@" and "#" suggestions from this project when set. */
@@ -79,7 +70,18 @@ export function Composer({
 	disabledReason?: string;
 	onSend: (content: ChatBlock[]) => Promise<void>;
 	autoFocus?: boolean;
-}) {
+}
+
+function ComposerBody({
+	draftId,
+	placeholder,
+	disabledReason,
+	onSend,
+	autoFocus,
+	mentionProjectId,
+	onTyping,
+	extraCommands,
+}: ComposerProps) {
 	const { t } = useTranslation("chat");
 	const editor = useRef<CommentEditorHandle>(null);
 	const [initial] = useState(() => readDraft(draftId));
@@ -208,4 +210,14 @@ export function Composer({
 			</p>
 		</div>
 	);
+}
+
+/**
+ * The message box. Keyed by the draft: a different channel or thread is a
+ * different draft, and every piece of state in the box (its saved draft, empty
+ * and too-long flags, error) must start over with it, not carry the previous
+ * conversation's over when the parent reuses this component.
+ */
+export function Composer(props: ComposerProps) {
+	return <ComposerBody key={props.draftId} {...props} />;
 }

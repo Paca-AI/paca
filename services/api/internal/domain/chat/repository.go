@@ -143,11 +143,15 @@ type Repository interface {
 	CreateAgentRun(ctx context.Context, r *ChannelAgentRun) error
 	// FindAgentRun returns the link of a run, or nil when no channel started it.
 	FindAgentRun(ctx context.Context, conversationID uuid.UUID) (*ChannelAgentRun, error)
-	// ClaimAgentRunPost marks the run's reply as posted and reports whether this
-	// call did it: of two deliveries of one turn_end, one wins.
-	// ReleaseAgentRunPost undoes a claim whose post failed.
+	// ClaimAgentRunPost takes the right to post the run's reply and reports
+	// whether this call got it: of two deliveries of one turn_end, one wins. The
+	// claim is a lease, so a worker that dies before posting does not lose the
+	// answer: a later delivery takes it over once the lease has run out.
+	// ReleaseAgentRunPost gives a claim back when the post failed, and
+	// MarkAgentRunPosted records that the reply is stored (after it is).
 	ClaimAgentRunPost(ctx context.Context, conversationID uuid.UUID) (bool, error)
 	ReleaseAgentRunPost(ctx context.Context, conversationID uuid.UUID) error
+	MarkAgentRunPosted(ctx context.Context, conversationID uuid.UUID) error
 	// IsGlobalAgent reports whether the account is an agent that answers direct
 	// messages (a global agent).
 	IsGlobalAgent(ctx context.Context, accountID uuid.UUID) (bool, error)

@@ -6,6 +6,8 @@
 --   conversation_id    the agent run (agent_conversations.id),
 --   source_message_id  the message that mentioned the agent,
 --   requester_id       the person who wrote it, mentioned in the reply,
+--   post_claimed_at    when a worker began posting the reply: a lease, so a worker
+--                      that dies mid-post does not lose the answer for good,
 --   posted             the reply is stored (so a repeated turn_end adds nothing).
 -- The run page stays the full record (reasoning, tool calls); the message links
 -- to it through messages.run_id.
@@ -16,6 +18,7 @@ CREATE TABLE IF NOT EXISTS chat_agent_runs (
     thread_root_id    UUID        NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
     agent_id          UUID        NOT NULL,
     requester_id      UUID        NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    post_claimed_at   TIMESTAMPTZ,
     posted            BOOLEAN     NOT NULL DEFAULT FALSE,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

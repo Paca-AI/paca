@@ -1,10 +1,32 @@
 import { createReactInlineContentSpec } from "@blocknote/react";
+import { useQuery } from "@tanstack/react-query";
 import { AtSign, FileText, Hash } from "lucide-react";
+import { currentUserQueryOptions } from "@/lib/auth-api";
 import { ReferenceChip } from "./reference-chip";
 
 // A reference stored by chat holds ids only (no title). The editor shows its
 // live title, read with the viewer's own access, instead of "Unknown".
 const UNTITLED = "Unknown";
+
+/** A person's mention. The reader's own stands out, as it did in chat. */
+function TeamMentionChip({ id, name }: { id: string; name: string }) {
+	const { data: me } = useQuery(currentUserQueryOptions);
+	const mine = !!id && me?.id === id;
+	return (
+		<span
+			className={
+				mine
+					? "inline-flex items-center gap-1 rounded-full bg-primary/20 px-1.5 py-0.5 text-xs font-semibold text-primary transition-colors"
+					: "inline-flex items-center gap-1 rounded-full bg-blue-50/80 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors"
+			}
+			data-mention-type="team"
+			data-mention={mine ? "me" : "other"}
+		>
+			<AtSign className="shrink-0" width={12} height={12} />
+			{name}
+		</span>
+	);
+}
 
 export const TeamMention = createReactInlineContentSpec(
 	{
@@ -25,13 +47,10 @@ export const TeamMention = createReactInlineContentSpec(
 	},
 	{
 		render: (props) => (
-			<span
-				className="inline-flex items-center gap-1 rounded-full bg-blue-50/80 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors"
-				data-mention-type="team"
-			>
-				<AtSign className="shrink-0" width={12} height={12} />
-				{props.inlineContent.props.name}
-			</span>
+			<TeamMentionChip
+				id={props.inlineContent.props.id}
+				name={props.inlineContent.props.name}
+			/>
 		),
 	},
 );
