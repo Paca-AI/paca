@@ -280,6 +280,22 @@ describe("GanttView group header", () => {
 		expect(pinned).toHaveTextContent(`${label}1`);
 		expect(count).toHaveTextContent(/^1$/);
 	});
+
+	it("spans the task column resize handle across the full chart height", () => {
+		renderGantt([makeTask({ id: "t1", title: "Alpha" })]);
+		const handle = screen.getByTestId("gantt-task-column-resize-handle");
+		const column = handle.parentElement as HTMLElement;
+		const overlay = column.parentElement as HTMLElement;
+
+		// Not confined to the 44px header row.
+		expect(handle.closest(".h-11")).toBeNull();
+		expect(column).toHaveClass("sticky", "left-0", "h-full");
+		expect(overlay).toHaveClass("absolute", "inset-0");
+		expect(overlay.contains(screen.getByText("Alpha"))).toBe(false);
+		expect(overlay.parentElement?.contains(screen.getByText("Alpha"))).toBe(
+			true,
+		);
+	});
 });
 
 // ── Zoom, rescheduling and dependencies ──────────────────────────────────────
