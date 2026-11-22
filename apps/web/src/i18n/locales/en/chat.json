@@ -362,7 +362,8 @@
 		"download": "Download transcript",
 		"empty": "Nothing has been said yet.",
 		"loadFailed": "The transcript could not be loaded.",
-		"transcript": "Transcript"
+		"transcript": "Transcript",
+		"recordedOnly": "Recorded, not transcribed"
 	},
 	"recording": {
 		"notice": "This call is being recorded.",

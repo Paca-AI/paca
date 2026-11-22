@@ -472,7 +472,7 @@
 				"descriptionLabel": "描述",
 				"descriptionPlaceholder": "此代理的用途是什么？",
 				"descriptionHint": "在自动模式下，当 Jev 决定由哪个代理处理聊天或是否为其分配任务时会显示此内容。提供商和模型会自动添加。",
-				"meetingNoModel": "此助手只做转写，因此不需要模型。要设置模型，请在“助手”标签页开启笔记或建议。"
+				"meetingNoModel": "目前仅转写，因此模型是可选的。请先在此设置，再在“助手”标签页开启笔记或建议。"
 			},
 			"mcp": {
 				"serverCount_one": "已配置 {{count}} 个服务器",
@@ -698,7 +698,7 @@
 					"announcement": "加入时显示的消息",
 					"announcementPlaceholder": "例如：我正在转写这次通话以便记录笔记。",
 					"suggestions": "建议任务和文档",
-					"suggestionsHint": "可选。无论是否开启，助手都会转写并撰写笔记；开启后它还会建议任务和文档，由人确认。",
+					"suggestionsHint": "可选。开启后，助手会建议任务和文档供成员审批。需要语言模型。",
 					"suggestWhen": "建议时机",
 					"notes": "撰写会议笔记",
 					"notesHint": "通话结束后，在频道发布一份包含决定和行动项的简短摘要。使用助手的模型。"

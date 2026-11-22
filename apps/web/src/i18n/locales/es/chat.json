@@ -362,7 +362,8 @@
 		"download": "Descargar transcripción",
 		"empty": "Todavía no se ha dicho nada.",
 		"loadFailed": "No se pudo cargar la transcripción.",
-		"transcript": "Transcripción"
+		"transcript": "Transcripción",
+		"recordedOnly": "Grabada, sin transcribir"
 	},
 	"recording": {
 		"notice": "Esta llamada se está grabando.",

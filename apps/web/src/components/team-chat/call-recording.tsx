@@ -111,7 +111,7 @@ export function RecordButton({
 					size="icon"
 					variant="destructive"
 					aria-label={t("recording.stop")}
-					disabled={stop.isPending || rec.status === "stopping"}
+					disabled={stop.isPending}
 					onClick={() => stop.mutate()}
 				>
 					<Square />

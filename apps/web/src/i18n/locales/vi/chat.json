@@ -362,7 +362,8 @@
 		"download": "Tải bản ghi xuống",
 		"empty": "Chưa có ai nói gì.",
 		"loadFailed": "Không thể tải bản ghi.",
-		"transcript": "Bản ghi lời nói"
+		"transcript": "Bản ghi lời nói",
+		"recordedOnly": "Đã ghi hình, chưa phiên âm"
 	},
 	"recording": {
 		"notice": "Cuộc gọi này đang được ghi hình.",

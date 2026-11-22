@@ -472,7 +472,7 @@
 				"descriptionLabel": "Description",
 				"descriptionPlaceholder": "À quoi sert cet agent ?",
 				"descriptionHint": "Affiché à Jev lorsqu'il décide quel agent doit gérer une discussion, ou s'il faut lui assigner une tâche, en mode Automatique. Le fournisseur et le modèle sont ajoutés automatiquement.",
-				"meetingNoModel": "Cet assistant ne fait que transcrire, il n'a donc pas besoin de modèle. Activez les notes ou les suggestions dans l'onglet Assistant pour en configurer un."
+				"meetingNoModel": "Transcription uniquement pour l'instant, le modèle est donc facultatif. Configurez-en un ici avant d'activer les notes ou les suggestions dans l'onglet Assistant."
 			},
 			"mcp": {
 				"serverCount_one": "{{count}} serveur configuré",
@@ -698,7 +698,7 @@
 					"announcement": "Message affiché à son arrivée",
 					"announcementPlaceholder": "Par exemple : Je transcris cet appel pour prendre des notes.",
 					"suggestions": "Suggérer des tâches et des documents",
-					"suggestionsHint": "Facultatif. L'assistant transcrit et rédige des notes dans tous les cas ; activez-le pour qu'il suggère aussi des tâches et des documents que les personnes approuvent.",
+					"suggestionsHint": "Facultatif. Activez cette option pour que l'assistant suggère des tâches et des documents à approuver. Nécessite un modèle de langage.",
 					"suggestWhen": "Quand suggérer",
 					"notes": "Rédiger des notes de réunion",
 					"notesHint": "Après l'appel, publie dans le canal un court résumé avec les décisions et les actions. Utilise le modèle de l'assistant."

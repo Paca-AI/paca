@@ -472,7 +472,7 @@
 				"cliLoginVerifyFailed": "Couldn't check login status. Please try again.",
 				"cliLoginLastVerified": "Last verified {{date}}.",
 				"cliLoginNoEnvironment": "This agent has no environment set — pick one above first.",
-				"meetingNoModel": "This assistant only transcribes, so it needs no model. Turn on notes or suggestions on the Assistant tab to set one up."
+				"meetingNoModel": "Transcription only for now, so a model is optional. Set one up here before turning on notes or suggestions on the Assistant tab."
 			},
 			"mcp": {
 				"serverCount_one": "{{count}} server configured",
@@ -698,7 +698,7 @@
 					"announcement": "Message shown when it joins",
 					"announcementPlaceholder": "For example: I transcribe this call to take notes.",
 					"suggestions": "Suggest tasks and docs",
-					"suggestionsHint": "Optional. The assistant transcribes and writes notes either way; turn this on to let it also suggest tasks and docs for people to approve.",
+					"suggestionsHint": "Optional. Turn this on to let the assistant suggest tasks and docs for people to approve. Needs a language model.",
 					"suggestWhen": "When to suggest",
 					"notes": "Write meeting notes",
 					"notesHint": "After the call, post a short summary with the decisions and action items in the channel. Uses the assistant's model."

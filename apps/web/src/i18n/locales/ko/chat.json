@@ -362,7 +362,8 @@
 		"download": "녹취록 다운로드",
 		"empty": "아직 발언이 없습니다.",
 		"loadFailed": "녹취록을 불러오지 못했습니다.",
-		"transcript": "녹취록"
+		"transcript": "녹취록",
+		"recordedOnly": "녹화됨, 전사 없음"
 	},
 	"recording": {
 		"notice": "이 통화는 녹화 중입니다.",

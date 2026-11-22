@@ -41,7 +41,6 @@ type Room interface {
 	Enabled() bool
 	DispatchAgent(ctx context.Context, room, agentName, metadata string) (string, error)
 	DeleteDispatch(ctx context.Context, room, dispatchID string) error
-	RemoveParticipant(ctx context.Context, room, identity string) error
 }
 
 // Crypter decrypts and encrypts the stored secrets (AES-GCM with the platform
@@ -394,9 +393,6 @@ func (s *Service) Remove(ctx context.Context, projectID, channelID, agentID uuid
 		if err := s.room.DeleteDispatch(ctx, room, sess.DispatchID); err != nil {
 			slog.Warn("meeting: delete dispatch", "session_id", sess.ID, "err", err)
 		}
-	}
-	if err := s.room.RemoveParticipant(ctx, room, agentID.String()); err != nil {
-		slog.Warn("meeting: remove assistant participant", "session_id", sess.ID, "err", err)
 	}
 	s.end(ctx, sess)
 	return nil

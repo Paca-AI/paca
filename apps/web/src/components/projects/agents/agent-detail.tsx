@@ -252,12 +252,13 @@ function OverviewTab({
 	// Docker or environment (the server rejects them).
 	const isMeeting = agent.agent_type === "meeting";
 	// Notes and suggestions use the assistant's language model; transcription
-	// alone does not, so a transcription-only assistant has no model to show.
+	// alone does not, so a transcription-only assistant may have no model yet.
+	// The fields stay visible so one can be set up before either is turned on.
 	const meetingSettings = useQuery({
 		...meetingSettingsQueryOptions(projectId ?? "", agent.id),
 		enabled: isMeeting && !!projectId,
 	}).data;
-	const usesModel =
+	const modelRequired =
 		!isMeeting ||
 		!meetingSettings ||
 		meetingSettings.mode !== "notes_only" ||
@@ -394,7 +395,8 @@ function OverviewTab({
 				(acpProviderSelect !== "custom" || acpCommandParts.length > 0)
 			: isProviderCli
 				? !!cliProviderSelect && !!defaultEnvironmentId
-				: !usesModel || (!!llmProvider && !!llmModel && !!llmBaseUrl.trim())) &&
+				: !modelRequired ||
+					(!!llmProvider && !!llmModel && !!llmBaseUrl.trim())) &&
 		!saveMutation.isPending;
 
 	// The environment/folder pickers are populated from a live query, so a
@@ -457,13 +459,13 @@ function OverviewTab({
 
 			<Separator />
 
-			{isMeeting && !usesModel && (
+			{isMeeting && !modelRequired && (
 				<p className="text-sm text-muted-foreground">
 					{t("agents.detail.overview.meetingNoModel")}
 				</p>
 			)}
 
-			{!isAcp && !isProviderCli && usesModel && (
+			{!isAcp && !isProviderCli && (
 				<div>
 					<p className="text-sm font-medium mb-3">
 						{t("agents.detail.overview.llmConfiguration")}
@@ -763,7 +765,7 @@ function OverviewTab({
 			{/* System prompt and git committer identity are LLM-only — an ACP
 			    or provider_cli agent's underlying CLI owns its own prompt and
 			    git identity. */}
-			{!isAcp && !isProviderCli && usesModel && (
+			{!isAcp && !isProviderCli && (
 				<>
 					<div className="space-y-1.5">
 						<Label>{t("agents.detail.overview.systemPromptLabel")}</Label>

@@ -472,7 +472,7 @@
 				"descriptionLabel": "Descrição",
 				"descriptionPlaceholder": "Para que serve este agente?",
 				"descriptionHint": "Exibido para o Jev ao decidir qual agente deve atender a um chat, ou se deve atribuir uma tarefa a ele, no modo Automático. O provedor e o modelo são adicionados automaticamente.",
-				"meetingNoModel": "Este assistente só transcreve, então não precisa de modelo. Ative as anotações ou as sugestões na aba Assistente para configurar um."
+				"meetingNoModel": "Por enquanto só transcreve, então o modelo é opcional. Configure um aqui antes de ativar notas ou sugestões na aba Assistente."
 			},
 			"mcp": {
 				"serverCount_one": "{{count}} servidor configurado",
@@ -698,7 +698,7 @@
 					"announcement": "Mensagem exibida quando entra",
 					"announcementPlaceholder": "Por exemplo: Estou transcrevendo esta chamada para fazer anotações.",
 					"suggestions": "Sugerir tarefas e documentos",
-					"suggestionsHint": "Opcional. O assistente transcreve e escreve anotações de qualquer forma; ative para que ele também sugira tarefas e documentos para as pessoas aprovarem.",
+					"suggestionsHint": "Opcional. Ative para o assistente sugerir tarefas e documentos para as pessoas aprovarem. Requer um modelo de linguagem.",
 					"suggestWhen": "Quando sugerir",
 					"notes": "Escrever anotações da reunião",
 					"notesHint": "Após a chamada, publica no canal um breve resumo com as decisões e os itens de ação. Usa o modelo do assistente."

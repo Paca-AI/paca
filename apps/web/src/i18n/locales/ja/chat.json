@@ -362,7 +362,8 @@
 		"download": "文字起こしをダウンロード",
 		"empty": "まだ発言はありません。",
 		"loadFailed": "文字起こしを読み込めませんでした。",
-		"transcript": "文字起こし"
+		"transcript": "文字起こし",
+		"recordedOnly": "録画のみ（文字起こしなし）"
 	},
 	"recording": {
 		"notice": "この通話は録画されています。",

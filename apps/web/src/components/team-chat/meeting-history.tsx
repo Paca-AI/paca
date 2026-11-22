@@ -14,6 +14,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	type CallRecording,
+	callFeaturesQueryOptions,
 	channelRecordingsQueryOptions,
 	recordingUrl,
 } from "@/lib/call-api";
@@ -181,18 +182,49 @@ export function MeetingHistoryButton({
 	channelId: string;
 }) {
 	const { t } = useTranslation("chat");
-	const enabled = useQuery(meetingConfigQueryOptions).data === true;
+	const assistants = useQuery(meetingConfigQueryOptions).data === true;
+	const recordable =
+		useQuery(callFeaturesQueryOptions).data?.recording === true;
 	const meetings = useQuery(
-		channelMeetingsQueryOptions(projectId, channelId, enabled && !!projectId),
+		channelMeetingsQueryOptions(
+			projectId,
+			channelId,
+			assistants && !!projectId,
+		),
 	).data;
+	// Recording does not depend on the assistant, so neither does its playback.
 	const recordings = useQuery(
-		channelRecordingsQueryOptions(projectId, channelId, enabled && !!projectId),
+		channelRecordingsQueryOptions(
+			projectId,
+			channelId,
+			recordable && !!projectId,
+		),
 	).data;
 	const [open, setOpen] = useState(false);
 	const [picked, setPicked] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
-	if (!enabled || !meetings || meetings.length === 0) return null;
-	const current = meetings.find((m) => m.call_id === picked) ?? meetings[0];
+	// Calls that were recorded but not transcribed (the assistant is off, or was
+	// never invited) still get an entry, with just the recording.
+	const transcribed = assistants ? (meetings ?? []) : [];
+	const known = new Set(transcribed.map((m) => m.call_id));
+	const recordedOnly: Meeting[] = [];
+	for (const r of recordable ? (recordings ?? []) : []) {
+		if (known.has(r.call_id)) continue;
+		known.add(r.call_id);
+		recordedOnly.push({
+			call_id: r.call_id,
+			started_at: r.started_at,
+			ended_at: r.ended_at ?? r.started_at,
+			segments: 0,
+			speakers: [],
+		});
+	}
+	const entries = [...transcribed, ...recordedOnly].sort((a, b) =>
+		b.started_at.localeCompare(a.started_at),
+	);
+	if (entries.length === 0) return null;
+	const current = entries.find((m) => m.call_id === picked) ?? entries[0];
+	const hasTranscript = assistants && current.segments > 0;
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
@@ -214,7 +246,7 @@ export function MeetingHistoryButton({
 				</DialogHeader>
 				<div className="grid min-h-0 gap-4 sm:grid-cols-[14rem_1fr]">
 					<ul aria-label={t("meetings.list")} className="space-y-1">
-						{meetings.map((m) => (
+						{entries.map((m) => (
 							<li key={m.call_id}>
 								<button
 									type="button"
@@ -228,7 +260,9 @@ export function MeetingHistoryButton({
 									<span className="block text-xs text-muted-foreground">
 										{m.ended_at === null
 											? t("meetings.live")
-											: t("meetings.lines", { count: m.segments })}
+											: m.segments > 0
+												? t("meetings.lines", { count: m.segments })
+												: t("meetings.recordedOnly")}
 									</span>
 									{m.speakers.length > 0 ? (
 										<span className="block truncate text-xs text-muted-foreground">
@@ -242,24 +276,26 @@ export function MeetingHistoryButton({
 					<div className="max-h-[60vh] min-w-0 space-y-3 overflow-y-auto">
 						{current ? (
 							<>
-								<div className="flex justify-end">
-									<Button
-										size="sm"
-										variant="outline"
-										disabled={saving}
-										onClick={() => {
-											setSaving(true);
-											void downloadTranscript(
-												projectId,
-												channelId,
-												current.call_id,
-											).finally(() => setSaving(false));
-										}}
-									>
-										<Download />
-										{t("meetings.download")}
-									</Button>
-								</div>
+								{hasTranscript || current.ended_at === null ? (
+									<div className="flex justify-end">
+										<Button
+											size="sm"
+											variant="outline"
+											disabled={saving}
+											onClick={() => {
+												setSaving(true);
+												void downloadTranscript(
+													projectId,
+													channelId,
+													current.call_id,
+												).finally(() => setSaving(false));
+											}}
+										>
+											<Download />
+											{t("meetings.download")}
+										</Button>
+									</div>
+								) : null}
 								{(recordings ?? [])
 									.filter((r) => r.call_id === current.call_id)
 									.map((r) => (
@@ -270,11 +306,13 @@ export function MeetingHistoryButton({
 											rec={r}
 										/>
 									))}
-								<TranscriptView
-									projectId={projectId}
-									channelId={channelId}
-									meeting={current}
-								/>
+								{assistants ? (
+									<TranscriptView
+										projectId={projectId}
+										channelId={channelId}
+										meeting={current}
+									/>
+								) : null}
 							</>
 						) : null}
 					</div>

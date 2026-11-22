@@ -549,7 +549,7 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 		if in.GitCommitterEmail != nil {
 			email = *in.GitCommitterEmail
 		}
-		if err := rejectMeetingOnlyFields(name, email, in.DockerEnabled != nil && *in.DockerEnabled, false); err != nil {
+		if err := rejectMeetingOnlyFields(name, email, in.DockerEnabled != nil && *in.DockerEnabled, (in.DefaultEnvironmentID != nil && *in.DefaultEnvironmentID != uuid.Nil) || (in.DefaultFolderID != nil && *in.DefaultFolderID != uuid.Nil)); err != nil {
 			return nil, err
 		}
 	} else if a.AgentType != agentdom.AgentTypeLLM && a.AgentType != "" {

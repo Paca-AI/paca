@@ -362,7 +362,8 @@
 		"download": "Télécharger la transcription",
 		"empty": "Rien n'a encore été dit.",
 		"loadFailed": "Impossible de charger la transcription.",
-		"transcript": "Transcription"
+		"transcript": "Transcription",
+		"recordedOnly": "Enregistré, non transcrit"
 	},
 	"recording": {
 		"notice": "Cet appel est enregistré.",

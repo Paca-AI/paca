@@ -215,19 +215,38 @@ try {
 		role_ids: [roleId("Meeting assistant")],
 		meeting_settings: { stt_provider: "openai", stt_model: "whisper-1", stt_api_key: "k" },
 	});
-	check("a transcription-only agent is created without any model settings", minimal.status < 300 && minimal.data?.agent_type === "meeting", `${minimal.status} ${minimal.text.slice(0, 160)}`);
-	const mset = must(await admin.req("GET", `/projects/${pid}/agents/${minimal.data?.id}/meeting-settings`), "minimal settings");
+	check(
+		"a transcription-only agent is created without any model settings",
+		minimal.status < 300 && minimal.data?.agent_type === "meeting",
+		`${minimal.status} ${minimal.text.slice(0, 160)}`,
+	);
+	const mset = must(
+		await admin.req("GET", `/projects/${pid}/agents/${minimal.data?.id}/meeting-settings`),
+		"minimal settings",
+	);
 	check("it transcribes only by default", mset.mode === "notes_only" && mset.summary_target === "none");
-	for (const [what, patch] of [["suggestions", { mode: "on_demand" }], ["notes", { summary_target: "channel_message" }]]) {
+	for (const [what, patch] of [
+		["suggestions", { mode: "on_demand" }],
+		["notes", { summary_target: "channel_message" }],
+	]) {
 		const r = await admin.req("PATCH", `/projects/${pid}/agents/${minimal.data?.id}/meeting-settings`, patch);
-		check(`turning on ${what} needs the model first`, r.status === 400 && r.error?.code === "MEETING_MODEL_REQUIRED", `${r.status} ${r.text.slice(0, 120)}`);
+		check(
+			`turning on ${what} needs the model first`,
+			r.status === 400 && r.error?.code === "MEETING_MODEL_REQUIRED",
+			`${r.status} ${r.text.slice(0, 120)}`,
+		);
 	}
 	const needsModel = await admin.req("POST", `/projects/${pid}/agents`, {
 		name: `NeedsModel ${run}`,
 		handle: `needs${run}`,
 		agent_type: "meeting",
 		role_ids: [roleId("Meeting assistant")],
-		meeting_settings: { stt_provider: "openai", stt_model: "whisper-1", stt_api_key: "k", summary_target: "channel_message" },
+		meeting_settings: {
+			stt_provider: "openai",
+			stt_model: "whisper-1",
+			stt_api_key: "k",
+			summary_target: "channel_message",
+		},
 	});
 	check("notes at creation need the model", needsModel.status === 400, `${needsModel.status}`);
 	const leftovers = must(await admin.req("GET", `/projects/${pid}/agents`), "agents");

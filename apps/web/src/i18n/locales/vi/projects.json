@@ -472,7 +472,7 @@
 				"descriptionLabel": "Mô tả",
 				"descriptionPlaceholder": "Tác nhân này dùng để làm gì?",
 				"descriptionHint": "Hiển thị cho Jev khi quyết định tác nhân nào sẽ xử lý cuộc trò chuyện, hoặc có nên giao nhiệm vụ cho tác nhân đó hay không, ở chế độ Tự động. Nhà cung cấp và mô hình được thêm tự động.",
-				"meetingNoModel": "Trợ lý này chỉ ghi lại lời nói nên không cần mô hình. Bật ghi chú hoặc đề xuất ở thẻ Trợ lý để thiết lập."
+				"meetingNoModel": "Hiện chỉ phiên âm nên mô hình là tùy chọn. Hãy thiết lập tại đây trước khi bật ghi chú hoặc gợi ý ở tab Trợ lý."
 			},
 			"mcp": {
 				"serverCount_one": "{{count}} máy chủ đã cấu hình",
@@ -698,7 +698,7 @@
 					"announcement": "Thông báo hiển thị khi tham gia",
 					"announcementPlaceholder": "Ví dụ: Tôi đang ghi lại cuộc gọi này để ghi chú.",
 					"suggestions": "Đề xuất công việc và tài liệu",
-					"suggestionsHint": "Tùy chọn. Trợ lý luôn ghi lại lời nói và viết ghi chú; bật để nó cũng đề xuất công việc và tài liệu cho mọi người phê duyệt.",
+					"suggestionsHint": "Tùy chọn. Bật để trợ lý đề xuất công việc và tài liệu cho mọi người duyệt. Cần một mô hình ngôn ngữ.",
 					"suggestWhen": "Khi nào đề xuất",
 					"notes": "Viết ghi chú cuộc họp",
 					"notesHint": "Sau cuộc gọi, đăng lên kênh một bản tóm tắt ngắn gồm các quyết định và việc cần làm. Dùng mô hình của trợ lý."

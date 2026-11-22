@@ -362,7 +362,8 @@
 		"download": "下载转写",
 		"empty": "还没有人说话。",
 		"loadFailed": "无法加载转写。",
-		"transcript": "转写"
+		"transcript": "转写",
+		"recordedOnly": "已录制，未转写"
 	},
 	"recording": {
 		"notice": "此通话正在录制。",

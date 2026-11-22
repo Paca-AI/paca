@@ -94,6 +94,9 @@ export function describeProposal(kind: string, payload: Record<string, unknown>)
 export class Assistant {
 	private readonly lines: Line[] = [];
 	private pending: { speaker_id: string; text: string; spoken_at: string }[] = [];
+	/** Turns heard in total; the cursor below counts in these, not in `lines`,
+	 * which is a capped window. */
+	private heard = 0;
 	private seen = 0;
 	private lastSuggestAt = 0;
 	private flushing: Promise<void> = Promise.resolve();
@@ -135,6 +138,7 @@ export class Assistant {
 		if (text === "") return;
 		const at = new Date(u.startedAt).toISOString();
 		this.lines.push({ speaker: speakerId, text, at });
+		this.heard++;
 		if (this.lines.length > 600) this.lines.splice(0, this.lines.length - 600);
 		this.pending.push({ speaker_id: speakerId, text, spoken_at: at });
 		void this.out.caption({ speaker_id: speakerId, text, at }).catch(() => undefined);
@@ -179,10 +183,11 @@ export class Assistant {
 		const b = this.boot.behavior;
 		if (b.mode === "notes_only" || this.stopped || !this.chat) return 0;
 		const tools = this.tools();
-		if (tools.length === 0 || this.lines.length === this.seen) return 0;
+		if (tools.length === 0 || this.heard === this.seen) return 0;
 		this.lastSuggestAt = this.now();
-		const from = this.seen;
-		this.seen = this.lines.length;
+		// Index into the capped window of the first turn not yet suggested on.
+		const from = this.seen - (this.heard - this.lines.length);
+		this.seen = this.heard;
 		const system = [BASE_PROMPT, this.boot.instructions].filter(Boolean).join("\n\n");
 		let made = 0;
 		try {

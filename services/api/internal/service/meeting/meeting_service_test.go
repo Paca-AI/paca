@@ -340,8 +340,8 @@ func TestRemoveEndsSession(t *testing.T) {
 	if err := s.Remove(context.Background(), uuid.New(), ch, repo.info.ID); err != nil {
 		t.Fatal(err)
 	}
-	if len(room.deleted) != 1 || len(room.removed) != 1 || room.removed[0] != repo.info.ID.String() {
-		t.Errorf("deleted %v removed %v", room.deleted, room.removed)
+	if len(room.deleted) != 1 {
+		t.Errorf("deleted %v", room.deleted)
 	}
 	if repo.sessions[sess.ID].LeftAt == nil || repo.keys[sess.ID.String()] {
 		t.Error("session must be closed and keys revoked")

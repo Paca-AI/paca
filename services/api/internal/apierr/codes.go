@@ -648,7 +648,6 @@ const (
 	// assistant cannot run conversations.
 	CodeAgentNotRunnable Code = "AGENT_NOT_RUNNABLE"
 
-	// Meeting assistant (docs/architecture/chat-and-meetings.md, Phase 3b).
 	// CodeMeetingDisabled is MEETING_DISABLED: assistants are not enabled here.
 	CodeMeetingDisabled Code = "MEETING_DISABLED"
 	// CodeMeetingNoOpenCall is MEETING_NO_OPEN_CALL.

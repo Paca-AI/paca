@@ -472,7 +472,7 @@
 				"descriptionLabel": "Descripción",
 				"descriptionPlaceholder": "¿Para qué sirve este agente?",
 				"descriptionHint": "Se muestra a Jev al decidir qué agente debe encargarse de un chat, o si asignarle una tarea, en el modo Automático. El proveedor y el modelo se añaden automáticamente.",
-				"meetingNoModel": "Este asistente solo transcribe, así que no necesita modelo. Activa las notas o las sugerencias en la pestaña Asistente para configurarlo."
+				"meetingNoModel": "Por ahora solo transcribe, así que el modelo es opcional. Configura uno aquí antes de activar las notas o las sugerencias en la pestaña Asistente."
 			},
 			"mcp": {
 				"serverCount_one": "{{count}} servidor configurado",
@@ -698,7 +698,7 @@
 					"announcement": "Mensaje al unirse",
 					"announcementPlaceholder": "Por ejemplo: Transcribo esta llamada para tomar notas.",
 					"suggestions": "Sugerir tareas y documentos",
-					"suggestionsHint": "Opcional. El asistente transcribe y redacta notas en cualquier caso; actívalo para que también sugiera tareas y documentos que las personas aprueben.",
+					"suggestionsHint": "Opcional. Actívalo para que el asistente sugiera tareas y documentos que las personas aprueben. Requiere un modelo de lenguaje.",
 					"suggestWhen": "Cuándo sugerir",
 					"notes": "Redactar notas de la reunión",
 					"notesHint": "Al terminar la llamada, publica en el canal un breve resumen con las decisiones y los puntos de acción. Usa el modelo del asistente."

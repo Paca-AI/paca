@@ -30,6 +30,7 @@ const meeting = (over: Record<string, unknown> = {}) => ({
 
 function serve(o: {
 	enabled?: boolean;
+	recording?: boolean;
 	meetings?: unknown[];
 	recordings?: unknown[];
 }) {
@@ -37,6 +38,8 @@ function serve(o: {
 		const data = (v: unknown) => ({ data: { data: v } });
 		if (url === "/chat/meeting/config")
 			return data({ enabled: o.enabled ?? true });
+		if (url === "/chat/calls/config")
+			return data({ enabled: true, recording: o.recording ?? true });
 		if (url.endsWith("/meetings")) return data(o.meetings ?? []);
 		if (url.endsWith("/recordings")) return data(o.recordings ?? []);
 		if (url.endsWith("/url"))
@@ -214,5 +217,17 @@ describe("MeetingHistoryButton", () => {
 		expect(
 			await screen.findByText("Nothing has been said yet."),
 		).toBeInTheDocument();
+	});
+
+	it("still plays a recording when the assistant is off", async () => {
+		serve({ enabled: false, meetings: [], recordings: [rec()] });
+		renderButton();
+		await userEvent.click(
+			await screen.findByRole("button", { name: "Meeting history" }),
+		);
+		expect(
+			await screen.findByRole("button", { name: "Play recording (2 min)" }),
+		).toBeInTheDocument();
+		expect(screen.queryByText("Nothing has been said yet.")).toBeNull();
 	});
 });
