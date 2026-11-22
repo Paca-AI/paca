@@ -7,6 +7,7 @@ import {
 	Code2,
 	ExternalLink,
 	GitBranch,
+	Headphones,
 	KeyRound,
 	Plus,
 	Save,
@@ -93,6 +94,7 @@ import {
 	environmentConfigQueryOptions,
 	environmentQueryOptions,
 } from "@/lib/environment-api";
+import { meetingSettingsQueryOptions } from "@/lib/meeting-api";
 import { notifyError } from "@/lib/notify";
 import { agentAvatar } from "@/lib/provider-logos";
 import { splitShellCommand } from "@/lib/shell-command";
@@ -101,6 +103,7 @@ import { AcpBridgeSetup } from "./acp-bridge-setup";
 import { AcpModelEffortFields } from "./acp-model-effort-fields";
 import { AgentActivityTab } from "./agent-activity-tab";
 import { AgentGlobalRoleTab } from "./agent-global-role-tab";
+import { MeetingAssistantTab } from "./meeting-assistant-tab";
 
 // Shared between the project agent detail page
 // (routes/.../projects/$projectId/agents/$agentId/index.tsx) and the global
@@ -122,7 +125,8 @@ type Tab =
 	| "env-vars"
 	| "global-role"
 	| "git"
-	| "activity";
+	| "activity"
+	| "assistant";
 
 const CUSTOM = "__custom__";
 
@@ -243,6 +247,22 @@ function OverviewTab({
 	const acpCommandParts = splitShellCommand(acpCommand);
 	const isAcp = agent.agent_type === "acp";
 	const isProviderCli = agent.agent_type === "provider_cli";
+	// A meeting assistant reasons with the llm_* fields and its instructions are
+	// the system prompt, but it runs in the LiveKit worker: no git identity,
+	// Docker or environment (the server rejects them).
+	const isMeeting = agent.agent_type === "meeting";
+	// Notes and suggestions use the assistant's language model; transcription
+	// alone does not, so a transcription-only assistant may have no model yet.
+	// The fields stay visible so one can be set up before either is turned on.
+	const meetingSettings = useQuery({
+		...meetingSettingsQueryOptions(projectId ?? "", agent.id),
+		enabled: isMeeting && !!projectId,
+	}).data;
+	const modelRequired =
+		!isMeeting ||
+		!meetingSettings ||
+		meetingSettings.mode !== "notes_only" ||
+		meetingSettings.summary_target !== "none";
 	// Mirrors agentsvc.requiresSerialDispatch on the server exactly: an
 	// ACP-type agent (apps/acp-bridge's own session model rejects a second
 	// concurrent turn rather than queueing it) or any agent attached to a
@@ -336,10 +356,14 @@ function OverviewTab({
 								...(llmApiKey ? { llm_api_key: llmApiKey } : {}),
 								llm_base_url: llmBaseUrl,
 								system_prompt: systemPrompt,
-								git_committer_name: committerName.trim(),
-								git_committer_email: committerEmail.trim(),
-								docker_enabled: dockerEnabled,
-								...(projectId
+								...(isMeeting
+									? {}
+									: {
+											git_committer_name: committerName.trim(),
+											git_committer_email: committerEmail.trim(),
+											docker_enabled: dockerEnabled,
+										}),
+								...(projectId && !isMeeting
 									? {
 											default_environment_id: defaultEnvironmentId || null,
 											default_folder_id: defaultFolderId || null,
@@ -371,7 +395,8 @@ function OverviewTab({
 				(acpProviderSelect !== "custom" || acpCommandParts.length > 0)
 			: isProviderCli
 				? !!cliProviderSelect && !!defaultEnvironmentId
-				: !!llmProvider && !!llmModel && !!llmBaseUrl.trim()) &&
+				: !modelRequired ||
+					(!!llmProvider && !!llmModel && !!llmBaseUrl.trim())) &&
 		!saveMutation.isPending;
 
 	// The environment/folder pickers are populated from a live query, so a
@@ -433,6 +458,12 @@ function OverviewTab({
 			</div>
 
 			<Separator />
+
+			{isMeeting && !modelRequired && (
+				<p className="text-sm text-muted-foreground">
+					{t("agents.detail.overview.meetingNoModel")}
+				</p>
+			)}
 
 			{!isAcp && !isProviderCli && (
 				<div>
@@ -747,37 +778,43 @@ function OverviewTab({
 						/>
 					</div>
 
-					<Separator />
+					{!isMeeting && <Separator />}
 
-					<div>
-						<p className="text-sm font-medium mb-1">
-							{t("agents.detail.overview.gitCommitterIdentity")}
-						</p>
-						<p className="text-xs text-muted-foreground mb-3">
-							{t("agents.detail.overview.gitCommitterHint")}
-						</p>
-						<div className="grid grid-cols-2 gap-3">
-							<div className="space-y-1.5">
-								<Label>{t("agents.detail.overview.committerNameLabel")}</Label>
-								<Input
-									value={committerName}
-									onChange={(e) => setCommitterName(e.target.value)}
-									disabled={!canWrite}
-									placeholder="paca-agent"
-								/>
-							</div>
-							<div className="space-y-1.5">
-								<Label>{t("agents.detail.overview.committerEmailLabel")}</Label>
-								<Input
-									type="email"
-									value={committerEmail}
-									onChange={(e) => setCommitterEmail(e.target.value)}
-									disabled={!canWrite}
-									placeholder="paca-agent@users.noreply.github.com"
-								/>
+					{!isMeeting && (
+						<div>
+							<p className="text-sm font-medium mb-1">
+								{t("agents.detail.overview.gitCommitterIdentity")}
+							</p>
+							<p className="text-xs text-muted-foreground mb-3">
+								{t("agents.detail.overview.gitCommitterHint")}
+							</p>
+							<div className="grid grid-cols-2 gap-3">
+								<div className="space-y-1.5">
+									<Label>
+										{t("agents.detail.overview.committerNameLabel")}
+									</Label>
+									<Input
+										value={committerName}
+										onChange={(e) => setCommitterName(e.target.value)}
+										disabled={!canWrite}
+										placeholder="paca-agent"
+									/>
+								</div>
+								<div className="space-y-1.5">
+									<Label>
+										{t("agents.detail.overview.committerEmailLabel")}
+									</Label>
+									<Input
+										type="email"
+										value={committerEmail}
+										onChange={(e) => setCommitterEmail(e.target.value)}
+										disabled={!canWrite}
+										placeholder="paca-agent@users.noreply.github.com"
+									/>
+								</div>
 							</div>
 						</div>
-					</div>
+					)}
 				</>
 			)}
 
@@ -785,7 +822,7 @@ function OverviewTab({
 			    provider_cli (mandatory — see canSave's isProviderCli branch)
 			    agents; an ACP agent's sandboxing is owned entirely by the
 			    user's own local ACP client, so it's excluded here too. */}
-			{!isAcp && (
+			{!isAcp && !isMeeting && (
 				<>
 					<Separator />
 
@@ -1924,6 +1961,11 @@ const TABS = [
 		labelKey: "agents.detail.tabs.globalRole",
 		icon: ShieldCheck,
 	},
+	{
+		id: "assistant",
+		labelKey: "agents.detail.tabs.assistant",
+		icon: Headphones,
+	},
 	{ id: "git", labelKey: "agents.detail.tabs.git", icon: GitBranch },
 	{
 		id: "activity",
@@ -2024,6 +2066,17 @@ export function AgentDetailView({
 		if (agent?.agent_type === "acp" && acpHiddenTabs.includes(tab.id)) {
 			return false;
 		}
+		// The assistant tab is for meeting assistants only, and a meeting
+		// assistant has no git identity, tools, skills, variables or runs.
+		if (tab.id === "assistant") return agent?.agent_type === "meeting";
+		if (
+			agent?.agent_type === "meeting" &&
+			(
+				["mcp-servers", "skills", "env-vars", "git", "activity"] as Tab[]
+			).includes(tab.id)
+		) {
+			return false;
+		}
 		if (tab.id === "skills" && cliSkillsUnsupported) return false;
 		return true;
 	});
@@ -2110,11 +2163,13 @@ export function AgentDetailView({
 							</span>
 							<span className="text-muted-foreground/90">·</span>
 							<Badge variant="secondary" className="text-xs">
-								{agent.agent_type === "acp"
-									? (agent.acp_provider ?? "acp")
-									: agent.agent_type === "provider_cli"
-										? (agent.cli_provider ?? "provider_cli")
-										: agent.llm_provider}
+								{agent.agent_type === "meeting"
+									? agent.llm_provider
+									: agent.agent_type === "acp"
+										? (agent.acp_provider ?? "acp")
+										: agent.agent_type === "provider_cli"
+											? (agent.cli_provider ?? "provider_cli")
+											: agent.llm_provider}
 							</Badge>
 						</div>
 					</div>
@@ -2153,6 +2208,15 @@ export function AgentDetailView({
 						projectId={projectId}
 						canWrite={canWrite}
 					/>
+				</TabsContent>
+				<TabsContent value="assistant" className="flex-1 overflow-auto p-6">
+					{projectId && agent.agent_type === "meeting" && (
+						<MeetingAssistantTab
+							projectId={projectId}
+							agentId={agent.id}
+							canWrite={canWrite}
+						/>
+					)}
 				</TabsContent>
 				<TabsContent value="mcp-servers" className="flex-1 overflow-auto p-6">
 					{agent.agent_type !== "acp" && (

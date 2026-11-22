@@ -57,6 +57,7 @@ func NewAttributeSchema() *AttributeSchema {
 		{"conversation.agent_id", "conversation", false},
 		{"channel.kind", "channel", false},
 		{"channel.member_ids", "channel", true},
+		{"proposal.target_id", "proposal", false},
 	}
 	for _, b := range builtin {
 		s.defs[b.key] = AttributeDef{

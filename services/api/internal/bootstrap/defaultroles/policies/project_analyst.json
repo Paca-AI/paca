@@ -18,7 +18,8 @@
         "agents:read",
         "annotations:read",
         "conversations:read",
-        "docs:read", "files:read",
+        "docs:read",
+        "files:read",
         "environments:read",
         "git:read",
         "project.members:read",
@@ -157,6 +158,34 @@
             "private"
           ],
           "channel.member_ids": [
+            "${principal.id}"
+          ]
+        }
+      }
+    },
+    {
+      "sid": "InviteAssistants",
+      "effect": "Allow",
+      "actions": [
+        "calls:invite_agent"
+      ],
+      "resources": [
+        "project/PROJECT_ID",
+        "project/PROJECT_ID/agent/*"
+      ]
+    },
+    {
+      "sid": "ResolveOwnProposals",
+      "effect": "Allow",
+      "actions": [
+        "proposals:resolve"
+      ],
+      "resources": [
+        "project/PROJECT_ID/proposal/*"
+      ],
+      "conditions": {
+        "StringEquals": {
+          "proposal.target_id": [
             "${principal.id}"
           ]
         }

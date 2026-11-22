@@ -142,7 +142,7 @@ export interface AgentEnvVar {
 	created_at: string;
 }
 
-export type AgentType = "llm" | "acp" | "provider_cli";
+export type AgentType = "llm" | "acp" | "provider_cli" | "meeting";
 export type ACPProvider =
 	| "claude-code"
 	| "codex"
@@ -407,6 +407,18 @@ export async function createAgent(
 		parallelism_limit?: number;
 		default_environment_id?: string | null;
 		default_folder_id?: string | null;
+		/** Required for meeting agents: how the assistant transcribes. */
+		meeting_settings?: {
+			stt_provider: string;
+			stt_model: string;
+			stt_api_key?: string;
+			stt_base_url?: string;
+			stt_languages?: string[];
+			/** "notes_only" (default) never suggests; "on_demand" and "auto_suggest" do. */
+			mode?: "notes_only" | "on_demand" | "auto_suggest";
+			/** "channel_message" writes notes after a call; "none" (default) does not. */
+			summary_target?: "none" | "channel_message";
+		};
 		role_ids: string[];
 	},
 ): Promise<Agent> {

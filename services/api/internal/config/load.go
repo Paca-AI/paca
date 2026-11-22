@@ -193,10 +193,12 @@ func Load() (*Config, error) {
 			URL: redisURL,
 		},
 		LiveKit: LiveKitConfig{
-			URL:         livekitSignalURL(env("LIVEKIT_URL", ""), env("PUBLIC_URL", "")),
-			InternalURL: env("LIVEKIT_INTERNAL_URL", ""),
-			APIKey:      env("LIVEKIT_API_KEY", ""),
-			APISecret:   env("LIVEKIT_API_SECRET", ""),
+			URL:           livekitSignalURL(env("LIVEKIT_URL", ""), env("PUBLIC_URL", "")),
+			InternalURL:   env("LIVEKIT_INTERNAL_URL", ""),
+			APIKey:        env("LIVEKIT_API_KEY", ""),
+			APISecret:     env("LIVEKIT_API_SECRET", ""),
+			AgentToken:    env("MEETING_AGENT_TOKEN", ""),
+			EgressEnabled: strings.EqualFold(env("LIVEKIT_EGRESS_ENABLED", ""), "true"),
 		},
 		Cache: CacheConfig{
 			ProjectTTL: cacheProjectTTL,

@@ -110,7 +110,21 @@
 		"callsDisabled": "Les appels ne sont pas configurés sur ce serveur.",
 		"callNotInCall": "Cette personne a déjà quitté l'appel.",
 		"callSelfModerate": "Pour quitter l'appel vous-même, utilisez Quitter l'appel.",
-		"callRemoved": "Un modérateur vous a retiré de cet appel. Vous pourrez le rejoindre dans quelques minutes."
+		"callRemoved": "Un modérateur vous a retiré de cet appel. Vous pourrez le rejoindre dans quelques minutes.",
+		"meetingDisabled": "Les assistants de réunion ne sont pas activés sur ce serveur.",
+		"meetingNoOpenCall": "Rejoignez d'abord l'appel : on ne peut ajouter un assistant qu'à un appel auquel on participe.",
+		"meetingAlreadyInCall": "Cet assistant est déjà dans l'appel.",
+		"meetingNotInCall": "Cet assistant n'est pas dans l'appel.",
+		"meetingNotConfigured": "Il manque des paramètres de modèle à cet assistant. Terminez sa configuration sur la page de l'agent.",
+		"proposalClosed": "Cette suggestion a déjà été traitée ou a expiré.",
+		"proposalInvalid": "Cette suggestion n'est pas valide.",
+		"proposalLimit": "L'assistant a atteint sa limite de suggestions pour cet appel.",
+		"recordingDisabled": "L'enregistrement n'est pas configuré sur ce serveur.",
+		"recordingActive": "Cet appel est déjà enregistré.",
+		"recordingNone": "Cet appel n'est pas enregistré.",
+		"recordingNotFound": "Cet enregistrement est introuvable.",
+		"callNoOpenCall": "Il n'y a pas d'appel à enregistrer.",
+		"meetingModelRequired": "Configurez d'abord le modèle de l'assistant dans l'onglet Aperçu."
 	},
 	"noPermission": {
 		"title": "Vous n'avez pas l'autorisation d'utiliser la discussion dans ce projet",
@@ -257,5 +271,113 @@
 		"voiceRow": "{{count}} en vocal",
 		"backToCall": "Retour à l'appel",
 		"ended": "L'appel est terminé. Vous pouvez fermer cet onglet."
+	},
+	"assistant": {
+		"sectionLabel": "Assistant de réunion",
+		"title": "Assistant",
+		"suggest": "Suggérer des tâches",
+		"suggested": "Suggestions prêtes pour vous ci-dessous : {{count}}.",
+		"nothingToSuggest": "Rien à suggérer pour l'instant.",
+		"suggestFailed": "L'assistant n'a pas pu faire de suggestions. Réessayez.",
+		"none": "Aucun assistant dans cet appel.",
+		"listening": "{{name}} écoute et transcrit",
+		"listeningNotes": "{{name}} écoute et prend des notes",
+		"joining": "{{name}} rejoint l'appel…",
+		"keeps": "Transcription conservée {{days}} jours.",
+		"keepsNothing": "Rien n'est enregistré.",
+		"remove": "Retirer {{name}} de l'appel",
+		"invite": "Ajouter un assistant",
+		"pickerHint": "Un assistant écoute tout le monde dans l'appel. Choisissez-en un à ajouter.",
+		"noneToInvite": "Aucun assistant de réunion n'est disponible dans ce projet.",
+		"picker": {
+			"keeps": "transcription conservée {{days}} jours",
+			"keepsNothing": "n'enregistre rien",
+			"mode": {
+				"on_demand": "Transcrit et suggère sur demande",
+				"auto_suggest": "Transcrit et suggère de lui-même",
+				"notes_only": "Transcrit l'appel"
+			},
+			"withNotes": "{{what}}, rédige des notes"
+		},
+		"captions": "Sous-titres en direct",
+		"someone": "Quelqu'un",
+		"transcript": "Transcription",
+		"hideTranscript": "Masquer la transcription"
+	},
+	"proposals": {
+		"sectionLabel": "Suggestions",
+		"othersReviewing": "{{agent}} a suggéré : {{kind}}. {{name}} l'examine.",
+		"from": "{{agent}} suggère : {{kind}}",
+		"kinds": {
+			"task": {
+				"create": "Créer une tâche",
+				"update": "Mettre à jour une tâche",
+				"comment": "Commenter une tâche"
+			},
+			"doc": {
+				"create_from_notes": "Enregistrer les notes dans un document"
+			}
+		},
+		"fields": {
+			"title": "Titre",
+			"description": "Description",
+			"priority": "Priorité",
+			"comment": "Commentaire",
+			"notes": "Notes"
+		},
+		"priorities": {
+			"none": "Aucune priorité",
+			"low": "Basse",
+			"medium": "Moyenne",
+			"high": "Haute",
+			"critical": "Critique"
+		},
+		"updateFields": {
+			"task_id": "Tâche",
+			"status_id": "Statut",
+			"assignee_id": "Assigné à",
+			"priority": "Priorité",
+			"sprint_id": "Sprint"
+		},
+		"cleared": "(effacé)",
+		"confirm": {
+			"task": {
+				"create": "Créer la tâche",
+				"update": "Appliquer la modification",
+				"comment": "Publier le commentaire"
+			},
+			"doc": {
+				"create_from_notes": "Créer le document"
+			}
+		},
+		"dismiss": "Ignorer"
+	},
+	"meetings": {
+		"open": "Historique des réunions",
+		"title": "Historique des réunions",
+		"description": "Les appels de ce canal qui ont été transcrits.",
+		"list": "Appels",
+		"live": "En cours",
+		"lines": "Lignes : {{count}}",
+		"download": "Télécharger la transcription",
+		"empty": "Rien n'a encore été dit.",
+		"loadFailed": "Impossible de charger la transcription.",
+		"transcript": "Transcription",
+		"recordedOnly": "Enregistré, non transcrit"
+	},
+	"recording": {
+		"notice": "Cet appel est enregistré.",
+		"stopping": "Finalisation de l'enregistrement…",
+		"start": "Démarrer l'enregistrement",
+		"stop": "Arrêter l'enregistrement",
+		"confirmTitle": "Enregistrer cet appel ?",
+		"confirmBody": "Toutes les personnes de l'appel sont informées qu'il est enregistré, et la vidéo est conservée avec ce canal pour celles qui peuvent le lire.",
+		"confirm": "Démarrer l'enregistrement",
+		"cancel": "Annuler",
+		"play": "Lire l'enregistrement ({{minutes}} min)",
+		"download": "Télécharger l'enregistrement",
+		"processing": "L'enregistrement est en cours de traitement.",
+		"failed": "L'enregistrement a échoué.",
+		"unavailable": "Impossible d'ouvrir l'enregistrement. Réessayez."
 	}
 }

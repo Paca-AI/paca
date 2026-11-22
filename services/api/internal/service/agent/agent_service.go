@@ -226,6 +226,30 @@ func rejectLLMOnlyFields(f llmOnlyFields) error {
 	return &agentdom.FieldNotSupportedError{Fields: fields}
 }
 
+// rejectMeetingOnlyFields returns a *agentdom.FieldNotSupportedError when a
+// non-empty field that a meeting agent never uses is supplied (git identity,
+// Docker, an environment or folder): accepting them would report success while
+// storing nothing the assistant reads.
+func rejectMeetingOnlyFields(gitName, gitEmail string, docker, environment bool) error {
+	var fields []string
+	if gitName != "" {
+		fields = append(fields, "git_committer_name")
+	}
+	if gitEmail != "" {
+		fields = append(fields, "git_committer_email")
+	}
+	if docker {
+		fields = append(fields, "docker_enabled")
+	}
+	if environment {
+		fields = append(fields, "default_environment_id")
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	return &agentdom.FieldNotSupportedError{Fields: fields}
+}
+
 // encryptKey encrypts plaintext if an encryptor is configured; otherwise returns plaintext unchanged.
 func (s *Service) encryptKey(plaintext string) (string, error) {
 	if s.encryptor == nil || plaintext == "" {
@@ -296,7 +320,7 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 	if agentType == "" {
 		agentType = agentdom.AgentTypeLLM
 	}
-	if agentType != agentdom.AgentTypeLLM && agentType != agentdom.AgentTypeACP && agentType != agentdom.AgentTypeProviderCLI {
+	if agentType != agentdom.AgentTypeLLM && agentType != agentdom.AgentTypeACP && agentType != agentdom.AgentTypeProviderCLI && agentType != agentdom.AgentTypeMeeting {
 		return nil, agentdom.ErrAgentTypeInvalid
 	}
 
@@ -366,6 +390,27 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 		// System prompt and git committer identity are meaningless here too
 		// (same reasoning as the ACP case below) — the underlying CLI owns
 		// its own persona/system-prompt mechanism and its own git identity.
+	case agentdom.AgentTypeMeeting:
+		// A meeting assistant reasons with the same model fields an llm agent
+		// has, and its instructions are the system prompt. Git identity,
+		// Docker and an environment mean nothing to it: it runs in the LiveKit
+		// worker, not in agent-runner's sandbox.
+		if err := rejectMeetingOnlyFields(in.GitCommitterName, in.GitCommitterEmail, in.DockerEnabled, in.DefaultEnvironmentID != nil || in.DefaultFolderID != nil); err != nil {
+			return nil, err
+		}
+		encryptedKey, err := s.encryptKey(in.LLMAPIKey)
+		if err != nil {
+			return nil, fmt.Errorf("encrypt LLM API key: %w", err)
+		}
+		a.LLMProvider = in.LLMProvider
+		a.LLMModel = in.LLMModel
+		a.LLMAPIKeySecret = encryptedKey
+		a.LLMBaseURL = in.LLMBaseURL
+		a.SystemPrompt = in.SystemPrompt
+		// Instructions are not required to create one: it starts with the default.
+		if strings.TrimSpace(a.SystemPrompt) == "" {
+			a.SystemPrompt = agentdom.DefaultMeetingSystemPrompt
+		}
 	default:
 		encryptedKey, err := s.encryptKey(in.LLMAPIKey)
 		if err != nil {
@@ -496,12 +541,23 @@ func (s *Service) UpdateAgent(ctx context.Context, projectID, agentID uuid.UUID,
 	// unlike the fields above a non-empty value on an ACP or provider_cli
 	// agent is rejected (rejectLLMOnlyFields) — dropping a role prompt
 	// silently left callers believing it was configured.
-	if a.AgentType != agentdom.AgentTypeLLM && a.AgentType != "" {
+	if a.AgentType == agentdom.AgentTypeMeeting {
+		var name, email string
+		if in.GitCommitterName != nil {
+			name = *in.GitCommitterName
+		}
+		if in.GitCommitterEmail != nil {
+			email = *in.GitCommitterEmail
+		}
+		if err := rejectMeetingOnlyFields(name, email, in.DockerEnabled != nil && *in.DockerEnabled, (in.DefaultEnvironmentID != nil && *in.DefaultEnvironmentID != uuid.Nil) || (in.DefaultFolderID != nil && *in.DefaultFolderID != uuid.Nil)); err != nil {
+			return nil, err
+		}
+	} else if a.AgentType != agentdom.AgentTypeLLM && a.AgentType != "" {
 		if err := rejectLLMOnlyFields(llmOnlyFieldsFromUpdate(in.SystemPrompt, in.GitCommitterName, in.GitCommitterEmail)); err != nil {
 			return nil, err
 		}
 	}
-	if a.AgentType == agentdom.AgentTypeLLM || a.AgentType == "" {
+	if a.AgentType == agentdom.AgentTypeLLM || a.AgentType == "" || a.AgentType == agentdom.AgentTypeMeeting {
 		if in.LLMProvider != nil {
 			a.LLMProvider = *in.LLMProvider
 		}
@@ -2204,8 +2260,10 @@ func (s *Service) StartChatSession(ctx context.Context, projectID, agentID, memb
 	if err := validateOnBusy(onBusy); err != nil {
 		return nil, nil, err
 	}
-	if _, err := s.GetAgent(ctx, projectID, agentID); err != nil {
+	if a, err := s.GetAgent(ctx, projectID, agentID); err != nil {
 		return nil, nil, err
+	} else if a.AgentType == agentdom.AgentTypeMeeting {
+		return nil, nil, agentdom.ErrAgentNotRunnable
 	}
 
 	// Resolved before the capacity check below (which needs it to also
@@ -2762,6 +2820,9 @@ func (s *Service) ListChatMessages(ctx context.Context, sessionID, memberID uuid
 // -------------------------------------------------------------------------
 
 func (s *Service) createConversation(ctx context.Context, projectID, agentID uuid.UUID, memberID *uuid.UUID, template agentdom.AgentConversation) (*agentdom.AgentConversation, error) {
+	if err := s.requireRunnable(ctx, agentID); err != nil {
+		return nil, err
+	}
 	now := time.Now()
 	conv := &agentdom.AgentConversation{
 		ID:                  uuid.New(),
@@ -2792,10 +2853,28 @@ func (s *Service) createConversation(ctx context.Context, projectID, agentID uui
 	return conv, nil
 }
 
+// requireRunnable returns ErrAgentNotRunnable for a meeting assistant: it joins
+// calls (services/meeting-agent) and is never run by agent-runner, so no
+// trigger may start a conversation for it. An agent that cannot be loaded here
+// is left to the caller's own not-found handling.
+func (s *Service) requireRunnable(ctx context.Context, agentID uuid.UUID) error {
+	a, err := s.repo.FindAgentByID(ctx, agentID)
+	if err != nil || a == nil {
+		return nil
+	}
+	if a.AgentType == agentdom.AgentTypeMeeting {
+		return agentdom.ErrAgentNotRunnable
+	}
+	return nil
+}
+
 // createGlobalConversation is createConversation's global-chat sibling:
 // there is no project_id and the actor is a user directly rather than a
 // resolved project_members.id.
 func (s *Service) createGlobalConversation(ctx context.Context, agentID, actorAccountID uuid.UUID, template agentdom.AgentConversation) (*agentdom.AgentConversation, error) {
+	if err := s.requireRunnable(ctx, agentID); err != nil {
+		return nil, err
+	}
 	now := time.Now()
 	conv := &agentdom.AgentConversation{
 		ID:             uuid.New(),

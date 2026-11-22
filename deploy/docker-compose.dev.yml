@@ -165,6 +165,11 @@ services:
       LIVEKIT_INTERNAL_URL: http://livekit:7880
       LIVEKIT_API_KEY: devkey
       LIVEKIT_API_SECRET: devsecret-devsecret-devsecret-0123456789
+      # Call recording: true once the egress service runs (--profile recording).
+      LIVEKIT_EGRESS_ENABLED: ${LIVEKIT_EGRESS_ENABLED:-false}
+      # Meeting assistants (the meeting-agent service below, profile "meeting")
+      # are enabled once this is set; the worker presents the same value.
+      MEETING_AGENT_TOKEN: dev-meeting-agent-token-change-in-production
       # Purely descriptive — services/api never itself publishes any
       # environment port, it only echoes these back via GET
       # /environments/config so the web app's Connect page can show a real
@@ -266,6 +271,10 @@ services:
   livekit:
     image: livekit/livekit-server:v1.13.11
     restart: unless-stopped
+    # Its config points at Valkey (needed by the egress service for recordings).
+    depends_on:
+      valkey:
+        condition: service_started
     environment:
       LIVEKIT_KEYS: "devkey: devsecret-devsecret-devsecret-0123456789"
       LIVEKIT_CONFIG: |
@@ -276,6 +285,8 @@ services:
           # The address browsers send media to: 127.0.0.1 for localhost, the
           # machine's LAN or public IP when you open the app by another host.
           node_ip: ${LIVEKIT_NODE_IP:-127.0.0.1}
+        redis:
+          address: valkey:6379
         webhook:
           api_key: devkey
           urls:
@@ -285,12 +296,61 @@ services:
       - "${LIVEKIT_TCP_PORT:-7881}:7881/tcp"
       - "${LIVEKIT_UDP_PORT:-7882}:7882/udp"
 
+  # ── LiveKit egress (opt-in call recording: docker compose --profile recording up) ──
+  # Composes a call into one MP4 and uploads it to the object-store bucket the API
+  # uses. Needs LiveKit's Redis block (above), LIVEKIT_EGRESS_ENABLED=true on the
+  # API, and SYS_ADMIN for its headless Chrome. The image is large (about 4 GB).
+  egress:
+    profiles: ["recording"]
+    image: livekit/egress:v1.15.0
+    restart: unless-stopped
+    cap_add:
+      - SYS_ADMIN
+    depends_on:
+      - livekit
+      - valkey
+    environment:
+      EGRESS_CONFIG_BODY: |
+        api_key: devkey
+        api_secret: devsecret-devsecret-devsecret-0123456789
+        ws_url: ws://livekit:7880
+        # The egress browser loads its page over https and talks to LiveKit on the
+        # compose network over ws://, which Chrome refuses unless told otherwise.
+        insecure: true
+        health_port: 8083
+        redis:
+          address: valkey:6379
+
+  # ── Meeting assistant worker (opt-in: docker compose --profile meeting up) ──
+  # Joins calls when someone invites a meeting agent, transcribes each person and
+  # proposes tasks for them to approve. It reaches LiveKit and the API on the
+  # compose network. See services/meeting-agent/README.md.
+  meeting-agent:
+    profiles: ["meeting"]
+    build:
+      context: ../services/meeting-agent
+    restart: unless-stopped
+    depends_on:
+      - livekit
+      - api
+    environment:
+      LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: devsecret-devsecret-devsecret-0123456789
+      PACA_API_URL: http://api:8080/api/v1
+      MEETING_AGENT_TOKEN: dev-meeting-agent-token-change-in-production
+
   gateway:
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
-      - "3000:80"
+      # Plain HTTP on 3000 by default. For HTTPS set SITE_ADDRESS,
+      # GATEWAY_HTTP_PORT=80 and GATEWAY_HTTPS_PORT=443 in .env.dev (see
+      # caddy/Caddyfile.dev): Caddy serves 443 and redirects 80 to it.
+      - "${GATEWAY_HTTP_PORT:-3000}:80"
+      - "${GATEWAY_HTTPS_PORT:-3443}:443"
     environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
       # Must match the API's PLUGINS_STORE: "s3" makes the gateway forward
       # /plugins/*, /plugins-mcp/* and /plugins-skills/* to the API instead of
       # serving the plugin folders below.

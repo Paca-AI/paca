@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
+	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/events"
@@ -515,6 +516,14 @@ func (c *TaskAutoAssignConsumer) assigneeCandidates(ctx context.Context, project
 	if err != nil {
 		return nil, err
 	}
+	// A meeting assistant joins calls; it is never given work.
+	runnable := make([]*projectdom.ProjectMember, 0, len(members))
+	for _, m := range members {
+		if m.AgentType != agentdom.AgentTypeMeeting {
+			runnable = append(runnable, m)
+		}
+	}
+	members = runnable
 	if scope != projectdom.JevAutoAssignScopeHuman {
 		return members, nil
 	}

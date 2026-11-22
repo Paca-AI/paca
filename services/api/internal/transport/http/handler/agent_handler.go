@@ -16,6 +16,7 @@ import (
 	"github.com/Paca-AI/api/internal/apierr"
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
+	meetingdom "github.com/Paca-AI/api/internal/domain/meeting"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	taskdom "github.com/Paca-AI/api/internal/domain/task"
 	"github.com/Paca-AI/api/internal/events"
@@ -69,6 +70,22 @@ type AgentHandler struct {
 	projectSvc         agentProjectJevReader
 	encryptor          *secret.Encryptor
 	listScoper         ListScoper
+	meeting            meetingSettingsWriter
+}
+
+// meetingSettingsWriter is the part of the meeting service the create route
+// uses: a meeting agent is created together with its listening settings.
+type meetingSettingsWriter interface {
+	ValidateListening(p meetingdom.SettingsPatch) error
+	NeedsModel(p meetingdom.SettingsPatch) bool
+	UpdateSettings(ctx context.Context, projectID, agentID uuid.UUID, p meetingdom.SettingsPatch) (*meetingdom.Settings, error)
+}
+
+// WithMeetingSettings lets the create route save a meeting agent's listening
+// settings; without it a meeting agent cannot be created.
+func (h *AgentHandler) WithMeetingSettings(m meetingSettingsWriter) *AgentHandler {
+	h.meeting = m
+	return h
 }
 
 // NewAgentHandler returns an AgentHandler wired to the agent service.
@@ -269,14 +286,39 @@ func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		presenter.Error(w, r, apierr.New(apierr.CodeRoleRequired, "role_ids is required"))
 		return
 	}
+	// A meeting assistant is created together with how it listens, so one that
+	// cannot transcribe never exists. Checked before anything is stored.
+	var meetingPatch meetingdom.SettingsPatch
+	// Transcription alone needs no language model: only notes and suggestions do.
+	needsModel := true
+	if agentType == agentdom.AgentTypeMeeting {
+		if h.meeting == nil {
+			presenter.Error(w, r, meetingdom.ErrAssistantsDisabled)
+			return
+		}
+		if req.MeetingSettings == nil {
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "meeting_settings is required for meeting agents"))
+			return
+		}
+		meetingPatch = req.MeetingSettings.Patch()
+		if err := h.meeting.ValidateListening(meetingPatch); err != nil {
+			presenter.Error(w, r, err)
+			return
+		}
+		needsModel = h.meeting.NeedsModel(meetingPatch)
+	}
 	switch agentType {
-	case agentdom.AgentTypeLLM:
+	case agentdom.AgentTypeLLM, agentdom.AgentTypeMeeting:
+		// A meeting assistant reasons with the same model fields (its listening
+		// settings are set afterwards, on /meeting-settings).
 		// llm_base_url is intentionally not required here: the agents table
 		// column defaults to '' (see migration 000022's note on this), and
 		// several LLM providers resolve a default base URL on their own —
 		// requiring it at the API layer would reject otherwise-valid
 		// requests that rely on that default.
 		switch {
+		case !needsModel:
+			// A transcription-only meeting assistant has no model to configure.
 		case req.LLMProvider == "":
 			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "llm_provider is required"))
 			return
@@ -302,7 +344,7 @@ func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	default:
-		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "agent_type must be one of: llm, acp, provider_cli"))
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "agent_type must be one of: llm, acp, provider_cli, meeting"))
 		return
 	}
 	callerID, _ := middleware.ActorIDFromContext(r.Context())
@@ -339,6 +381,16 @@ func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
+	}
+	if agentType == agentdom.AgentTypeMeeting {
+		if _, err := h.meeting.UpdateSettings(r.Context(), projectID, a.ID, meetingPatch); err != nil {
+			// Do not leave a meeting agent that cannot listen behind.
+			if delErr := h.svc.DeleteAgent(r.Context(), projectID, a.ID); delErr != nil {
+				slog.Warn("agents: remove meeting agent whose settings were refused", "agent_id", a.ID, "err", delErr)
+			}
+			presenter.Error(w, r, err)
+			return
+		}
 	}
 	presenter.Created(w, r, h.toAgentResponse(r.Context(), a))
 }

@@ -48,10 +48,13 @@ type Deps struct {
 	Notification *handler.NotificationHandler
 	Chat         *handler.ChatHandler
 	// Call serves voice and video calls on channels (LiveKit); optional.
-	Call   *handler.CallHandler
-	APIKey *handler.APIKeyHandler
-	Plugin *handler.PluginHandler
-	Skills *handler.SkillsHandler
+	Call *handler.CallHandler
+	// Meeting serves the meeting assistant (settings, invites, proposals and
+	// the worker's routes); optional.
+	Meeting *handler.MeetingHandler
+	APIKey  *handler.APIKeyHandler
+	Plugin  *handler.PluginHandler
+	Skills  *handler.SkillsHandler
 	// PluginAssets streams plugin bundle files out of the plugin store; optional.
 	PluginAssets *handler.PluginAssetsHandler
 	Agent        *handler.AgentHandler
@@ -507,6 +510,9 @@ func New(deps Deps) http.Handler {
 						})
 						if deps.Call != nil {
 							r.With(require.Global(iam.ActionChannelsRead)).Get("/calls/config", deps.Call.Config)
+						}
+						if deps.Meeting != nil {
+							r.With(require.Global(iam.ActionChannelsRead)).Get("/meeting/config", deps.Meeting.Config)
 						}
 					})
 				})
@@ -1018,6 +1024,10 @@ func New(deps Deps) http.Handler {
 						r.With(require.AgentUse(iam.ActionAgentsRead)).Get("/{agentId}", deps.Agent.GetAgent)
 						r.With(require.AgentUse(iam.ActionAgentsWrite)).Patch("/{agentId}", deps.Agent.UpdateAgent)
 						r.With(require.AgentUse(iam.ActionAgentsWrite)).Delete("/{agentId}", deps.Agent.DeleteAgent)
+						if deps.Meeting != nil {
+							r.With(require.AgentUse(iam.ActionAgentsRead)).Get("/{agentId}/meeting-settings", deps.Meeting.GetSettings)
+							r.With(require.AgentUse(iam.ActionAgentsWrite), httpmw.RequireJSONContentType()).Patch("/{agentId}/meeting-settings", deps.Meeting.UpdateSettings)
+						}
 
 						// Git identity: the agent's own bot on a Git platform. Creating or
 						// deleting one touches the platform, so it also needs the
@@ -1102,6 +1112,20 @@ func New(deps Deps) http.Handler {
 				if deps.Call != nil {
 					r.With(require.Project(iam.ActionChannelsRead)).Get("/calls", deps.Call.List)
 				}
+				// Meeting assistant. The picker lists meeting agents for anyone who
+				// may invite one; an assistant proposes with its own key
+				// (proposals:write); a proposal is seen in full, claimed and resolved
+				// only under proposals:resolve, whose policy statement carries the
+				// condition proposal.target_id = ${principal.id}.
+				if deps.Meeting != nil {
+					r.With(require.Project(iam.ActionCallsInviteAgent)).Get("/meeting-agents", deps.Meeting.ListAgents)
+					r.With(require.Project(iam.ActionProposalsWrite), httpmw.RequireJSONContentType()).Post("/proposals", deps.Meeting.CreateProposal)
+					r.With(require.Project(iam.ActionChannelsRead)).Get("/proposals/mine", deps.Meeting.ListMyProposals)
+					resolve := require.ProjectEntity("proposal", "proposalId", resProposal, iam.ActionProposalsResolve)
+					r.With(resolve).Get("/proposals/{proposalId}", deps.Meeting.GetProposal)
+					r.With(resolve).Post("/proposals/{proposalId}/claim", deps.Meeting.ClaimProposal)
+					r.With(resolve, httpmw.RequireJSONContentType()).Post("/proposals/{proposalId}/resolve", deps.Meeting.ResolveProposal)
+				}
 				if deps.Chat != nil {
 					r.Route("/channels", func(r chi.Router) {
 						r.With(require.Project(iam.ActionChannelsRead)).Get("/", deps.Chat.ListChannels)
@@ -1145,6 +1169,26 @@ func New(deps Deps) http.Handler {
 								moderate := require.ChannelEntity(iam.ActionChannelsRead, iam.ActionCallsModerate)
 								r.With(moderate).Post("/call/participants/{accountId}/mute", deps.Call.Mute)
 								r.With(moderate).Delete("/call/participants/{accountId}", deps.Call.Remove)
+								// Recording needs calls:record; seeing the recordings of a channel
+								// and playing one needs only the channel, like its messages.
+								record := require.ChannelEntity(iam.ActionChannelsRead, iam.ActionCallsRecord)
+								r.With(record).Post("/call/recording", deps.Call.StartRecording)
+								r.With(record).Delete("/call/recording", deps.Call.StopRecording)
+								r.With(read).Get("/recordings", deps.Call.ListRecordings)
+								r.With(read).Get("/recordings/{recordingId}/url", deps.Call.RecordingURL)
+								// The assistants in the call. Inviting one needs the call and
+								// calls:invite_agent on that agent; taking one out is moderation.
+								if deps.Meeting != nil {
+									r.With(read).Get("/call/assistants", deps.Meeting.ListAssistants)
+									r.With(require.ChannelEntity(iam.ActionChannelsRead, iam.ActionCallsJoin), require.AgentUse(iam.ActionCallsInviteAgent)).
+										Post("/call/assistants/{agentId}", deps.Meeting.Invite)
+									r.With(moderate).Delete("/call/assistants/{agentId}", deps.Meeting.Remove)
+									r.With(read).Get("/proposals", deps.Meeting.ListChannelProposals)
+									// What was said: anyone who can read the channel reads the
+									// transcripts of its calls, as they read its messages.
+									r.With(read).Get("/meetings", deps.Meeting.ListMeetings)
+									r.With(read).Get("/meetings/{callId}/transcript", deps.Meeting.MeetingTranscript)
+								}
 							}
 						})
 					})
@@ -1399,6 +1443,21 @@ func New(deps Deps) http.Handler {
 			// secret and the hash of its body, which the service verifies.
 			if deps.Call != nil {
 				r.With(authLimit(120*deps.AuthRateLimit)).Post("/webhooks/livekit", deps.Call.ReceiveWebhook)
+			}
+
+			// The meeting assistant's worker (services/meeting-agent). It is not a
+			// person: it proves itself with a shared secret (X-Meeting-Worker-Token)
+			// checked by the service, and from then on calls the API with the
+			// agent's own short-lived key, so what it writes is judged by the
+			// agent's roles.
+			if deps.Meeting != nil {
+				r.Route("/internal/meeting-agent/sessions/{sessionId}", func(r chi.Router) {
+					r.Use(authLimit(600 * deps.AuthRateLimit))
+					r.Post("/bootstrap", deps.Meeting.WorkerBootstrap)
+					r.Post("/transcript", deps.Meeting.WorkerAppendTranscript)
+					r.Get("/transcript", deps.Meeting.WorkerTranscript)
+					r.Post("/finish", deps.Meeting.WorkerFinish)
+				})
 			}
 
 			// Git platform webhooks — public for the same reason: the caller

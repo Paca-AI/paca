@@ -287,7 +287,15 @@
 			"createAgent": "创建智能体",
 			"finish": "完成",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "你是一名高级软件工程师…"
+			"systemPromptPlaceholder": "你是一名高级软件工程师…",
+			"agentTypeMeeting": "会议助手",
+			"agentTypeMeetingHint": "加入通话、转写并建议任务",
+			"agentTypeMeetingGlobalDisabledHint": "会议助手属于某个项目。请在项目的“智能体”页面中创建。",
+			"listeningSection": "转写",
+			"listeningHint": "会议助手需要转写服务商才能聆听通话。",
+			"listeningKeyOrEndpoint": "请输入 API 密钥，或自托管 Whisper 的端点。",
+			"assistantSection": "助手",
+			"assistantSectionHint": "用于你在下面开启的笔记和建议。"
 		},
 		"card": {
 			"configure": "配置",
@@ -366,7 +374,8 @@
 				"envVars": "环境变量",
 				"globalRole": "全局角色",
 				"activity": "动态",
-				"git": "Git"
+				"git": "Git",
+				"assistant": "助手"
 			},
 			"globalRole": {
 				"title": "全局角色",
@@ -462,7 +471,8 @@
 				"cliLoginNoEnvironment": "该智能体尚未设置环境 — 请先在上方选择一个环境。",
 				"descriptionLabel": "描述",
 				"descriptionPlaceholder": "此代理的用途是什么？",
-				"descriptionHint": "在自动模式下，当 Jev 决定由哪个代理处理聊天或是否为其分配任务时会显示此内容。提供商和模型会自动添加。"
+				"descriptionHint": "在自动模式下，当 Jev 决定由哪个代理处理聊天或是否为其分配任务时会显示此内容。提供商和模型会自动添加。",
+				"meetingNoModel": "目前仅转写，因此模型是可选的。请先在此设置，再在“助手”标签页开启笔记或建议。"
 			},
 			"mcp": {
 				"serverCount_one": "已配置 {{count}} 个服务器",
@@ -630,6 +640,69 @@
 					"description": "该智能体与其他智能体一样，通过工作区共享的机器人工作。"
 				},
 				"permissions": "该智能体在 Git 上能做什么取决于它在项目中的角色：读写权限来自角色的 Git 权限；批准和合并拉取请求默认不授予。"
+			},
+			"assistant": {
+				"intro": "设置此助手在通话中如何聆听以及可以建议什么。其推理模型和指令在“概览”标签页。它从不发言：每条建议都由人确认后才会产生任何更改。",
+				"listening": "聆听",
+				"behavior": "行为",
+				"privacy": "隐私",
+				"modes": {
+					"on_demand": "按需",
+					"auto_suggest": "自动建议",
+					"notes_only": "仅笔记"
+				},
+				"modeHints": {
+					"on_demand": "当有人点击“建议任务”时提出任务建议。",
+					"auto_suggest": "每隔几分钟根据最近的讨论提出任务建议。",
+					"notes_only": "保留转写并撰写笔记，从不建议任务。"
+				},
+				"kindNames": {
+					"task": {
+						"create": "创建任务",
+						"update": "更新任务",
+						"comment": "评论任务"
+					},
+					"doc": {
+						"create_from_notes": "将笔记保存为文档"
+					}
+				},
+				"targets": {
+					"requester": "添加它的人",
+					"host": "发起通话的人"
+				},
+				"summaries": {
+					"channel_message": "在频道中发布笔记",
+					"none": "不发布笔记"
+				},
+				"fields": {
+					"sttProvider": "转写服务商",
+					"sttProviderNone": "选择服务商",
+					"sttModel": "转写模型",
+					"sttKey": "转写 API 密钥",
+					"sttKeyStored": "已保存密钥。输入新密钥以替换。",
+					"sttKeyClear": "删除已保存的密钥",
+					"sttBaseUrl": "端点（可选）",
+					"sttBaseUrlHint": "自托管 Whisper 使用的 OpenAI 兼容 URL。此时无需密钥。",
+					"languages": "语言",
+					"languagesHint": "以逗号分隔的代码，如 zh, en。留空则自动检测语言。",
+					"mode": "模式",
+					"interval": "建议间隔（秒）",
+					"kinds": "可以建议的内容",
+					"kindsHint": "建议只会由人使用其自身权限来应用。",
+					"maxProposals": "每次通话的建议上限",
+					"defaultTarget": "谁来审阅它的建议",
+					"summary": "通话后的笔记",
+					"storeTranscript": "保留转写",
+					"storeTranscriptHint": "随通话一起保存，并在保留期结束后删除。",
+					"retention": "保留天数",
+					"announcement": "加入时显示的消息",
+					"announcementPlaceholder": "例如：我正在转写这次通话以便记录笔记。",
+					"suggestions": "建议任务和文档",
+					"suggestionsHint": "可选。开启后，助手会建议任务和文档供成员审批。需要语言模型。",
+					"suggestWhen": "建议时机",
+					"notes": "撰写会议笔记",
+					"notesHint": "通话结束后，在频道发布一份包含决定和行动项的简短摘要。使用助手的模型。"
+				}
 			}
 		},
 		"conversationView": {

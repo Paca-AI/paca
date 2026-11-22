@@ -287,7 +287,15 @@
 			"createAgent": "에이전트 생성",
 			"finish": "완료",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "당신은 시니어 소프트웨어 엔지니어입니다…"
+			"systemPromptPlaceholder": "당신은 시니어 소프트웨어 엔지니어입니다…",
+			"agentTypeMeeting": "회의 어시스턴트",
+			"agentTypeMeetingHint": "통화에 참여해 받아쓰고 작업을 제안합니다",
+			"agentTypeMeetingGlobalDisabledHint": "회의 어시스턴트는 프로젝트에 속합니다. 프로젝트의 에이전트 페이지에서 만드세요.",
+			"listeningSection": "받아쓰기",
+			"listeningHint": "회의 어시스턴트가 통화를 들으려면 받아쓰기 제공업체가 필요합니다.",
+			"listeningKeyOrEndpoint": "API 키 또는 자체 호스팅 Whisper의 엔드포인트를 입력하세요.",
+			"assistantSection": "어시스턴트",
+			"assistantSectionHint": "아래에서 켠 메모와 제안에 사용됩니다."
 		},
 		"card": {
 			"configure": "구성",
@@ -366,7 +374,8 @@
 				"envVars": "환경 변수",
 				"globalRole": "전역 역할",
 				"activity": "활동",
-				"git": "Git"
+				"git": "Git",
+				"assistant": "어시스턴트"
 			},
 			"globalRole": {
 				"title": "전역 역할",
@@ -462,7 +471,8 @@
 				"cliLoginNoEnvironment": "이 에이전트에 설정된 환경이 없습니다 — 먼저 위에서 환경을 선택하세요.",
 				"descriptionLabel": "설명",
 				"descriptionPlaceholder": "이 에이전트는 무엇을 위한 것인가요?",
-				"descriptionHint": "자동 모드에서 Jev가 어떤 에이전트가 채팅을 처리할지 또는 작업을 할당할지 결정할 때 표시됩니다. 제공자와 모델은 자동으로 추가됩니다."
+				"descriptionHint": "자동 모드에서 Jev가 어떤 에이전트가 채팅을 처리할지 또는 작업을 할당할지 결정할 때 표시됩니다. 제공자와 모델은 자동으로 추가됩니다.",
+				"meetingNoModel": "현재는 받아쓰기만 하므로 모델은 선택 사항입니다. 어시스턴트 탭에서 노트나 제안을 켜기 전에 여기에서 설정하세요."
 			},
 			"mcp": {
 				"serverCount_one": "서버 {{count}}개 구성됨",
@@ -630,6 +640,69 @@
 					"description": "이 에이전트는 다른 에이전트와 마찬가지로 워크스페이스의 공유 봇을 통해 동작합니다."
 				},
 				"permissions": "이 에이전트가 Git에서 할 수 있는 일은 프로젝트 역할에 따릅니다. 읽기와 쓰기는 역할의 Git 권한에서 오며, 풀 리퀘스트 승인과 병합은 기본적으로 허용되지 않습니다."
+			},
+			"assistant": {
+				"intro": "이 어시스턴트가 통화에서 어떻게 듣고 무엇을 제안할 수 있는지 설정합니다. 추론 모델과 지침은 개요 탭에 있습니다. 어시스턴트는 말하지 않으며, 모든 제안은 사람이 승인해야 반영됩니다.",
+				"listening": "듣기",
+				"behavior": "동작",
+				"privacy": "개인정보",
+				"modes": {
+					"on_demand": "요청 시",
+					"auto_suggest": "자동으로 제안",
+					"notes_only": "메모만"
+				},
+				"modeHints": {
+					"on_demand": "누군가 \"작업 제안\"을 누르면 작업을 제안합니다.",
+					"auto_suggest": "최근 논의를 바탕으로 몇 분마다 작업을 제안합니다.",
+					"notes_only": "녹취록을 보관하고 메모를 작성하며, 작업은 제안하지 않습니다."
+				},
+				"kindNames": {
+					"task": {
+						"create": "작업 만들기",
+						"update": "작업 업데이트",
+						"comment": "작업에 댓글 달기"
+					},
+					"doc": {
+						"create_from_notes": "메모를 문서로 저장"
+					}
+				},
+				"targets": {
+					"requester": "추가한 사람",
+					"host": "통화를 시작한 사람"
+				},
+				"summaries": {
+					"channel_message": "메모를 채널에 게시",
+					"none": "메모를 게시하지 않음"
+				},
+				"fields": {
+					"sttProvider": "받아쓰기 제공업체",
+					"sttProviderNone": "제공업체 선택",
+					"sttModel": "받아쓰기 모델",
+					"sttKey": "받아쓰기 API 키",
+					"sttKeyStored": "저장된 키가 있습니다. 입력하면 교체됩니다.",
+					"sttKeyClear": "저장된 키 삭제",
+					"sttBaseUrl": "엔드포인트(선택)",
+					"sttBaseUrlHint": "자체 호스팅 Whisper용 OpenAI 호환 URL입니다. 이 경우 키가 필요 없습니다.",
+					"languages": "언어",
+					"languagesHint": "ko, en처럼 쉼표로 구분한 코드입니다. 비워 두면 언어를 자동으로 감지합니다.",
+					"mode": "모드",
+					"interval": "제안 간격(초)",
+					"kinds": "제안할 수 있는 항목",
+					"kindsHint": "제안은 사람이 자신의 권한으로 적용할 때만 반영됩니다.",
+					"maxProposals": "통화당 최대 제안 수",
+					"defaultTarget": "제안을 검토할 사람",
+					"summary": "통화 후 메모",
+					"storeTranscript": "녹취록 보관",
+					"storeTranscriptHint": "통화와 함께 저장되며 보관 기간이 지나면 삭제됩니다.",
+					"retention": "보관 기간(일)",
+					"announcement": "참여할 때 표시할 메시지",
+					"announcementPlaceholder": "예: 메모를 위해 이 통화를 받아쓰고 있습니다.",
+					"suggestions": "작업과 문서 제안",
+					"suggestionsHint": "선택 사항. 켜면 어시스턴트가 작업과 문서를 제안하고 사람이 승인합니다. 언어 모델이 필요합니다.",
+					"suggestWhen": "제안 시점",
+					"notes": "회의 메모 작성",
+					"notesHint": "통화가 끝나면 결정 사항과 실행 항목을 담은 짧은 요약을 채널에 게시합니다. 어시스턴트의 모델을 사용합니다."
+				}
 			}
 		},
 		"conversationView": {

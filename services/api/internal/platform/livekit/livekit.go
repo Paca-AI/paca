@@ -64,7 +64,7 @@ func New(cfg Config) *Client {
 		}
 		cfg.InternalURL = u
 	}
-	return &Client{cfg: cfg, http: &http.Client{Timeout: 10 * time.Second}, now: time.Now}
+	return &Client{cfg: cfg, http: &http.Client{}, now: time.Now}
 }
 
 // Enabled reports whether calls are configured.
@@ -94,6 +94,8 @@ type videoGrant struct {
 	CanPublish     *bool  `json:"canPublish,omitempty"`
 	CanSubscribe   *bool  `json:"canSubscribe,omitempty"`
 	CanPublishData *bool  `json:"canPublishData,omitempty"`
+	// RoomRecord lets the holder start and stop egress (recordings).
+	RoomRecord bool `json:"roomRecord,omitempty"`
 }
 
 type accessClaims struct {
@@ -144,7 +146,7 @@ func (c *Client) adminToken(room string) (string, error) {
 			NotBefore: jwt.NewNumericDate(now.Add(-time.Second)),
 			ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
 		},
-		Video: &videoGrant{Room: room, RoomAdmin: true},
+		Video: &videoGrant{Room: room, RoomAdmin: true, RoomRecord: true},
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(c.cfg.APISecret))
 }
@@ -163,6 +165,9 @@ const (
 	EventRoomFinished      = "room_finished"
 	EventParticipantJoined = "participant_joined"
 	EventParticipantLeft   = "participant_left"
+	EventEgressStarted     = "egress_started"
+	EventEgressUpdated     = "egress_updated"
+	EventEgressEnded       = "egress_ended"
 )
 
 // WebhookEvent is the part of a LiveKit webhook body Paca reads.
@@ -177,6 +182,52 @@ type WebhookEvent struct {
 		Identity string `json:"identity"`
 		SID      string `json:"sid"`
 	} `json:"participant"`
+	// EgressInfo is set on the egress_* events.
+	EgressInfo *EgressInfo `json:"egressInfo"`
+}
+
+// FlexInt reads a protobuf int64 as JSON, which is a string, or a number.
+type FlexInt int64
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (f *FlexInt) UnmarshalJSON(b []byte) error {
+	s := strings.Trim(string(b), `"`)
+	if s == "" || s == "null" {
+		*f = 0
+		return nil
+	}
+	var n int64
+	if _, err := fmt.Sscan(s, &n); err != nil {
+		return err
+	}
+	*f = FlexInt(n)
+	return nil
+}
+
+// EgressInfo is the part of an egress event Paca reads. Status is the name of
+// LiveKit's EgressStatus (EGRESS_ACTIVE, EGRESS_COMPLETE, ...).
+type EgressInfo struct {
+	EgressID    string `json:"egressId"`
+	RoomName    string `json:"roomName"`
+	Status      string `json:"status"`
+	Error       string `json:"error"`
+	FileResults []struct {
+		Filename string  `json:"filename"`
+		Location string  `json:"location"`
+		Size     FlexInt `json:"size"`
+		// Duration is in nanoseconds.
+		Duration FlexInt `json:"duration"`
+	} `json:"fileResults"`
+}
+
+// S3Output is where a recording is written: the bucket Paca already uses.
+type S3Output struct {
+	AccessKey      string `json:"access_key"`
+	Secret         string `json:"secret"`
+	Region         string `json:"region"`
+	Endpoint       string `json:"endpoint,omitempty"`
+	Bucket         string `json:"bucket"`
+	ForcePathStyle bool   `json:"force_path_style,omitempty"`
 }
 
 // VerifyWebhook checks the Authorization header of a webhook (a token signed
@@ -227,6 +278,11 @@ func (t track) isAudio() bool {
 }
 
 func (c *Client) rpc(ctx context.Context, room, method string, in, out any) error {
+	return c.twirp(ctx, room, "RoomService", method, in, out)
+}
+
+// twirp calls one method of a LiveKit Twirp service.
+func (c *Client) twirp(ctx context.Context, room, service, method string, in, out any) error {
 	if !c.Enabled() {
 		return ErrDisabled
 	}
@@ -234,11 +290,19 @@ func (c *Client) rpc(ctx context.Context, room, method string, in, out any) erro
 	if err != nil {
 		return err
 	}
+	// Starting an egress waits for the egress service to start its browser, which
+	// takes seconds; everything else is a quick call.
+	limit := 10 * time.Second
+	if service == "Egress" {
+		limit = 60 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
 	body, err := json.Marshal(in)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.InternalURL+"/twirp/livekit.RoomService/"+method, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.InternalURL+"/twirp/livekit."+service+"/"+method, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -290,4 +354,61 @@ func (c *Client) MuteParticipant(ctx context.Context, room, identity string) err
 		}
 	}
 	return nil
+}
+
+// DispatchAgent asks LiveKit to send the agent worker registered under
+// agentName into room, with metadata (ids only, never secrets) handed to the
+// job. It returns the dispatch id.
+func (c *Client) DispatchAgent(ctx context.Context, room, agentName, metadata string) (string, error) {
+	var out struct {
+		ID string `json:"id"`
+	}
+	err := c.twirp(ctx, room, "AgentDispatchService", "CreateDispatch",
+		map[string]string{"room": room, "agent_name": agentName, "metadata": metadata}, &out)
+	if err != nil {
+		return "", err
+	}
+	return out.ID, nil
+}
+
+// DeleteDispatch cancels a dispatch; the job, if running, is ended.
+func (c *Client) DeleteDispatch(ctx context.Context, room, dispatchID string) error {
+	return c.twirp(ctx, room, "AgentDispatchService", "DeleteDispatch",
+		map[string]string{"dispatch_id": dispatchID, "room": room}, nil)
+}
+
+// StartRoomRecording records room (every participant, as a grid) to one MP4 file
+// at filepath in out's bucket, and returns the egress id. LiveKit's egress
+// service must be running.
+func (c *Client) StartRoomRecording(ctx context.Context, room, filepath string, out S3Output) (string, error) {
+	// Twirp answers with the proto field names (egress_id), unlike the webhooks.
+	var res struct {
+		EgressID string `json:"egress_id"`
+		Camel    string `json:"egressId"`
+	}
+	err := c.twirp(ctx, room, "Egress", "StartRoomCompositeEgress", map[string]any{
+		"room_name": room,
+		"layout":    "grid",
+		"file_outputs": []map[string]any{{
+			"file_type": "MP4",
+			"filepath":  filepath,
+			"s3":        out,
+		}},
+	}, &res)
+	if err != nil {
+		return "", err
+	}
+	if res.EgressID == "" {
+		res.EgressID = res.Camel
+	}
+	if res.EgressID == "" {
+		return "", errors.New("livekit: the egress answered without an id")
+	}
+	return res.EgressID, nil
+}
+
+// StopRecording ends an egress; its file is finalised and an egress_ended
+// webhook follows.
+func (c *Client) StopRecording(ctx context.Context, room, egressID string) error {
+	return c.twirp(ctx, room, "Egress", "StopEgress", map[string]string{"egress_id": egressID}, nil)
 }

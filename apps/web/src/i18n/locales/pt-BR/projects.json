@@ -287,7 +287,15 @@
 			"createAgent": "Criar agente",
 			"finish": "Concluir",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "Você é um engenheiro de software sênior…"
+			"systemPromptPlaceholder": "Você é um engenheiro de software sênior…",
+			"agentTypeMeeting": "Assistente de reunião",
+			"agentTypeMeetingHint": "Entra em chamadas, transcreve e sugere tarefas",
+			"agentTypeMeetingGlobalDisabledHint": "Assistentes de reunião pertencem a um projeto. Crie um na página Agentes de um projeto.",
+			"listeningSection": "Transcrição",
+			"listeningHint": "Um assistente de reunião precisa de um provedor de transcrição para ouvir as chamadas.",
+			"listeningKeyOrEndpoint": "Informe uma chave de API ou um endpoint para um Whisper hospedado por você.",
+			"assistantSection": "Assistente",
+			"assistantSectionHint": "Usado para as anotações e sugestões que você ativar abaixo."
 		},
 		"card": {
 			"configure": "Configurar",
@@ -366,7 +374,8 @@
 				"envVars": "Ambiente",
 				"globalRole": "Função global",
 				"activity": "Atividade",
-				"git": "Git"
+				"git": "Git",
+				"assistant": "Assistente"
 			},
 			"globalRole": {
 				"title": "Função global",
@@ -462,7 +471,8 @@
 				"cliLoginNoEnvironment": "Este agente não tem um ambiente definido — escolha um acima primeiro.",
 				"descriptionLabel": "Descrição",
 				"descriptionPlaceholder": "Para que serve este agente?",
-				"descriptionHint": "Exibido para o Jev ao decidir qual agente deve atender a um chat, ou se deve atribuir uma tarefa a ele, no modo Automático. O provedor e o modelo são adicionados automaticamente."
+				"descriptionHint": "Exibido para o Jev ao decidir qual agente deve atender a um chat, ou se deve atribuir uma tarefa a ele, no modo Automático. O provedor e o modelo são adicionados automaticamente.",
+				"meetingNoModel": "Por enquanto só transcreve, então o modelo é opcional. Configure um aqui antes de ativar notas ou sugestões na aba Assistente."
 			},
 			"mcp": {
 				"serverCount_one": "{{count}} servidor configurado",
@@ -630,6 +640,69 @@
 					"description": "Este agente atua pelo bot compartilhado do workspace, como os demais agentes."
 				},
 				"permissions": "O que este agente pode fazer no Git segue o papel dele no projeto: acesso de leitura e escrita vem das permissões Git do papel. Aprovar e fazer merge de pull requests não é concedido por padrão."
+			},
+			"assistant": {
+				"intro": "Como este assistente ouve nas chamadas e o que pode sugerir. O modelo de raciocínio e as instruções ficam na aba Visão geral. Ele nunca fala: uma pessoa aprova cada sugestão antes de qualquer mudança.",
+				"listening": "Escuta",
+				"behavior": "Comportamento",
+				"privacy": "Privacidade",
+				"modes": {
+					"on_demand": "Sob demanda",
+					"auto_suggest": "Sugerir automaticamente",
+					"notes_only": "Somente anotações"
+				},
+				"modeHints": {
+					"on_demand": "Sugere tarefas quando alguém clica em \"Sugerir tarefas\".",
+					"auto_suggest": "Sugere tarefas a cada alguns minutos com base na conversa recente.",
+					"notes_only": "Mantém a transcrição e escreve anotações, nunca sugere tarefas."
+				},
+				"kindNames": {
+					"task": {
+						"create": "Criar tarefas",
+						"update": "Atualizar tarefas",
+						"comment": "Comentar em tarefas"
+					},
+					"doc": {
+						"create_from_notes": "Salvar anotações como documentos"
+					}
+				},
+				"targets": {
+					"requester": "A pessoa que o adicionou",
+					"host": "A pessoa que iniciou a chamada"
+				},
+				"summaries": {
+					"channel_message": "Publicar as anotações no canal",
+					"none": "Não publicar anotações"
+				},
+				"fields": {
+					"sttProvider": "Provedor de transcrição",
+					"sttProviderNone": "Escolha um provedor",
+					"sttModel": "Modelo de transcrição",
+					"sttKey": "Chave de API de transcrição",
+					"sttKeyStored": "Há uma chave armazenada. Digite para substituí-la.",
+					"sttKeyClear": "Remover a chave armazenada",
+					"sttBaseUrl": "Endpoint (opcional)",
+					"sttBaseUrlHint": "Uma URL compatível com OpenAI, para um Whisper hospedado por você. Nesse caso nenhuma chave é necessária.",
+					"languages": "Idiomas",
+					"languagesHint": "Códigos separados por vírgula, como pt, en. Deixe vazio para detectar o idioma.",
+					"mode": "Modo",
+					"interval": "Sugerir a cada (segundos)",
+					"kinds": "O que pode sugerir",
+					"kindsHint": "As sugestões só são aplicadas por uma pessoa, com as permissões dela.",
+					"maxProposals": "Máximo de sugestões por chamada",
+					"defaultTarget": "Quem revisa as sugestões",
+					"summary": "Anotações após a chamada",
+					"storeTranscript": "Manter a transcrição",
+					"storeTranscriptHint": "Armazenada com a chamada e apagada após o período de retenção.",
+					"retention": "Manter por (dias)",
+					"announcement": "Mensagem exibida quando entra",
+					"announcementPlaceholder": "Por exemplo: Estou transcrevendo esta chamada para fazer anotações.",
+					"suggestions": "Sugerir tarefas e documentos",
+					"suggestionsHint": "Opcional. Ative para o assistente sugerir tarefas e documentos para as pessoas aprovarem. Requer um modelo de linguagem.",
+					"suggestWhen": "Quando sugerir",
+					"notes": "Escrever anotações da reunião",
+					"notesHint": "Após a chamada, publica no canal um breve resumo com as decisões e os itens de ação. Usa o modelo do assistente."
+				}
 			}
 		},
 		"conversationView": {

@@ -13,7 +13,11 @@ var (
 	ErrAgentHandleTaken   = errors.New("agent handle already in use")
 	ErrAgentHandleInvalid = errors.New("agent handle is invalid")
 	ErrAgentNameInvalid   = errors.New("agent name is empty or invalid")
-	ErrAgentTypeInvalid   = errors.New("agent_type must be one of: llm, acp, provider_cli")
+	ErrAgentTypeInvalid   = errors.New("agent_type must be one of: llm, acp, provider_cli, meeting")
+	// ErrAgentNotRunnable means the agent is a meeting assistant, which joins
+	// calls instead of running conversations, so it cannot be started, mentioned
+	// or assigned work.
+	ErrAgentNotRunnable   = errors.New("a meeting assistant joins calls and cannot run conversations")
 	ErrACPProviderInvalid = errors.New("acp_provider must be one of: claude-code, codex, gemini-cli, goose, opencode, custom")
 	ErrACPCommandRequired = errors.New("acp_command is required when acp_provider is custom")
 	ErrACPModelInvalid    = errors.New("acp_model and acp_effort must be at most 200 characters with no control characters")

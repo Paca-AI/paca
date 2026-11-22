@@ -75,6 +75,9 @@ services:
       LIVEKIT_INTERNAL_URL: http://livekit:7880
       LIVEKIT_API_KEY: e2ekey
       LIVEKIT_API_SECRET: e2esecret-e2esecret-e2esecret-0123456789
+      # Call recording: true once the egress service runs (--profile recording).
+      LIVEKIT_EGRESS_ENABLED: ${LIVEKIT_EGRESS_ENABLED:-false}
+      MEETING_AGENT_TOKEN: e2e-meeting-agent-token
       # Base URL of the agent-runner service. Explicit rather than relying
       # on the Go code's own http://ai-agent:8080 default — see
       # docker-compose.dev.yml's identical note for why that default no
@@ -178,6 +181,10 @@ services:
   livekit:
     image: livekit/livekit-server:v1.13.11
     restart: unless-stopped
+    # Its config points at Valkey (needed by the egress service for recordings).
+    depends_on:
+      valkey:
+        condition: service_started
     environment:
       LIVEKIT_KEYS: "e2ekey: e2esecret-e2esecret-e2esecret-0123456789"
       LIVEKIT_CONFIG: |
@@ -185,7 +192,11 @@ services:
         rtc:
           tcp_port: 7881
           udp_port: 7882
-          node_ip: 127.0.0.1
+          # Must be reachable from the egress container too (call recording): set
+          # LIVEKIT_NODE_IP to the machine's LAN or public IP when you record.
+          node_ip: ${LIVEKIT_NODE_IP:-127.0.0.1}
+        redis:
+          address: valkey:6379
         webhook:
           api_key: e2ekey
           urls:
@@ -194,6 +205,31 @@ services:
       # Media bypasses the gateway: one muxed UDP port plus a TCP fallback.
       - "${LIVEKIT_TCP_PORT:-7881}:7881/tcp"
       - "${LIVEKIT_UDP_PORT:-7882}:7882/udp"
+
+  # ── LiveKit egress (opt-in call recording: docker compose --profile recording up) ──
+  # Composes a call into one MP4 and uploads it to the object-store bucket the API
+  # uses. Needs LiveKit's Redis block (above), LIVEKIT_EGRESS_ENABLED=true on the
+  # API, and SYS_ADMIN for its headless Chrome. The image is large (about 4 GB).
+  egress:
+    profiles: ["recording"]
+    image: livekit/egress:v1.15.0
+    restart: unless-stopped
+    cap_add:
+      - SYS_ADMIN
+    depends_on:
+      - livekit
+      - valkey
+    environment:
+      EGRESS_CONFIG_BODY: |
+        api_key: e2ekey
+        api_secret: e2esecret-e2esecret-e2esecret-0123456789
+        ws_url: ws://livekit:7880
+        # The egress browser loads its page over https and talks to LiveKit on the
+        # compose network over ws://, which Chrome refuses unless told otherwise.
+        insecure: true
+        health_port: 8083
+        redis:
+          address: valkey:6379
 
   gateway:
     image: caddy:2-alpine

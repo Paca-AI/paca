@@ -220,3 +220,132 @@ func (r *CallRepository) ListCalls(ctx context.Context, projectID uuid.UUID) ([]
 	}
 	return out, nil
 }
+
+// ---------------------------------------------------------------- recordings
+
+const recordingCols = `id, call_session_id, channel_id, egress_id, status, started_by, started_at, ended_at,
+	object_key, size_bytes, duration_ms, error`
+
+type recordingRecord struct {
+	ID         string     `db:"id"`
+	CallID     string     `db:"call_session_id"`
+	ChannelID  string     `db:"channel_id"`
+	EgressID   string     `db:"egress_id"`
+	Status     string     `db:"status"`
+	StartedBy  *string    `db:"started_by"`
+	StartedAt  time.Time  `db:"started_at"`
+	EndedAt    *time.Time `db:"ended_at"`
+	ObjectKey  string     `db:"object_key"`
+	SizeBytes  int64      `db:"size_bytes"`
+	DurationMs int64      `db:"duration_ms"`
+	Error      string     `db:"error"`
+}
+
+func (rec recordingRecord) entity() *calldom.Recording {
+	id, _ := uuid.Parse(rec.ID)
+	call, _ := uuid.Parse(rec.CallID)
+	ch, _ := uuid.Parse(rec.ChannelID)
+	return &calldom.Recording{ID: id, CallID: call, ChannelID: ch, EgressID: rec.EgressID, Status: rec.Status,
+		StartedBy: optUUID(rec.StartedBy), StartedAt: rec.StartedAt, EndedAt: rec.EndedAt, ObjectKey: rec.ObjectKey,
+		SizeBytes: rec.SizeBytes, DurationMs: rec.DurationMs, Error: rec.Error}
+}
+
+// CreateRecording implements calldom.Repository.
+func (r *CallRepository) CreateRecording(ctx context.Context, channelID, startedBy uuid.UUID) (*calldom.Recording, error) {
+	var rec recordingRecord
+	err := r.db.GetContext(ctx, &rec, `
+		INSERT INTO call_recordings (call_session_id, channel_id, started_by)
+		SELECT cs.id, cs.channel_id, $2::uuid FROM call_sessions cs
+		WHERE cs.channel_id = $1::uuid AND cs.ended_at IS NULL
+		RETURNING `+recordingCols, channelID.String(), startedBy.String())
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, calldom.ErrNoOpenCall
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return nil, calldom.ErrRecordingActive
+	}
+	if err != nil {
+		return nil, fmt.Errorf("calls: create recording: %w", err)
+	}
+	return rec.entity(), nil
+}
+
+// SetRecordingEgress implements calldom.Repository.
+func (r *CallRepository) SetRecordingEgress(ctx context.Context, id uuid.UUID, egressID string) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE call_recordings SET egress_id = $2 WHERE id = $1::uuid`, id.String(), egressID)
+	return err
+}
+
+// FailRecording implements calldom.Repository.
+func (r *CallRepository) FailRecording(ctx context.Context, id uuid.UUID, reason string) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE call_recordings SET status = 'failed', ended_at = NOW(), error = $2
+		WHERE id = $1::uuid AND status IN ('starting', 'recording', 'stopping')`, id.String(), reason)
+	return err
+}
+
+// UpdateRecordingByEgress implements calldom.Repository. A finished recording
+// never goes back to a running state, whatever order the webhooks arrive in.
+func (r *CallRepository) UpdateRecordingByEgress(ctx context.Context, egressID, status, objectKey string, sizeBytes, durationMs int64, errMsg string) (uuid.UUID, error) {
+	var ch string
+	err := r.db.GetContext(ctx, &ch, `
+		UPDATE call_recordings SET status = $2,
+			ended_at = CASE WHEN $2 IN ('complete', 'failed') THEN COALESCE(ended_at, NOW()) ELSE ended_at END,
+			object_key = CASE WHEN $3 <> '' THEN $3 ELSE object_key END,
+			size_bytes = CASE WHEN $4 > 0 THEN $4 ELSE size_bytes END,
+			duration_ms = CASE WHEN $5 > 0 THEN $5 ELSE duration_ms END,
+			error = CASE WHEN $6 <> '' THEN $6 ELSE error END
+		WHERE egress_id = $1 AND egress_id <> '' AND status NOT IN ('complete', 'failed')
+		RETURNING channel_id::text`, egressID, status, objectKey, sizeBytes, durationMs, errMsg)
+	if errors.Is(err, sql.ErrNoRows) {
+		return uuid.Nil, nil
+	}
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("calls: update recording: %w", err)
+	}
+	id, _ := uuid.Parse(ch)
+	return id, nil
+}
+
+// OpenRecording implements calldom.Repository.
+func (r *CallRepository) OpenRecording(ctx context.Context, channelID uuid.UUID) (*calldom.Recording, error) {
+	var rec recordingRecord
+	err := r.db.GetContext(ctx, &rec, `SELECT `+recordingCols+` FROM call_recordings
+		WHERE channel_id = $1::uuid AND status IN ('starting', 'recording', 'stopping')
+		ORDER BY started_at DESC LIMIT 1`, channelID.String())
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("calls: open recording: %w", err)
+	}
+	return rec.entity(), nil
+}
+
+// ListRecordings implements calldom.Repository.
+func (r *CallRepository) ListRecordings(ctx context.Context, channelID uuid.UUID, limit int) ([]*calldom.Recording, error) {
+	var recs []recordingRecord
+	if err := r.db.SelectContext(ctx, &recs, `SELECT `+recordingCols+` FROM call_recordings
+		WHERE channel_id = $1::uuid ORDER BY started_at DESC LIMIT $2`, channelID.String(), limit); err != nil {
+		return nil, fmt.Errorf("calls: list recordings: %w", err)
+	}
+	out := make([]*calldom.Recording, len(recs))
+	for i, rec := range recs {
+		out[i] = rec.entity()
+	}
+	return out, nil
+}
+
+// FindRecording implements calldom.Repository.
+func (r *CallRepository) FindRecording(ctx context.Context, channelID, id uuid.UUID) (*calldom.Recording, error) {
+	var rec recordingRecord
+	err := r.db.GetContext(ctx, &rec, `SELECT `+recordingCols+` FROM call_recordings
+		WHERE id = $1::uuid AND channel_id = $2::uuid`, id.String(), channelID.String())
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, calldom.ErrRecordingNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("calls: find recording: %w", err)
+	}
+	return rec.entity(), nil
+}

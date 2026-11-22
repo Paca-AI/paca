@@ -38,8 +38,13 @@ export function useAgentSearch(
 	});
 	const active = projectId ? projectQuery : globalQuery;
 
+	// Every caller picks an agent to run work (chat, filter its conversations, write
+	// with AI). A meeting assistant joins calls instead and cannot run any of that.
 	const agents = useMemo(
-		() => active.data?.pages.flatMap((p) => p.items) ?? [],
+		() =>
+			(active.data?.pages.flatMap((p) => p.items) ?? []).filter(
+				(a) => a.agent_type !== "meeting",
+			),
 		[active.data],
 	);
 	useEffect(() => {

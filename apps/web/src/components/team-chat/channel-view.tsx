@@ -65,6 +65,7 @@ import { createTask } from "@/lib/interaction-api";
 import { AgentRunsPanel } from "./agent-runs-panel";
 import { CallBanner, CallHeaderButton, useChannelCall } from "./call-join";
 import { Composer, type SlashCommand } from "./composer";
+import { MeetingHistoryButton } from "./meeting-history";
 import type { MessageActions } from "./message-item";
 import { MessageList } from "./message-list";
 import { PeerAvatar } from "./peer-avatar";
@@ -382,10 +383,16 @@ export function ChannelView({
 						/>
 					}
 					callButton={
-						<CallHeaderButton
-							call={channelCall}
-							voice={channel?.kind === "voice"}
-						/>
+						<>
+							<MeetingHistoryButton
+								projectId={isDM ? "" : projectId}
+								channelId={channelId}
+							/>
+							<CallHeaderButton
+								call={channelCall}
+								voice={channel?.kind === "voice"}
+							/>
+						</>
 					}
 					channel={channel}
 					onToggleStar={(on) => starMutation.mutate(on)}

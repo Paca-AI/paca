@@ -35,6 +35,32 @@ type CallResponse struct {
 	ChannelID    uuid.UUID                 `json:"channel_id"`
 	StartedAt    *time.Time                `json:"started_at"`
 	Participants []CallParticipantResponse `json:"participants"`
+	// Recording is set while the call is being recorded, so everyone in it can see.
+	Recording *CallRecordingResponse `json:"recording"`
+}
+
+// CallRecordingResponse is a recording of a call.
+type CallRecordingResponse struct {
+	ID         uuid.UUID  `json:"id"`
+	CallID     uuid.UUID  `json:"call_id"`
+	Status     string     `json:"status"`
+	StartedBy  *uuid.UUID `json:"started_by"`
+	StartedAt  time.Time  `json:"started_at"`
+	EndedAt    *time.Time `json:"ended_at"`
+	DurationMs int64      `json:"duration_ms"`
+	SizeBytes  int64      `json:"size_bytes"`
+	Error      string     `json:"error"`
+}
+
+// CallRecordingFromEntity converts a recording.
+func CallRecordingFromEntity(r *calldom.Recording) CallRecordingResponse {
+	return CallRecordingResponse{ID: r.ID, CallID: r.CallID, Status: r.Status, StartedBy: r.StartedBy, StartedAt: r.StartedAt,
+		EndedAt: r.EndedAt, DurationMs: r.DurationMs, SizeBytes: r.SizeBytes, Error: r.Error}
+}
+
+// RecordingURLResponse is a short-lived link to play or save a recording.
+type RecordingURLResponse struct {
+	URL string `json:"url"`
 }
 
 // CallFromEntity converts a call.
@@ -43,6 +69,10 @@ func CallFromEntity(c *calldom.Call) CallResponse {
 	if !c.StartedAt.IsZero() {
 		t := c.StartedAt
 		out.StartedAt = &t
+	}
+	if c.Recording != nil {
+		rec := CallRecordingFromEntity(c.Recording)
+		out.Recording = &rec
 	}
 	for i, p := range c.Participants {
 		out.Participants[i] = CallParticipantResponse{AccountID: p.AccountID, Name: p.Name, Kind: p.Kind, JoinedAt: p.JoinedAt}
@@ -53,4 +83,6 @@ func CallFromEntity(c *calldom.Call) CallResponse {
 // CallConfigResponse tells a client whether calls are available.
 type CallConfigResponse struct {
 	Enabled bool `json:"enabled"`
+	// Recording says calls can be recorded (LiveKit egress and storage are set up).
+	Recording bool `json:"recording"`
 }

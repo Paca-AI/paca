@@ -792,3 +792,201 @@ describe("CreateAgentDialog — description", () => {
 		expect(descriptionField()).toHaveValue("My own words");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Meeting assistant: transcription is the job; notes and suggestions are options
+// ---------------------------------------------------------------------------
+
+describe("CreateAgentDialog — meeting assistant", () => {
+	async function toModelStep(user: ReturnType<typeof userEvent.setup>) {
+		await user.click(
+			screen.getByText("Meeting assistant").closest("button") as HTMLElement,
+		);
+		await user.type(screen.getByLabelText(/^Name/), "Scribe");
+		await user.click(button(/continue/i));
+		await screen.findByText("Transcription");
+	}
+
+	async function fillModel(user: ReturnType<typeof userEvent.setup>) {
+		await user.type(screen.getByLabelText(/^API Key/), "sk-llm");
+		const base = screen.getByRole("textbox", { name: /^Base URL/ });
+		await user.clear(base);
+		await user.type(base, "https://api.openai.com/v1");
+	}
+
+	async function pickProvider(
+		user: ReturnType<typeof userEvent.setup>,
+		name: string,
+	) {
+		await user.click(
+			screen.getByRole("combobox", { name: "Transcription provider" }),
+		);
+		await user.click(await screen.findByRole("option", { name }));
+	}
+
+	async function fillTranscription(
+		user: ReturnType<typeof userEvent.setup>,
+		provider = "openai",
+		model = "whisper-1",
+	) {
+		await pickProvider(user, provider);
+		await user.type(screen.getByLabelText(/^Transcription model/), model);
+		await user.type(screen.getByLabelText("Transcription API key"), "stt-key");
+	}
+
+	const notes = () =>
+		screen.getByRole("switch", { name: /Write meeting notes/ });
+	const suggest = () =>
+		screen.getByRole("switch", { name: /Suggest tasks and docs/ });
+
+	it("needs only the transcription setup: no model, key or instructions are asked for", async () => {
+		const user = userEvent.setup();
+		renderDialog({ projectId: "proj-1" });
+		await toModelStep(user);
+		expect(screen.queryByLabelText(/^API Key/)).toBeNull();
+		expect(screen.queryByLabelText(/System Prompt/)).toBeNull();
+		expect(button(/continue/i)).toBeDisabled();
+
+		await pickProvider(user, "openai");
+		await user.type(screen.getByLabelText(/^Transcription model/), "whisper-1");
+		// A provider and a model still need a key or an endpoint.
+		expect(button(/continue/i)).toBeDisabled();
+		await user.type(screen.getByLabelText("Transcription API key"), "sk-stt");
+		expect(button(/continue/i)).toBeEnabled();
+	});
+
+	it("accepts a self-hosted endpoint instead of a key", async () => {
+		const user = userEvent.setup();
+		renderDialog({ projectId: "proj-1" });
+		await toModelStep(user);
+		await pickProvider(user, "openai");
+		await user.type(screen.getByLabelText(/^Transcription model/), "whisper-1");
+		await user.type(
+			screen.getByLabelText(/^Endpoint/),
+			"http://whisper:8000/v1",
+		);
+		expect(button(/continue/i)).toBeEnabled();
+	});
+
+	it("creates a transcription-only assistant with no model settings at all", async () => {
+		const user = userEvent.setup();
+		agentApi.createAgent.mockResolvedValue({
+			id: "agent-9",
+			name: "Scribe",
+			handle: "scribe",
+			agent_type: "meeting",
+		});
+		renderDialog({ projectId: "proj-1" });
+		await toModelStep(user);
+		await fillTranscription(user, "deepgram", "nova-3");
+		await user.type(screen.getByLabelText("Languages"), "en, vi");
+		await user.click(button(/continue/i));
+		await toggleRole("Editor");
+		await user.click(button(/create agent/i));
+
+		await waitFor(() => expect(agentApi.createAgent).toHaveBeenCalledTimes(1));
+		const payload = agentApi.createAgent.mock.calls[0]?.[1];
+		expect(payload).toEqual(
+			expect.objectContaining({
+				agent_type: "meeting",
+				meeting_settings: {
+					stt_provider: "deepgram",
+					stt_model: "nova-3",
+					stt_api_key: "stt-key",
+					mode: "notes_only",
+					summary_target: "none",
+					stt_languages: ["en", "vi"],
+				},
+			}),
+		);
+		expect(payload).not.toHaveProperty("llm_model");
+		expect(payload).not.toHaveProperty("llm_api_key");
+		expect(payload).not.toHaveProperty("system_prompt");
+	});
+
+	it("shows the Assistant card, below Transcription, once suggestions or notes are on, and then needs it filled in", async () => {
+		const user = userEvent.setup();
+		renderDialog({ projectId: "proj-1" });
+		await toModelStep(user);
+		await fillTranscription(user);
+		expect(button(/continue/i)).toBeEnabled();
+
+		await user.click(suggest());
+		const heading = screen.getByText("Assistant", { selector: "span" });
+		const card = heading.closest("div.rounded-lg");
+		expect(card).not.toBeNull();
+		const inCard = (el: HTMLElement) => card?.contains(el) === true;
+		expect(inCard(screen.getByLabelText(/^API Key/))).toBe(true);
+		expect(inCard(screen.getByRole("textbox", { name: /^Base URL/ }))).toBe(
+			true,
+		);
+		expect(inCard(screen.getByLabelText(/System Prompt/))).toBe(true);
+		const transcription = screen.getByText("Transcription", {
+			selector: "span",
+		});
+		expect(inCard(transcription)).toBe(false);
+		expect(
+			transcription.compareDocumentPosition(card as HTMLElement) &
+				Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
+		// The model is needed now.
+		expect(button(/continue/i)).toBeDisabled();
+		await fillModel(user);
+		expect(button(/continue/i)).toBeEnabled();
+
+		// Turning both back off removes the need again.
+		await user.click(suggest());
+		expect(screen.queryByLabelText(/^API Key/)).toBeNull();
+		expect(button(/continue/i)).toBeEnabled();
+		await user.click(notes());
+		expect(screen.getByLabelText(/^API Key/)).toBeInTheDocument();
+	});
+
+	it("starts with default instructions once the model is needed, which can be edited", async () => {
+		const user = userEvent.setup();
+		renderDialog({ projectId: "proj-1" });
+		await toModelStep(user);
+		await user.click(notes());
+		const prompt = screen.getByLabelText(
+			/System Prompt/,
+		) as HTMLTextAreaElement;
+		expect(prompt.value).toContain("meeting assistant");
+		await user.clear(prompt);
+		await user.type(prompt, "Only decisions.");
+		expect(prompt.value).toBe("Only decisions.");
+	});
+
+	it("creates an assistant that writes notes and suggests, with its model", async () => {
+		const user = userEvent.setup();
+		agentApi.createAgent.mockResolvedValue({
+			id: "agent-9",
+			name: "Scribe",
+			handle: "scribe",
+			agent_type: "meeting",
+		});
+		renderDialog({ projectId: "proj-1" });
+		await toModelStep(user);
+		await fillTranscription(user);
+		await user.click(suggest());
+		await user.click(notes());
+		await fillModel(user);
+		await user.click(button(/continue/i));
+		await toggleRole("Editor");
+		await user.click(button(/create agent/i));
+
+		await waitFor(() => expect(agentApi.createAgent).toHaveBeenCalledTimes(1));
+		expect(agentApi.createAgent).toHaveBeenCalledWith(
+			"proj-1",
+			expect.objectContaining({
+				agent_type: "meeting",
+				llm_api_key: "sk-llm",
+				llm_base_url: "https://api.openai.com/v1",
+				system_prompt: expect.stringContaining("meeting assistant"),
+				meeting_settings: expect.objectContaining({
+					mode: "on_demand",
+					summary_target: "channel_message",
+				}),
+			}),
+		);
+	});
+});

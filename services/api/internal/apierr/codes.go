@@ -644,6 +644,41 @@ const (
 	// CodeChatSeqInvalid is the CHAT_SEQ_INVALID error code.
 	CodeChatSeqInvalid Code = "CHAT_SEQ_INVALID"
 
+	// CodeAgentNotRunnable is the AGENT_NOT_RUNNABLE error code: a meeting
+	// assistant cannot run conversations.
+	CodeAgentNotRunnable Code = "AGENT_NOT_RUNNABLE"
+
+	// CodeMeetingDisabled is MEETING_DISABLED: assistants are not enabled here.
+	CodeMeetingDisabled Code = "MEETING_DISABLED"
+	// CodeMeetingNoOpenCall is MEETING_NO_OPEN_CALL.
+	CodeMeetingNoOpenCall Code = "MEETING_NO_OPEN_CALL"
+	// CodeMeetingAlreadyInCall is MEETING_ALREADY_IN_CALL.
+	CodeMeetingAlreadyInCall Code = "MEETING_ALREADY_IN_CALL"
+	// CodeMeetingNotInCall is MEETING_NOT_IN_CALL.
+	CodeMeetingNotInCall Code = "MEETING_NOT_IN_CALL"
+	// CodeMeetingNotConfigured is MEETING_NOT_CONFIGURED: the assistant lacks model settings.
+	CodeMeetingNotConfigured Code = "MEETING_NOT_CONFIGURED"
+	// CodeMeetingNotAssistant is MEETING_NOT_ASSISTANT: the agent is not a meeting assistant.
+	CodeMeetingNotAssistant Code = "MEETING_NOT_ASSISTANT"
+	// CodeMeetingModelRequired is MEETING_MODEL_REQUIRED: notes or suggestions need the agent's model.
+	CodeMeetingModelRequired Code = "MEETING_MODEL_REQUIRED"
+	// CodeMeetingSettingsInvalid is MEETING_SETTINGS_INVALID.
+	CodeMeetingSettingsInvalid Code = "MEETING_SETTINGS_INVALID"
+	// CodeMeetingWorkerUnauthorized is MEETING_WORKER_UNAUTHORIZED.
+	CodeMeetingWorkerUnauthorized Code = "MEETING_WORKER_UNAUTHORIZED"
+	// CodeMeetingNotFound is MEETING_NOT_FOUND: the call is not one of this channel's.
+	CodeMeetingNotFound Code = "MEETING_NOT_FOUND"
+	// CodeProposalNotFound is PROPOSAL_NOT_FOUND.
+	CodeProposalNotFound Code = "PROPOSAL_NOT_FOUND"
+	// CodeProposalInvalid is PROPOSAL_INVALID: unknown kind or a payload that does not fit it.
+	CodeProposalInvalid Code = "PROPOSAL_INVALID"
+	// CodeProposalKindDisabled is PROPOSAL_KIND_DISABLED.
+	CodeProposalKindDisabled Code = "PROPOSAL_KIND_DISABLED"
+	// CodeProposalLimit is PROPOSAL_LIMIT: the assistant made as many proposals as allowed in this call.
+	CodeProposalLimit Code = "PROPOSAL_LIMIT"
+	// CodeProposalClosed is PROPOSAL_CLOSED: already resolved, rejected or expired.
+	CodeProposalClosed Code = "PROPOSAL_CLOSED"
+
 	// CodeCallsDisabled is the CALLS_DISABLED error code: LiveKit is not configured.
 	CodeCallsDisabled Code = "CALLS_DISABLED"
 	// CodeCallNotInCall is the CALL_NOT_IN_CALL error code.
@@ -653,6 +688,16 @@ const (
 	CodeCallRemoved Code = "CALL_REMOVED"
 	// CodeCallSelfModerate is the CALL_SELF_MODERATE error code.
 	CodeCallSelfModerate Code = "CALL_SELF_MODERATE"
+	// CodeRecordingDisabled is RECORDING_DISABLED: LiveKit egress or storage is not set up.
+	CodeRecordingDisabled Code = "RECORDING_DISABLED"
+	// CodeRecordingActive is RECORDING_ACTIVE: the call is already being recorded.
+	CodeRecordingActive Code = "RECORDING_ACTIVE"
+	// CodeRecordingNone is RECORDING_NONE: no recording is running in the call.
+	CodeRecordingNone Code = "RECORDING_NONE"
+	// CodeRecordingNotFound is RECORDING_NOT_FOUND.
+	CodeRecordingNotFound Code = "RECORDING_NOT_FOUND"
+	// CodeCallNoOpenCall is CALL_NO_OPEN_CALL: the channel has no call to record.
+	CodeCallNoOpenCall Code = "CALL_NO_OPEN_CALL"
 	// CodeCallWebhookInvalid is the CALL_WEBHOOK_INVALID error code.
 	CodeCallWebhookInvalid Code = "CALL_WEBHOOK_INVALID"
 

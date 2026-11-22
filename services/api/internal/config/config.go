@@ -121,11 +121,18 @@ type DatabaseConfig struct {
 //	LIVEKIT_INTERNAL_URL – where the API reaches LiveKit (http://livekit:7880)
 //	LIVEKIT_API_KEY      – API key shared with the LiveKit server
 //	LIVEKIT_API_SECRET   – API secret shared with the LiveKit server
+//	LIVEKIT_EGRESS_ENABLED – "true" when LiveKit's egress service runs, which
+//	                       switches call recording on (it writes to the STORAGE_* bucket)
+//	MEETING_AGENT_TOKEN  – secret the meeting-assistant worker presents to the
+//	                       API; assistants are off until it is set (and calls are on)
 type LiveKitConfig struct {
 	URL         string
 	InternalURL string
 	APIKey      string
 	APISecret   string
+	AgentToken  string
+	// EgressEnabled says LiveKit's egress service runs, so calls can be recorded.
+	EgressEnabled bool
 }
 
 // RedisConfig holds Redis connection settings.

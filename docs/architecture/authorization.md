@@ -102,6 +102,7 @@ Keys are *declared attributes*, validated on save against the attribute schema (
 | `conversation.environment_id` | conversation | no |
 | `channel.kind` (`public`, `private`, `dm`, `group_dm`, `voice`) | channel | no |
 | `channel.member_ids` | channel | yes |
+| `proposal.target_id` | proposal | no |
 | `conversation.agent_id` (the agent a project conversation belongs to; global chats are authorized as `agent/<id>` and have no conversation attributes) | conversation | no |
 
 A key bound to a resource kind must fit at least one of the statement's resources, otherwise the policy is rejected. A positive operator matches if any value matches; a negated one (`StringNotEquals`, `NotIn`) only if no value matches; an absent attribute makes positive operators false and negated ones true. Attributes are loaded lazily, only when a statement references them (`iam.AttributeLoader`, registered per kind in `repository/postgres/iam_attribute_loaders.go`).
@@ -131,7 +132,7 @@ Attachments are managed as *replace-sets* (`PUT .../roles` with `role_ids`), see
 
 ### System roles
 
-`internal/bootstrap/defaultroles` embeds the shipped policies. Platform roles `SUPER_ADMIN` (`*` on `*`), `ADMIN` and `USER` are `is_system`. Startup seeding creates any of them that is missing but **never overwrites** an existing role's policy or description, so edits made by an administrator persist across restarts and upgrades. System roles **can be edited** by anyone allowed to write roles but **cannot be deleted** (`409 ROLE_IS_SYSTEM`). Reconciliation is by name, so the roles migration 000064 converted keep their ids and holders. Project templates (`Admin`, `Analyst`, `Editor`, `Viewer`) are instantiated into every new project as project-owned roles (`PROJECT_ID` replaced by the real id); the project `Admin` is `is_system`.
+`internal/bootstrap/defaultroles` embeds the shipped policies. Platform roles `SUPER_ADMIN` (`*` on `*`), `ADMIN` and `USER` are `is_system`. Startup seeding creates any of them that is missing but **never overwrites** an existing role's policy or description, so edits made by an administrator persist across restarts and upgrades. System roles **can be edited** by anyone allowed to write roles but **cannot be deleted** (`409 ROLE_IS_SYSTEM`). Reconciliation is by name, so the roles migration 000064 converted keep their ids and holders. Project templates (`Admin`, `Analyst`, `Editor`, `Meeting assistant`, `Viewer`) are instantiated into every new project as project-owned roles (`PROJECT_ID` replaced by the real id); the project `Admin` is `is_system`.
 
 `ADMIN` runs the workspace (`users:*`, `projects:*`, `agents:*`, `plugins:*`, `settings:write`) and can read roles (`roles:read`); it does not hold `roles:write` or `roles:assign`.
 

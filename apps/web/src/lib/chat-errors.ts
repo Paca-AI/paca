@@ -25,7 +25,21 @@ export type ChatErrorKey =
 	| "callsDisabled"
 	| "callNotInCall"
 	| "callSelfModerate"
-	| "callRemoved";
+	| "callRemoved"
+	| "meetingDisabled"
+	| "meetingNoOpenCall"
+	| "meetingAlreadyInCall"
+	| "meetingNotInCall"
+	| "meetingNotConfigured"
+	| "meetingModelRequired"
+	| "proposalClosed"
+	| "proposalInvalid"
+	| "proposalLimit"
+	| "recordingDisabled"
+	| "recordingActive"
+	| "recordingNone"
+	| "recordingNotFound"
+	| "callNoOpenCall";
 
 const KEYS: Record<string, ChatErrorKey> = {
 	CHANNEL_NOT_FOUND: "channelNotFound",
@@ -46,6 +60,20 @@ const KEYS: Record<string, ChatErrorKey> = {
 	CALL_NOT_IN_CALL: "callNotInCall",
 	CALL_SELF_MODERATE: "callSelfModerate",
 	CALL_REMOVED: "callRemoved",
+	MEETING_DISABLED: "meetingDisabled",
+	MEETING_NO_OPEN_CALL: "meetingNoOpenCall",
+	MEETING_ALREADY_IN_CALL: "meetingAlreadyInCall",
+	MEETING_NOT_IN_CALL: "meetingNotInCall",
+	MEETING_NOT_CONFIGURED: "meetingNotConfigured",
+	MEETING_MODEL_REQUIRED: "meetingModelRequired",
+	PROPOSAL_CLOSED: "proposalClosed",
+	PROPOSAL_INVALID: "proposalInvalid",
+	PROPOSAL_LIMIT: "proposalLimit",
+	RECORDING_DISABLED: "recordingDisabled",
+	RECORDING_ACTIVE: "recordingActive",
+	RECORDING_NONE: "recordingNone",
+	RECORDING_NOT_FOUND: "recordingNotFound",
+	CALL_NO_OPEN_CALL: "callNoOpenCall",
 	CHAT_NOT_PROJECT_MEMBER: "notProjectMember",
 	CHAT_SEQ_INVALID: "seqInvalid",
 	DM_SELF: "dmSelf",

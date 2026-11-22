@@ -110,7 +110,21 @@
 		"callsDisabled": "Calls are not set up on this server.",
 		"callNotInCall": "That person has already left the call.",
 		"callSelfModerate": "To leave the call yourself, use Leave call.",
-		"callRemoved": "A moderator removed you from this call. You can rejoin in a few minutes."
+		"callRemoved": "A moderator removed you from this call. You can rejoin in a few minutes.",
+		"meetingDisabled": "Meeting assistants are not enabled on this server.",
+		"meetingNoOpenCall": "Join the call first: an assistant can only be added to a call you are in.",
+		"meetingAlreadyInCall": "That assistant is already in the call.",
+		"meetingNotInCall": "That assistant is not in the call.",
+		"meetingNotConfigured": "This assistant is missing model settings. Finish its setup on the agent's page.",
+		"proposalClosed": "This suggestion was already handled or has expired.",
+		"proposalInvalid": "This suggestion is not valid.",
+		"proposalLimit": "The assistant reached its suggestion limit for this call.",
+		"recordingDisabled": "Recording is not set up on this server.",
+		"recordingActive": "This call is already being recorded.",
+		"recordingNone": "This call is not being recorded.",
+		"recordingNotFound": "That recording was not found.",
+		"callNoOpenCall": "There is no call to record.",
+		"meetingModelRequired": "Set up the assistant's model on the Overview tab first."
 	},
 	"noPermission": {
 		"title": "You don't have permission to use chat in this project",
@@ -257,5 +271,113 @@
 		"voiceRow": "{{count}} in voice",
 		"backToCall": "Back to call",
 		"ended": "Call ended. You can close this tab."
+	},
+	"assistant": {
+		"sectionLabel": "Meeting assistant",
+		"title": "Assistant",
+		"suggest": "Suggest tasks",
+		"suggested": "Suggestions ready for you below: {{count}}.",
+		"nothingToSuggest": "Nothing to suggest yet.",
+		"suggestFailed": "The assistant could not make suggestions. Try again.",
+		"none": "No assistant is in this call.",
+		"listening": "{{name}} is listening and transcribing",
+		"listeningNotes": "{{name}} is listening and taking notes",
+		"joining": "{{name}} is joining…",
+		"keeps": "Transcript kept for {{days}} days.",
+		"keepsNothing": "Nothing is stored.",
+		"remove": "Remove {{name}} from the call",
+		"invite": "Add assistant",
+		"pickerHint": "An assistant listens to everyone in the call. Choose one to add.",
+		"noneToInvite": "No meeting assistants are available in this project.",
+		"picker": {
+			"keeps": "transcript kept {{days}} days",
+			"keepsNothing": "stores nothing",
+			"mode": {
+				"on_demand": "Transcribes, suggests when asked",
+				"auto_suggest": "Transcribes, suggests on its own",
+				"notes_only": "Transcribes the call"
+			},
+			"withNotes": "{{what}}, writes notes"
+		},
+		"captions": "Live captions",
+		"someone": "Someone",
+		"transcript": "Transcript",
+		"hideTranscript": "Hide transcript"
+	},
+	"proposals": {
+		"sectionLabel": "Suggestions",
+		"othersReviewing": "{{agent}} suggested: {{kind}}. {{name}} is reviewing.",
+		"from": "{{agent}} suggests: {{kind}}",
+		"kinds": {
+			"task": {
+				"create": "Create task",
+				"update": "Update task",
+				"comment": "Comment on task"
+			},
+			"doc": {
+				"create_from_notes": "Save notes as a doc"
+			}
+		},
+		"fields": {
+			"title": "Title",
+			"description": "Description",
+			"priority": "Priority",
+			"comment": "Comment",
+			"notes": "Notes"
+		},
+		"priorities": {
+			"none": "No priority",
+			"low": "Low",
+			"medium": "Medium",
+			"high": "High",
+			"critical": "Critical"
+		},
+		"updateFields": {
+			"task_id": "Task",
+			"status_id": "Status",
+			"assignee_id": "Assignee",
+			"priority": "Priority",
+			"sprint_id": "Sprint"
+		},
+		"cleared": "(cleared)",
+		"confirm": {
+			"task": {
+				"create": "Create task",
+				"update": "Apply change",
+				"comment": "Post comment"
+			},
+			"doc": {
+				"create_from_notes": "Create doc"
+			}
+		},
+		"dismiss": "Dismiss"
+	},
+	"meetings": {
+		"open": "Meeting history",
+		"title": "Meeting history",
+		"description": "The calls of this channel that were transcribed.",
+		"list": "Calls",
+		"live": "In progress",
+		"lines": "Lines: {{count}}",
+		"download": "Download transcript",
+		"empty": "Nothing has been said yet.",
+		"loadFailed": "The transcript could not be loaded.",
+		"transcript": "Transcript",
+		"recordedOnly": "Recorded, not transcribed"
+	},
+	"recording": {
+		"notice": "This call is being recorded.",
+		"stopping": "Finishing the recording…",
+		"start": "Start recording",
+		"stop": "Stop recording",
+		"confirmTitle": "Record this call?",
+		"confirmBody": "Everyone in the call is told it is being recorded, and the video is kept with this channel for people who can read it.",
+		"confirm": "Start recording",
+		"cancel": "Cancel",
+		"play": "Play recording ({{minutes}} min)",
+		"download": "Download recording",
+		"processing": "The recording is being processed.",
+		"failed": "The recording failed.",
+		"unavailable": "The recording could not be opened. Try again."
 	}
 }

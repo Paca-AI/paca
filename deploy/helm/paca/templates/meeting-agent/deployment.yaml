@@ -1,0 +1,69 @@
+{{- if .Values.meetingAgent.enabled }}
+{{- if not .Values.livekit.enabled }}
+{{- fail "meetingAgent.enabled needs livekit.enabled: assistants join LiveKit calls" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "paca.fullname" . }}-meeting-agent
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "paca.componentLabels" (dict "root" . "component" "meeting-agent") | nindent 4 }}
+spec:
+  replicas: {{ .Values.meetingAgent.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "paca.selectorLabels" (dict "root" . "component" "meeting-agent") | nindent 6 }}
+  template:
+    metadata:
+      {{- if not .Values.secrets.existingSecret }}
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+      {{- end }}
+      labels:
+        {{- include "paca.componentLabels" (dict "root" . "component" "meeting-agent") | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: meeting-agent
+          image: "{{ .Values.meetingAgent.image.repository }}:{{ .Values.meetingAgent.image.tag }}"
+          imagePullPolicy: {{ .Values.meetingAgent.image.pullPolicy }}
+          ports:
+            - containerPort: 8081
+              name: http
+          env:
+            # The worker talks to LiveKit and the API over the cluster network.
+            - name: LIVEKIT_URL
+              value: "ws://{{ include "paca.fullname" . }}-livekit:7880"
+            - name: LIVEKIT_API_KEY
+              value: {{ .Values.livekit.apiKey | quote }}
+            - name: LIVEKIT_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: LIVEKIT_API_SECRET
+            - name: PACA_API_URL
+              value: "http://{{ include "paca.fullname" . }}-api:8080/api/v1"
+            - name: MEETING_AGENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "paca.secretName" . }}
+                  key: MEETING_AGENT_TOKEN
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.meetingAgent.resources | nindent 12 }}
+{{- end }}
