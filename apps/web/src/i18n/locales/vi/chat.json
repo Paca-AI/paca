@@ -110,7 +110,15 @@
 		"callsDisabled": "Máy chủ này chưa thiết lập cuộc gọi.",
 		"callNotInCall": "Người đó đã rời cuộc gọi.",
 		"callSelfModerate": "Để tự rời cuộc gọi, hãy dùng Rời cuộc gọi.",
-		"callRemoved": "Người điều hành đã xóa bạn khỏi cuộc gọi này. Bạn có thể tham gia lại sau vài phút."
+		"callRemoved": "Người điều hành đã xóa bạn khỏi cuộc gọi này. Bạn có thể tham gia lại sau vài phút.",
+		"meetingDisabled": "Máy chủ này chưa bật trợ lý cuộc họp.",
+		"meetingNoOpenCall": "Hãy tham gia cuộc gọi trước: chỉ có thể thêm trợ lý vào cuộc gọi mà bạn đang tham gia.",
+		"meetingAlreadyInCall": "Trợ lý đó đã ở trong cuộc gọi.",
+		"meetingNotInCall": "Trợ lý đó không ở trong cuộc gọi.",
+		"meetingNotConfigured": "Trợ lý này thiếu cài đặt mô hình. Hãy hoàn tất cấu hình trên trang của tác tử.",
+		"proposalClosed": "Đề xuất này đã được xử lý hoặc đã hết hạn.",
+		"proposalInvalid": "Đề xuất này không hợp lệ.",
+		"proposalLimit": "Trợ lý đã đạt giới hạn đề xuất cho cuộc gọi này."
 	},
 	"noPermission": {
 		"title": "Bạn không có quyền dùng trò chuyện trong dự án này",
@@ -257,5 +265,82 @@
 		"voiceRow": "{{count}} người trong kênh thoại",
 		"backToCall": "Quay lại cuộc gọi",
 		"ended": "Cuộc gọi đã kết thúc. Bạn có thể đóng tab này."
+	},
+	"assistant": {
+		"sectionLabel": "Trợ lý cuộc họp",
+		"title": "Trợ lý",
+		"suggest": "Đề xuất công việc",
+		"suggested": "Các đề xuất dành cho bạn ở bên dưới: {{count}}.",
+		"nothingToSuggest": "Chưa có gì để đề xuất.",
+		"suggestFailed": "Trợ lý không thể đưa ra đề xuất. Hãy thử lại.",
+		"none": "Không có trợ lý nào trong cuộc gọi này.",
+		"listening": "{{name}} đang lắng nghe và ghi lại lời nói",
+		"listeningNotes": "{{name}} đang lắng nghe và ghi chú",
+		"joining": "{{name}} đang tham gia…",
+		"keeps": "Bản ghi lời nói được giữ {{days}} ngày.",
+		"keepsNothing": "Không lưu gì cả.",
+		"remove": "Đưa {{name}} ra khỏi cuộc gọi",
+		"invite": "Thêm trợ lý",
+		"pickerHint": "Trợ lý lắng nghe mọi người trong cuộc gọi. Hãy chọn một trợ lý để thêm.",
+		"noneToInvite": "Dự án này chưa có trợ lý cuộc họp nào.",
+		"picker": {
+			"keeps": "bản ghi được giữ {{days}} ngày",
+			"keepsNothing": "không lưu gì cả",
+			"mode": {
+				"on_demand": "Ghi lại lời nói, đề xuất khi được yêu cầu",
+				"auto_suggest": "Ghi lại lời nói, tự đề xuất",
+				"notes_only": "Ghi lại lời nói và viết ghi chú"
+			}
+		},
+		"captions": "Phụ đề trực tiếp",
+		"someone": "Ai đó"
+	},
+	"proposals": {
+		"sectionLabel": "Đề xuất",
+		"othersReviewing": "{{agent}} đã đề xuất: {{kind}}. {{name}} đang xem xét.",
+		"from": "{{agent}} đề xuất: {{kind}}",
+		"kinds": {
+			"task": {
+				"create": "Tạo công việc",
+				"update": "Cập nhật công việc",
+				"comment": "Bình luận về công việc"
+			},
+			"doc": {
+				"create_from_notes": "Lưu ghi chú thành tài liệu"
+			}
+		},
+		"fields": {
+			"title": "Tiêu đề",
+			"description": "Mô tả",
+			"priority": "Độ ưu tiên",
+			"comment": "Bình luận",
+			"notes": "Ghi chú"
+		},
+		"priorities": {
+			"none": "Không ưu tiên",
+			"low": "Thấp",
+			"medium": "Trung bình",
+			"high": "Cao",
+			"critical": "Khẩn cấp"
+		},
+		"updateFields": {
+			"task_id": "Công việc",
+			"status_id": "Trạng thái",
+			"assignee_id": "Người phụ trách",
+			"priority": "Độ ưu tiên",
+			"sprint_id": "Sprint"
+		},
+		"cleared": "(đã xóa)",
+		"confirm": {
+			"task": {
+				"create": "Tạo công việc",
+				"update": "Áp dụng thay đổi",
+				"comment": "Đăng bình luận"
+			},
+			"doc": {
+				"create_from_notes": "Tạo tài liệu"
+			}
+		},
+		"dismiss": "Bỏ qua"
 	}
 }

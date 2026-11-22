@@ -142,7 +142,7 @@ export interface AgentEnvVar {
 	created_at: string;
 }
 
-export type AgentType = "llm" | "acp" | "provider_cli";
+export type AgentType = "llm" | "acp" | "provider_cli" | "meeting";
 export type ACPProvider =
 	| "claude-code"
 	| "codex"

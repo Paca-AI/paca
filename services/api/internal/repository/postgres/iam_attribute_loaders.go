@@ -74,6 +74,11 @@ func NewIAMAttributeLoaders(db *sqlx.DB) []iam.AttributeLoader {
 			"channel.member_ids": `SELECT cm.account_id::text FROM channel_members cm WHERE cm.channel_id = $1::uuid
 				AND ($2::text = '' OR EXISTS (SELECT 1 FROM channels c WHERE c.id = cm.channel_id AND c.project_id::text = $2::text))`,
 		}},
+		// Proposals a meeting assistant makes: proposal.target_id is the person
+		// asked to review one, comparable with ${principal.id}.
+		&scalarLoader{db: db, kind: "proposal", table: "agent_proposals", cols: map[string]string{
+			"proposal.target_id": "target_account_id",
+		}},
 		&scalarLoader{db: db, kind: "conversation", table: "agent_conversations", cols: map[string]string{
 			"conversation.environment_id": "environment_id",
 			"conversation.agent_id":       "agent_id",

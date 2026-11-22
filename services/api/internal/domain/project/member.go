@@ -43,7 +43,7 @@ type ProjectMember struct {
 	// fields (agentdom.Agent) — used by the frontend to pick a default
 	// provider-logo avatar when the agent has no custom avatar uploaded.
 	// Only meaningful when IsAgent() is true.
-	AgentType        string // "llm" | "acp"
+	AgentType        string // "llm" | "acp" | "provider_cli" | "meeting"
 	AgentLLMProvider string
 	AgentACPProvider *string
 	// AgentCLIProvider mirrors agentdom.Agent.CLIProvider (provider_cli agents).

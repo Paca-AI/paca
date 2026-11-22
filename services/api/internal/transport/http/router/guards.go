@@ -83,6 +83,7 @@ const (
 	resConversationByID = "project/{its project}/conversation/{conversationId}, or agent/{its agent} for a global chat"
 	resAnnotation       = "project/{projectId}/annotation/{annotationId}"
 	resChannel          = "project/{projectId}/channel/{channelId}"
+	resProposal         = "project/{projectId}/proposal/{proposalId}"
 	// resDM is a direct message: a workspace-scope channel, judged on the
 	// platform root rather than inside a project.
 	resDM      = "channel/{channelId}"

@@ -110,7 +110,15 @@
 		"callsDisabled": "此服务器尚未设置通话功能。",
 		"callNotInCall": "该用户已离开通话。",
 		"callSelfModerate": "如需自己离开通话，请使用“离开通话”。",
-		"callRemoved": "管理员已将你移出此通话。几分钟后你可以重新加入。"
+		"callRemoved": "管理员已将你移出此通话。几分钟后你可以重新加入。",
+		"meetingDisabled": "此服务器未启用会议助手。",
+		"meetingNoOpenCall": "请先加入通话：只能将助手添加到你所在的通话。",
+		"meetingAlreadyInCall": "该助手已在通话中。",
+		"meetingNotInCall": "该助手不在通话中。",
+		"meetingNotConfigured": "此助手缺少模型设置。请在智能体页面完成配置。",
+		"proposalClosed": "此建议已被处理或已过期。",
+		"proposalInvalid": "此建议无效。",
+		"proposalLimit": "助手已达到本次通话的建议数量上限。"
 	},
 	"noPermission": {
 		"title": "你无权在此项目中使用聊天",
@@ -257,5 +265,82 @@
 		"voiceRow": "{{count}} 人在语音中",
 		"backToCall": "返回通话",
 		"ended": "通话已结束。你可以关闭此标签页。"
+	},
+	"assistant": {
+		"sectionLabel": "会议助手",
+		"title": "助手",
+		"suggest": "建议任务",
+		"suggested": "下方有为你准备的建议：{{count}} 条。",
+		"nothingToSuggest": "暂时没有可建议的内容。",
+		"suggestFailed": "助手无法给出建议，请重试。",
+		"none": "此通话中没有助手。",
+		"listening": "{{name}} 正在聆听并转写",
+		"listeningNotes": "{{name}} 正在聆听并记录笔记",
+		"joining": "{{name}} 正在加入…",
+		"keeps": "转写内容保留 {{days}} 天。",
+		"keepsNothing": "不保存任何内容。",
+		"remove": "将 {{name}} 移出通话",
+		"invite": "添加助手",
+		"pickerHint": "助手会聆听通话中的所有人。请选择要添加的助手。",
+		"noneToInvite": "此项目中没有可用的会议助手。",
+		"picker": {
+			"keeps": "转写内容保留 {{days}} 天",
+			"keepsNothing": "不保存任何内容",
+			"mode": {
+				"on_demand": "转写，并在被要求时提出建议",
+				"auto_suggest": "转写，并自动提出建议",
+				"notes_only": "转写并撰写笔记"
+			}
+		},
+		"captions": "实时字幕",
+		"someone": "某人"
+	},
+	"proposals": {
+		"sectionLabel": "建议",
+		"othersReviewing": "{{agent}} 建议：{{kind}}。{{name}} 正在审阅。",
+		"from": "{{agent}} 建议：{{kind}}",
+		"kinds": {
+			"task": {
+				"create": "创建任务",
+				"update": "更新任务",
+				"comment": "评论任务"
+			},
+			"doc": {
+				"create_from_notes": "将笔记保存为文档"
+			}
+		},
+		"fields": {
+			"title": "标题",
+			"description": "描述",
+			"priority": "优先级",
+			"comment": "评论",
+			"notes": "笔记"
+		},
+		"priorities": {
+			"none": "无优先级",
+			"low": "低",
+			"medium": "中",
+			"high": "高",
+			"critical": "紧急"
+		},
+		"updateFields": {
+			"task_id": "任务",
+			"status_id": "状态",
+			"assignee_id": "负责人",
+			"priority": "优先级",
+			"sprint_id": "迭代"
+		},
+		"cleared": "（已清除）",
+		"confirm": {
+			"task": {
+				"create": "创建任务",
+				"update": "应用更改",
+				"comment": "发布评论"
+			},
+			"doc": {
+				"create_from_notes": "创建文档"
+			}
+		},
+		"dismiss": "忽略"
 	}
 }

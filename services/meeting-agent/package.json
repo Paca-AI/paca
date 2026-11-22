@@ -1,0 +1,31 @@
+{
+  "name": "paca-meeting-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "LiveKit worker for the Paca meeting assistant: transcribes a call per participant and proposes changes for people to approve.",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js start",
+    "dev": "tsc && node dist/index.js dev",
+    "check": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "tsc && node --test dist/*.test.js",
+    "smoke": "node scripts/smoke.mjs",
+    "integration": "node scripts/integration.mjs"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "@livekit/agents": "^1.10.1",
+    "@livekit/rtc-node": "^1.2.2",
+    "@modelcontextprotocol/client": "^2.3.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.12",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.8.3"
+  }
+}

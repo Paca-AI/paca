@@ -287,7 +287,10 @@
 			"createAgent": "Créer l'agent",
 			"finish": "Terminer",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "Vous êtes un ingénieur logiciel senior…"
+			"systemPromptPlaceholder": "Vous êtes un ingénieur logiciel senior…",
+			"agentTypeMeeting": "Assistant de réunion",
+			"agentTypeMeetingHint": "Rejoint les appels, transcrit et suggère des tâches",
+			"agentTypeMeetingGlobalDisabledHint": "Les assistants de réunion appartiennent à un projet. Créez-en un depuis la page Agents d'un projet."
 		},
 		"card": {
 			"configure": "Configurer",
@@ -366,7 +369,8 @@
 				"envVars": "Environnement",
 				"globalRole": "Rôle global",
 				"activity": "Activité",
-				"git": "Git"
+				"git": "Git",
+				"assistant": "Assistant"
 			},
 			"globalRole": {
 				"title": "Rôle global",
@@ -630,6 +634,64 @@
 					"description": "Cet agent agit via le bot partagé de l'espace de travail, comme les autres agents."
 				},
 				"permissions": "Ce que cet agent peut faire sur Git dépend de son rôle dans le projet : l'accès en lecture et en écriture vient des permissions Git du rôle. Approuver et fusionner des pull requests n'est pas accordé par défaut."
+			},
+			"assistant": {
+				"intro": "Comment cet assistant écoute pendant les appels et ce qu'il peut suggérer. Son modèle de raisonnement et ses instructions se trouvent dans l'onglet Aperçu. Il ne parle jamais : une personne approuve chaque suggestion avant tout changement.",
+				"listening": "Écoute",
+				"behavior": "Comportement",
+				"privacy": "Confidentialité",
+				"modes": {
+					"on_demand": "À la demande",
+					"auto_suggest": "Suggérer automatiquement",
+					"notes_only": "Notes uniquement"
+				},
+				"modeHints": {
+					"on_demand": "Suggère des tâches quand quelqu'un clique sur « Suggérer des tâches ».",
+					"auto_suggest": "Suggère des tâches toutes les quelques minutes à partir de la discussion récente.",
+					"notes_only": "Conserve la transcription et rédige des notes, ne suggère jamais de tâches."
+				},
+				"kindNames": {
+					"task": {
+						"create": "Créer des tâches",
+						"update": "Mettre à jour des tâches",
+						"comment": "Commenter des tâches"
+					},
+					"doc": {
+						"create_from_notes": "Enregistrer les notes dans des documents"
+					}
+				},
+				"targets": {
+					"requester": "La personne qui l'a ajouté",
+					"host": "La personne qui a lancé l'appel"
+				},
+				"summaries": {
+					"channel_message": "Publier les notes dans le canal",
+					"none": "Ne pas publier de notes"
+				},
+				"fields": {
+					"sttProvider": "Fournisseur de transcription",
+					"sttProviderNone": "Choisissez un fournisseur",
+					"sttModel": "Modèle de transcription",
+					"sttKey": "Clé d'API de transcription",
+					"sttKeyStored": "Une clé est enregistrée. Saisissez-en une pour la remplacer.",
+					"sttKeyClear": "Supprimer la clé enregistrée",
+					"sttBaseUrl": "Point d'accès (facultatif)",
+					"sttBaseUrlHint": "Une URL compatible OpenAI, pour un Whisper auto-hébergé. Aucune clé n'est alors nécessaire.",
+					"languages": "Langues",
+					"languagesHint": "Codes séparés par des virgules, par exemple fr, en. Laissez vide pour détecter la langue.",
+					"mode": "Mode",
+					"interval": "Suggérer toutes les (secondes)",
+					"kinds": "Ce qu'il peut suggérer",
+					"kindsHint": "Les suggestions ne sont appliquées que par une personne, avec ses propres autorisations.",
+					"maxProposals": "Nombre maximal de suggestions par appel",
+					"defaultTarget": "Qui examine ses suggestions",
+					"summary": "Notes après l'appel",
+					"storeTranscript": "Conserver la transcription",
+					"storeTranscriptHint": "Enregistrée avec l'appel et supprimée après la durée de conservation.",
+					"retention": "La conserver pendant (jours)",
+					"announcement": "Message affiché à son arrivée",
+					"announcementPlaceholder": "Par exemple : Je transcris cet appel pour prendre des notes."
+				}
 			}
 		},
 		"conversationView": {

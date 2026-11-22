@@ -227,6 +227,11 @@ func (t track) isAudio() bool {
 }
 
 func (c *Client) rpc(ctx context.Context, room, method string, in, out any) error {
+	return c.twirp(ctx, room, "RoomService", method, in, out)
+}
+
+// twirp calls one method of a LiveKit Twirp service.
+func (c *Client) twirp(ctx context.Context, room, service, method string, in, out any) error {
 	if !c.Enabled() {
 		return ErrDisabled
 	}
@@ -238,7 +243,7 @@ func (c *Client) rpc(ctx context.Context, room, method string, in, out any) erro
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.InternalURL+"/twirp/livekit.RoomService/"+method, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.InternalURL+"/twirp/livekit."+service+"/"+method, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -290,4 +295,25 @@ func (c *Client) MuteParticipant(ctx context.Context, room, identity string) err
 		}
 	}
 	return nil
+}
+
+// DispatchAgent asks LiveKit to send the agent worker registered under
+// agentName into room, with metadata (ids only, never secrets) handed to the
+// job. It returns the dispatch id.
+func (c *Client) DispatchAgent(ctx context.Context, room, agentName, metadata string) (string, error) {
+	var out struct {
+		ID string `json:"id"`
+	}
+	err := c.twirp(ctx, room, "AgentDispatchService", "CreateDispatch",
+		map[string]string{"room": room, "agent_name": agentName, "metadata": metadata}, &out)
+	if err != nil {
+		return "", err
+	}
+	return out.ID, nil
+}
+
+// DeleteDispatch cancels a dispatch; the job, if running, is ended.
+func (c *Client) DeleteDispatch(ctx context.Context, room, dispatchID string) error {
+	return c.twirp(ctx, room, "AgentDispatchService", "DeleteDispatch",
+		map[string]string{"dispatch_id": dispatchID, "room": room}, nil)
 }

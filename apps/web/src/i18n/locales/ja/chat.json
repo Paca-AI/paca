@@ -110,7 +110,15 @@
 		"callsDisabled": "このサーバーでは通話が設定されていません。",
 		"callNotInCall": "その人はすでに通話から退出しています。",
 		"callSelfModerate": "自分が通話から退出するには「通話から退出」を使用してください。",
-		"callRemoved": "モデレーターによってこの通話から削除されました。数分後に再参加できます。"
+		"callRemoved": "モデレーターによってこの通話から削除されました。数分後に再参加できます。",
+		"meetingDisabled": "このサーバーでは会議アシスタントは有効になっていません。",
+		"meetingNoOpenCall": "先に通話に参加してください。アシスタントは自分が参加している通話にのみ追加できます。",
+		"meetingAlreadyInCall": "そのアシスタントはすでに通話に参加しています。",
+		"meetingNotInCall": "そのアシスタントは通話に参加していません。",
+		"meetingNotConfigured": "このアシスタントにはモデルの設定がありません。エージェントのページで設定を完了してください。",
+		"proposalClosed": "この提案はすでに処理済みか、期限切れです。",
+		"proposalInvalid": "この提案は無効です。",
+		"proposalLimit": "アシスタントがこの通話での提案の上限に達しました。"
 	},
 	"noPermission": {
 		"title": "このプロジェクトでチャットを使う権限がありません",
@@ -257,5 +265,82 @@
 		"voiceRow": "ボイス{{count}}人",
 		"backToCall": "通話に戻る",
 		"ended": "通話が終了しました。このタブは閉じて構いません。"
+	},
+	"assistant": {
+		"sectionLabel": "会議アシスタント",
+		"title": "アシスタント",
+		"suggest": "タスクを提案",
+		"suggested": "あなた宛ての提案が下にあります：{{count}} 件。",
+		"nothingToSuggest": "まだ提案できることはありません。",
+		"suggestFailed": "アシスタントが提案できませんでした。もう一度お試しください。",
+		"none": "この通話にアシスタントはいません。",
+		"listening": "{{name}} が聞き取り・文字起こし中です",
+		"listeningNotes": "{{name}} が聞き取り・メモ作成中です",
+		"joining": "{{name}} が参加中…",
+		"keeps": "文字起こしは {{days}} 日間保存されます。",
+		"keepsNothing": "何も保存されません。",
+		"remove": "{{name}} を通話から削除",
+		"invite": "アシスタントを追加",
+		"pickerHint": "アシスタントは通話の全員の声を聞き取ります。追加するアシスタントを選んでください。",
+		"noneToInvite": "このプロジェクトで利用できる会議アシスタントはありません。",
+		"picker": {
+			"keeps": "文字起こしを {{days}} 日間保存",
+			"keepsNothing": "何も保存しません",
+			"mode": {
+				"on_demand": "文字起こしし、求められたときに提案します",
+				"auto_suggest": "文字起こしし、自動で提案します",
+				"notes_only": "文字起こしとメモ作成を行います"
+			}
+		},
+		"captions": "ライブ字幕",
+		"someone": "誰か"
+	},
+	"proposals": {
+		"sectionLabel": "提案",
+		"othersReviewing": "{{agent}} の提案：{{kind}}。{{name}} が確認中です。",
+		"from": "{{agent}} の提案：{{kind}}",
+		"kinds": {
+			"task": {
+				"create": "タスクを作成",
+				"update": "タスクを更新",
+				"comment": "タスクにコメント"
+			},
+			"doc": {
+				"create_from_notes": "メモをドキュメントとして保存"
+			}
+		},
+		"fields": {
+			"title": "タイトル",
+			"description": "説明",
+			"priority": "優先度",
+			"comment": "コメント",
+			"notes": "メモ"
+		},
+		"priorities": {
+			"none": "優先度なし",
+			"low": "低",
+			"medium": "中",
+			"high": "高",
+			"critical": "緊急"
+		},
+		"updateFields": {
+			"task_id": "タスク",
+			"status_id": "ステータス",
+			"assignee_id": "担当者",
+			"priority": "優先度",
+			"sprint_id": "スプリント"
+		},
+		"cleared": "（クリア）",
+		"confirm": {
+			"task": {
+				"create": "タスクを作成",
+				"update": "変更を適用",
+				"comment": "コメントを投稿"
+			},
+			"doc": {
+				"create_from_notes": "ドキュメントを作成"
+			}
+		},
+		"dismiss": "却下"
 	}
 }

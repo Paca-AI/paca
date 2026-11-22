@@ -1,0 +1,6 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.4.12/schema.json",
+	"files": { "includes": ["src/**", "scripts/**", "*.json"], "ignoreUnknown": true },
+	"formatter": { "indentStyle": "tab", "lineWidth": 120 },
+	"linter": { "enabled": true, "rules": { "recommended": true } }
+}

@@ -42,6 +42,12 @@
       "policy": "policies/project_analyst.json"
     },
     {
+      "name": "Meeting assistant",
+      "kind": "project",
+      "description": "For meeting agents: read tasks, sprints and docs, and propose changes for people to approve.",
+      "policy": "policies/project_meeting_assistant.json"
+    },
+    {
       "name": "Viewer",
       "kind": "project",
       "description": "Read-only access to the project.",

@@ -75,6 +75,7 @@ services:
       LIVEKIT_INTERNAL_URL: http://livekit:7880
       LIVEKIT_API_KEY: e2ekey
       LIVEKIT_API_SECRET: e2esecret-e2esecret-e2esecret-0123456789
+      MEETING_AGENT_TOKEN: e2e-meeting-agent-token
       # Base URL of the agent-runner service. Explicit rather than relying
       # on the Go code's own http://ai-agent:8080 default — see
       # docker-compose.dev.yml's identical note for why that default no

@@ -631,6 +631,42 @@ func TestCreateAgent_EmptyLLMBaseURL_Allowed(t *testing.T) {
 	}
 }
 
+// A meeting assistant is created with the same model fields as an llm agent, and
+// the service receives its type (it is not mistaken for an unknown one).
+func TestCreateAgent_MeetingType_PassesThroughWithModelFields(t *testing.T) {
+	var got agentdom.CreateAgentInput
+	svc := &mockAgentSvc{
+		createAgent: func(_ context.Context, projectID uuid.UUID, in agentdom.CreateAgentInput) (*agentdom.Agent, error) {
+			got = in
+			return &agentdom.Agent{ID: uuid.New(), ProjectID: projectID, Name: in.Name, Handle: in.Handle, AgentType: in.AgentType}, nil
+		},
+	}
+	h := handler.NewAgentHandler(svc, "", "", "")
+	r := chi.NewRouter()
+	r.Use(claimsMiddleware(uuid.New().String()))
+	r.Post("/projects/{projectId}/agents", h.CreateAgent)
+	w := doAgentRequest(t, r, http.MethodPost,
+		"/projects/"+uuid.New().String()+"/agents",
+		validCreateAgentBody(map[string]any{"agent_type": "meeting", "system_prompt": "Be brief."}))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for a meeting agent, got %d: %s", w.Code, w.Body.String())
+	}
+	if got.AgentType != agentdom.AgentTypeMeeting || got.LLMModel != "gpt-4" || got.SystemPrompt != "Be brief." {
+		t.Fatalf("service input = %+v", got)
+	}
+}
+
+// A meeting agent still needs its reasoning model: the same fields are required.
+func TestCreateAgent_MeetingType_RequiresModelFields(t *testing.T) {
+	r := newAgentRouter(&mockAgentSvc{})
+	w := doAgentRequest(t, r, http.MethodPost,
+		"/projects/"+uuid.New().String()+"/agents",
+		validCreateAgentBody(map[string]any{"agent_type": "meeting", "llm_model": ""}))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for a meeting agent without a model, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestCreateAgent_MissingRoleIDs_Returns400(t *testing.T) {
 	r := newAgentRouter(&mockAgentSvc{})
 	projectID := uuid.New()

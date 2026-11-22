@@ -35,6 +35,7 @@ type Service struct {
 	repo     calldom.Repository
 	room     Room
 	notifier calldom.Notifier
+	onEnd    func(ctx context.Context, channelID uuid.UUID)
 }
 
 // New returns a Service.
@@ -43,6 +44,13 @@ func New(repo calldom.Repository, room Room) *Service { return &Service{repo: re
 // WithNotifier announces call changes to realtime.
 func (s *Service) WithNotifier(n calldom.Notifier) *Service {
 	s.notifier = n
+	return s
+}
+
+// WithCallEndHook sets a function run when a channel's call ends, before its
+// session is closed (the meeting assistant finds its sessions through it).
+func (s *Service) WithCallEndHook(f func(ctx context.Context, channelID uuid.UUID)) *Service {
+	s.onEnd = f
 	return s
 }
 
@@ -215,6 +223,9 @@ func (s *Service) HandleWebhook(ctx context.Context, authHeader string, body []b
 			return err
 		}
 	case livekit.EventRoomFinished:
+		if s.onEnd != nil {
+			s.onEnd(ctx, channelID)
+		}
 		if err := s.repo.EndSession(ctx, channelID); err != nil {
 			return err
 		}

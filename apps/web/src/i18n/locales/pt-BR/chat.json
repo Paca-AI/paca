@@ -110,7 +110,15 @@
 		"callsDisabled": "As chamadas não estão configuradas neste servidor.",
 		"callNotInCall": "Essa pessoa já saiu da chamada.",
 		"callSelfModerate": "Para sair da chamada você mesmo, use Sair da chamada.",
-		"callRemoved": "Um moderador removeu você desta chamada. Você poderá entrar novamente em alguns minutos."
+		"callRemoved": "Um moderador removeu você desta chamada. Você poderá entrar novamente em alguns minutos.",
+		"meetingDisabled": "Os assistentes de reunião não estão ativados neste servidor.",
+		"meetingNoOpenCall": "Entre primeiro na chamada: só é possível adicionar um assistente a uma chamada em que você está.",
+		"meetingAlreadyInCall": "Esse assistente já está na chamada.",
+		"meetingNotInCall": "Esse assistente não está na chamada.",
+		"meetingNotConfigured": "Faltam configurações de modelo neste assistente. Conclua a configuração na página do agente.",
+		"proposalClosed": "Esta sugestão já foi tratada ou expirou.",
+		"proposalInvalid": "Esta sugestão não é válida.",
+		"proposalLimit": "O assistente atingiu o limite de sugestões desta chamada."
 	},
 	"noPermission": {
 		"title": "Você não tem permissão para usar o chat neste projeto",
@@ -257,5 +265,82 @@
 		"voiceRow": "{{count}} na voz",
 		"backToCall": "Voltar à chamada",
 		"ended": "A chamada terminou. Você pode fechar esta aba."
+	},
+	"assistant": {
+		"sectionLabel": "Assistente de reunião",
+		"title": "Assistente",
+		"suggest": "Sugerir tarefas",
+		"suggested": "Sugestões prontas para você abaixo: {{count}}.",
+		"nothingToSuggest": "Ainda não há nada a sugerir.",
+		"suggestFailed": "O assistente não conseguiu fazer sugestões. Tente novamente.",
+		"none": "Nenhum assistente está nesta chamada.",
+		"listening": "{{name}} está ouvindo e transcrevendo",
+		"listeningNotes": "{{name}} está ouvindo e anotando",
+		"joining": "{{name}} está entrando…",
+		"keeps": "Transcrição mantida por {{days}} dias.",
+		"keepsNothing": "Nada é armazenado.",
+		"remove": "Remover {{name}} da chamada",
+		"invite": "Adicionar assistente",
+		"pickerHint": "Um assistente ouve todos na chamada. Escolha um para adicionar.",
+		"noneToInvite": "Nenhum assistente de reunião está disponível neste projeto.",
+		"picker": {
+			"keeps": "transcrição mantida por {{days}} dias",
+			"keepsNothing": "não armazena nada",
+			"mode": {
+				"on_demand": "Transcreve e sugere quando solicitado",
+				"auto_suggest": "Transcreve e sugere por conta própria",
+				"notes_only": "Transcreve e escreve anotações"
+			}
+		},
+		"captions": "Legendas ao vivo",
+		"someone": "Alguém"
+	},
+	"proposals": {
+		"sectionLabel": "Sugestões",
+		"othersReviewing": "{{agent}} sugeriu: {{kind}}. {{name}} está revisando.",
+		"from": "{{agent}} sugere: {{kind}}",
+		"kinds": {
+			"task": {
+				"create": "Criar tarefa",
+				"update": "Atualizar tarefa",
+				"comment": "Comentar em tarefa"
+			},
+			"doc": {
+				"create_from_notes": "Salvar anotações como documento"
+			}
+		},
+		"fields": {
+			"title": "Título",
+			"description": "Descrição",
+			"priority": "Prioridade",
+			"comment": "Comentário",
+			"notes": "Anotações"
+		},
+		"priorities": {
+			"none": "Sem prioridade",
+			"low": "Baixa",
+			"medium": "Média",
+			"high": "Alta",
+			"critical": "Crítica"
+		},
+		"updateFields": {
+			"task_id": "Tarefa",
+			"status_id": "Status",
+			"assignee_id": "Responsável",
+			"priority": "Prioridade",
+			"sprint_id": "Sprint"
+		},
+		"cleared": "(removido)",
+		"confirm": {
+			"task": {
+				"create": "Criar tarefa",
+				"update": "Aplicar alteração",
+				"comment": "Publicar comentário"
+			},
+			"doc": {
+				"create_from_notes": "Criar documento"
+			}
+		},
+		"dismiss": "Dispensar"
 	}
 }

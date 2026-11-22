@@ -41,6 +41,7 @@ import (
 	exportsvc "github.com/Paca-AI/api/internal/service/export"
 	filesvc "github.com/Paca-AI/api/internal/service/file"
 	gitsvc "github.com/Paca-AI/api/internal/service/git"
+	meetingsvc "github.com/Paca-AI/api/internal/service/meeting"
 	mfasvc "github.com/Paca-AI/api/internal/service/mfa"
 	notificationsvc "github.com/Paca-AI/api/internal/service/notification"
 	pluginsvc "github.com/Paca-AI/api/internal/service/plugin"
@@ -82,6 +83,8 @@ type App struct {
 	chatAgentConsumer      *worker.ChatAgentConsumer
 	dueDateScheduler       *worker.DueDateScheduler
 	fileTrashPurger        *worker.FileTrashPurger
+	meetingSweeper         *meetingsvc.Service
+	stopMeetingSweep       context.CancelFunc
 	cronScheduler          *worker.CronScheduler
 	changeReconciler       *worker.ChangeReconciler
 	docHashBackfill        *worker.DocHashBackfill
@@ -580,8 +583,16 @@ func New(cfg *config.Config) (*App, error) {
 		PublicURL: cfg.LiveKit.URL, InternalURL: cfg.LiveKit.InternalURL,
 		APIKey: cfg.LiveKit.APIKey, APISecret: cfg.LiveKit.APISecret,
 	})
-	callService := callsvc.New(pgRepo.NewCallRepository(db), livekitClient).WithNotifier(callsvc.NewPubSubNotifier(publisher))
+	meetingService := meetingsvc.New(pgRepo.NewMeetingRepository(db), livekitClient, cfg.LiveKit.AgentToken).
+		WithNotifier(meetingsvc.NewPubSubNotifier(publisher))
+	if encryptor != nil {
+		meetingService = meetingService.WithCrypter(encryptor)
+	}
+	callService := callsvc.New(pgRepo.NewCallRepository(db), livekitClient).
+		WithNotifier(callsvc.NewPubSubNotifier(publisher)).
+		WithCallEndHook(meetingService.CallEnded)
 	callHandler := handler.NewCallHandler(callService).WithCallListScoper(authorizer)
+	meetingHandler := handler.NewMeetingHandler(meetingService)
 	chatHandler := handler.NewChatHandler(chatService).WithChatListScoper(authorizer).WithChatProjectsScoper(authorizer).WithChatRootScoper(authorizer)
 	annotationHandler := handler.NewAnnotationHandler(annotationService).
 		WithAnnotationListScoper(authorizer).
@@ -674,6 +685,7 @@ func New(cfg *config.Config) (*App, error) {
 		Annotation:         annotationHandler,
 		Chat:               chatHandler,
 		Call:               callHandler,
+		Meeting:            meetingHandler,
 		Conversation:       convHandler,
 		Automation:         automationHandler,
 		Settings:           handler.NewSettingsHandler(settingsService).WithAvatarService(attachmentService),
@@ -693,7 +705,7 @@ func New(cfg *config.Config) (*App, error) {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, projectExportConsumer: projectExportConsumer, automationConsumer: automationConsumer, taskAutofillConsumer: taskAutofillConsumer, taskAutoAssignConsumer: taskAutoAssignConsumer, agentQueueConsumer: agentQueueConsumer, questionConsumer: questionConsumer, chatAgentConsumer: chatAgentConsumer, dueDateScheduler: dueDateScheduler, fileTrashPurger: fileTrashPurger, cronScheduler: cronScheduler, changeReconciler: changeReconciler, docHashBackfill: docHashBackfill, waitScheduler: waitScheduler, gitRouter: gitRouter, log: log}, nil
+	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, projectExportConsumer: projectExportConsumer, automationConsumer: automationConsumer, taskAutofillConsumer: taskAutofillConsumer, taskAutoAssignConsumer: taskAutoAssignConsumer, agentQueueConsumer: agentQueueConsumer, questionConsumer: questionConsumer, chatAgentConsumer: chatAgentConsumer, dueDateScheduler: dueDateScheduler, fileTrashPurger: fileTrashPurger, meetingSweeper: meetingService, cronScheduler: cronScheduler, changeReconciler: changeReconciler, docHashBackfill: docHashBackfill, waitScheduler: waitScheduler, gitRouter: gitRouter, log: log}, nil
 }
 
 // platformActionsReader lists a user's or agent's effective platform-level
@@ -746,6 +758,24 @@ func (a *App) Run() error {
 	}
 	a.docHashBackfill.Start(context.Background())
 	a.waitScheduler.Start(context.Background())
+	if a.meetingSweeper != nil {
+		// Expires unreviewed proposals and deletes transcript past retention.
+		// Both are idempotent single statements, so every node may run them.
+		sweepCtx, stopSweep := context.WithCancel(context.Background())
+		a.stopMeetingSweep = stopSweep
+		go func() {
+			t := time.NewTicker(5 * time.Minute)
+			defer t.Stop()
+			for {
+				select {
+				case <-sweepCtx.Done():
+					return
+				case <-t.C:
+					a.meetingSweeper.SweepExpired(sweepCtx)
+				}
+			}
+		}()
+	}
 	gitCtx, stop := context.WithCancel(context.Background())
 	a.stopGitRouter = stop
 	go a.gitRouter.Run(gitCtx, 0)
@@ -768,6 +798,9 @@ func (a *App) Shutdown(ctx context.Context) error {
 	a.chatAgentConsumer.Stop()
 	a.dueDateScheduler.Stop()
 	a.fileTrashPurger.Stop()
+	if a.stopMeetingSweep != nil {
+		a.stopMeetingSweep()
+	}
 	a.cronScheduler.Stop()
 	if a.changeReconciler != nil {
 		a.changeReconciler.Stop()

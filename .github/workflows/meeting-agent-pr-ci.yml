@@ -1,0 +1,47 @@
+name: meeting-agent-pr-ci
+
+on:
+  pull_request:
+    paths:
+      - "services/meeting-agent/**"
+      - ".github/workflows/meeting-agent-pr-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meeting-agent-pr-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  meeting-agent-quality:
+    name: Lint, typecheck and test the meeting assistant worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: services/meeting-agent
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: services/meeting-agent/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck and test
+        run: npm test

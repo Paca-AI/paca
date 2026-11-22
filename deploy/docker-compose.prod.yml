@@ -291,6 +291,9 @@ services:
       LIVEKIT_INTERNAL_URL: http://livekit:7880
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-paca}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      # Meeting assistants stay off until this is set in .env (openssl rand -hex 32)
+      # and the meeting-agent service runs (docker compose --profile meeting up).
+      MEETING_AGENT_TOKEN: ${MEETING_AGENT_TOKEN:-}
       # Origin Git providers deliver to, when it must differ from PUBLIC_URL.
       GIT_WEBHOOK_PUBLIC_URL: ${GIT_WEBHOOK_PUBLIC_URL:-}
       # "local" keeps plugins in the folders below; "s3" stores them in the
@@ -438,6 +441,25 @@ services:
       # Media bypasses the gateway: one muxed UDP port plus a TCP fallback.
       - "${LIVEKIT_TCP_PORT:-7881}:7881/tcp"
       - "${LIVEKIT_UDP_PORT:-7882}:7882/udp"
+
+  # ── Meeting assistant worker (opt-in) ───────────────────────────────────────
+  # docker compose --profile meeting up -d. Joins calls when someone invites a
+  # meeting agent, transcribes each person and proposes tasks for them to
+  # approve. Needs LiveKit (above) and MEETING_AGENT_TOKEN in .env; the agent's
+  # own model and transcription keys are set per agent in the app.
+  meeting-agent:
+    profiles: ["meeting"]
+    image: ${PACA_MEETING_AGENT_IMAGE:-pacaai/paca-meeting-agent:latest}
+    restart: unless-stopped
+    depends_on:
+      - livekit
+      - api
+    environment:
+      LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-paca}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      PACA_API_URL: http://api:8080/api/v1
+      MEETING_AGENT_TOKEN: ${MEETING_AGENT_TOKEN:-}
 
   # ── Agent Runner (optional) ─────────────────────────────────────────────────
   # Go replacement for the old Python "ai-agent" service. Suppress with

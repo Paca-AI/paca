@@ -197,6 +197,7 @@ func Load() (*Config, error) {
 			InternalURL: env("LIVEKIT_INTERNAL_URL", ""),
 			APIKey:      env("LIVEKIT_API_KEY", ""),
 			APISecret:   env("LIVEKIT_API_SECRET", ""),
+			AgentToken:  env("MEETING_AGENT_TOKEN", ""),
 		},
 		Cache: CacheConfig{
 			ProjectTTL: cacheProjectTTL,

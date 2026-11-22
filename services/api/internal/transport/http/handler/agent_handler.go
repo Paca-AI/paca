@@ -270,7 +270,9 @@ func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch agentType {
-	case agentdom.AgentTypeLLM:
+	case agentdom.AgentTypeLLM, agentdom.AgentTypeMeeting:
+		// A meeting assistant reasons with the same model fields (its listening
+		// settings are set afterwards, on /meeting-settings).
 		// llm_base_url is intentionally not required here: the agents table
 		// column defaults to '' (see migration 000022's note on this), and
 		// several LLM providers resolve a default base URL on their own —
@@ -302,7 +304,7 @@ func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	default:
-		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "agent_type must be one of: llm, acp, provider_cli"))
+		presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, "agent_type must be one of: llm, acp, provider_cli, meeting"))
 		return
 	}
 	callerID, _ := middleware.ActorIDFromContext(r.Context())

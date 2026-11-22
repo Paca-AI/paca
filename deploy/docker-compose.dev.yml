@@ -165,6 +165,9 @@ services:
       LIVEKIT_INTERNAL_URL: http://livekit:7880
       LIVEKIT_API_KEY: devkey
       LIVEKIT_API_SECRET: devsecret-devsecret-devsecret-0123456789
+      # Meeting assistants (the meeting-agent service below, profile "meeting")
+      # are enabled once this is set; the worker presents the same value.
+      MEETING_AGENT_TOKEN: dev-meeting-agent-token-change-in-production
       # Purely descriptive — services/api never itself publishes any
       # environment port, it only echoes these back via GET
       # /environments/config so the web app's Connect page can show a real
@@ -284,6 +287,25 @@ services:
       # Media bypasses the gateway: one muxed UDP port plus a TCP fallback.
       - "${LIVEKIT_TCP_PORT:-7881}:7881/tcp"
       - "${LIVEKIT_UDP_PORT:-7882}:7882/udp"
+
+  # ── Meeting assistant worker (opt-in: docker compose --profile meeting up) ──
+  # Joins calls when someone invites a meeting agent, transcribes each person and
+  # proposes tasks for them to approve. It reaches LiveKit and the API on the
+  # compose network. See services/meeting-agent/README.md.
+  meeting-agent:
+    profiles: ["meeting"]
+    build:
+      context: ../services/meeting-agent
+    restart: unless-stopped
+    depends_on:
+      - livekit
+      - api
+    environment:
+      LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: devsecret-devsecret-devsecret-0123456789
+      PACA_API_URL: http://api:8080/api/v1
+      MEETING_AGENT_TOKEN: dev-meeting-agent-token-change-in-production
 
   gateway:
     image: caddy:2-alpine

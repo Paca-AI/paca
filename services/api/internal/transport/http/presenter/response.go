@@ -25,6 +25,7 @@ import (
 	environmentdom "github.com/Paca-AI/api/internal/domain/environment"
 	filedom "github.com/Paca-AI/api/internal/domain/file"
 	gitdom "github.com/Paca-AI/api/internal/domain/git"
+	meetingdom "github.com/Paca-AI/api/internal/domain/meeting"
 	mfadom "github.com/Paca-AI/api/internal/domain/mfa"
 	notificationdom "github.com/Paca-AI/api/internal/domain/notification"
 	pluginom "github.com/Paca-AI/api/internal/domain/plugin"
@@ -525,6 +526,8 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusBadRequest, apierr.CodeAgentHandleInvalid
 	case errors.Is(err, agentdom.ErrAgentNameInvalid):
 		return http.StatusBadRequest, apierr.CodeAgentNameInvalid
+	case errors.Is(err, agentdom.ErrAgentNotRunnable):
+		return http.StatusConflict, apierr.CodeAgentNotRunnable
 	case errors.Is(err, agentdom.ErrAgentTypeInvalid):
 		return http.StatusBadRequest, apierr.CodeAgentTypeInvalid
 	case errors.Is(err, agentdom.ErrACPProviderInvalid):
@@ -694,6 +697,32 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusUnauthorized, apierr.CodeAutomationWebhookTokenInvalid
 	case errors.Is(err, automationdom.ErrUpdateTaskSelfParent):
 		return http.StatusBadRequest, apierr.CodeAutomationUpdateTaskSelfParent
+	case errors.Is(err, meetingdom.ErrAssistantsDisabled):
+		return http.StatusServiceUnavailable, apierr.CodeMeetingDisabled
+	case errors.Is(err, meetingdom.ErrNoOpenCall):
+		return http.StatusConflict, apierr.CodeMeetingNoOpenCall
+	case errors.Is(err, meetingdom.ErrAlreadyInCall):
+		return http.StatusConflict, apierr.CodeMeetingAlreadyInCall
+	case errors.Is(err, meetingdom.ErrNotInCall):
+		return http.StatusConflict, apierr.CodeMeetingNotInCall
+	case errors.Is(err, meetingdom.ErrAssistantNotConfigured):
+		return http.StatusConflict, apierr.CodeMeetingNotConfigured
+	case errors.Is(err, meetingdom.ErrNotMeetingAgent):
+		return http.StatusBadRequest, apierr.CodeMeetingNotAssistant
+	case errors.Is(err, meetingdom.ErrSettingsInvalid):
+		return http.StatusBadRequest, apierr.CodeMeetingSettingsInvalid
+	case errors.Is(err, meetingdom.ErrWorkerUnauthorized):
+		return http.StatusUnauthorized, apierr.CodeMeetingWorkerUnauthorized
+	case errors.Is(err, meetingdom.ErrProposalNotFound):
+		return http.StatusNotFound, apierr.CodeProposalNotFound
+	case errors.Is(err, meetingdom.ErrProposalInvalid):
+		return http.StatusBadRequest, apierr.CodeProposalInvalid
+	case errors.Is(err, meetingdom.ErrProposalKindDisabled):
+		return http.StatusConflict, apierr.CodeProposalKindDisabled
+	case errors.Is(err, meetingdom.ErrProposalLimit):
+		return http.StatusConflict, apierr.CodeProposalLimit
+	case errors.Is(err, meetingdom.ErrProposalClosed):
+		return http.StatusConflict, apierr.CodeProposalClosed
 	case errors.Is(err, calldom.ErrDisabled), errors.Is(err, livekit.ErrDisabled):
 		return http.StatusServiceUnavailable, apierr.CodeCallsDisabled
 	case errors.Is(err, calldom.ErrNotInCall):

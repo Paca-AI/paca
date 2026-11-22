@@ -287,7 +287,10 @@
 			"createAgent": "Tạo Agent",
 			"finish": "Hoàn tất",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "Bạn là một kỹ sư phần mềm cấp cao…"
+			"systemPromptPlaceholder": "Bạn là một kỹ sư phần mềm cấp cao…",
+			"agentTypeMeeting": "Trợ lý cuộc họp",
+			"agentTypeMeetingHint": "Tham gia cuộc gọi, ghi lại lời nói và đề xuất công việc",
+			"agentTypeMeetingGlobalDisabledHint": "Trợ lý cuộc họp thuộc về một dự án. Hãy tạo từ trang Tác tử của dự án."
 		},
 		"card": {
 			"configure": "Cấu hình",
@@ -366,7 +369,8 @@
 				"envVars": "Môi trường",
 				"globalRole": "Vai trò toàn cục",
 				"activity": "Hoạt động",
-				"git": "Git"
+				"git": "Git",
+				"assistant": "Trợ lý"
 			},
 			"globalRole": {
 				"title": "Vai trò toàn cục",
@@ -630,6 +634,64 @@
 					"description": "Tác nhân này hoạt động qua bot dùng chung của workspace, giống các tác nhân khác."
 				},
 				"permissions": "Những gì tác nhân này làm được trên Git phụ thuộc vào vai trò trong dự án: quyền đọc và ghi lấy từ quyền Git của vai trò. Duyệt và hợp nhất pull request không được cấp theo mặc định."
+			},
+			"assistant": {
+				"intro": "Cách trợ lý này lắng nghe trong cuộc gọi và những gì nó có thể đề xuất. Mô hình suy luận và hướng dẫn nằm ở thẻ Tổng quan. Trợ lý không bao giờ lên tiếng: mọi đề xuất đều do con người phê duyệt trước khi có gì thay đổi.",
+				"listening": "Lắng nghe",
+				"behavior": "Hành vi",
+				"privacy": "Quyền riêng tư",
+				"modes": {
+					"on_demand": "Theo yêu cầu",
+					"auto_suggest": "Tự động đề xuất",
+					"notes_only": "Chỉ ghi chú"
+				},
+				"modeHints": {
+					"on_demand": "Đề xuất công việc khi có người bấm \"Đề xuất công việc\".",
+					"auto_suggest": "Cứ vài phút lại đề xuất công việc từ cuộc thảo luận gần nhất.",
+					"notes_only": "Giữ bản ghi và viết ghi chú, không bao giờ đề xuất công việc."
+				},
+				"kindNames": {
+					"task": {
+						"create": "Tạo công việc",
+						"update": "Cập nhật công việc",
+						"comment": "Bình luận về công việc"
+					},
+					"doc": {
+						"create_from_notes": "Lưu ghi chú thành tài liệu"
+					}
+				},
+				"targets": {
+					"requester": "Người đã thêm trợ lý",
+					"host": "Người đã bắt đầu cuộc gọi"
+				},
+				"summaries": {
+					"channel_message": "Đăng ghi chú vào kênh",
+					"none": "Không đăng ghi chú"
+				},
+				"fields": {
+					"sttProvider": "Nhà cung cấp ghi lời nói",
+					"sttProviderNone": "Chọn nhà cung cấp",
+					"sttModel": "Mô hình ghi lời nói",
+					"sttKey": "Khóa API ghi lời nói",
+					"sttKeyStored": "Đã lưu một khóa. Nhập khóa mới để thay thế.",
+					"sttKeyClear": "Xóa khóa đã lưu",
+					"sttBaseUrl": "Endpoint (tùy chọn)",
+					"sttBaseUrlHint": "URL tương thích OpenAI, dành cho Whisper tự lưu trữ. Khi đó không cần khóa.",
+					"languages": "Ngôn ngữ",
+					"languagesHint": "Mã ngăn cách bằng dấu phẩy, ví dụ vi, en. Để trống để tự phát hiện ngôn ngữ.",
+					"mode": "Chế độ",
+					"interval": "Đề xuất mỗi (giây)",
+					"kinds": "Những gì có thể đề xuất",
+					"kindsHint": "Đề xuất chỉ được áp dụng bởi một người, với quyền của chính họ.",
+					"maxProposals": "Số đề xuất tối đa mỗi cuộc gọi",
+					"defaultTarget": "Ai xem xét các đề xuất",
+					"summary": "Ghi chú sau cuộc gọi",
+					"storeTranscript": "Giữ bản ghi lời nói",
+					"storeTranscriptHint": "Được lưu cùng cuộc gọi và xóa sau thời gian lưu giữ.",
+					"retention": "Giữ trong (ngày)",
+					"announcement": "Thông báo hiển thị khi tham gia",
+					"announcementPlaceholder": "Ví dụ: Tôi đang ghi lại cuộc gọi này để ghi chú."
+				}
 			}
 		},
 		"conversationView": {

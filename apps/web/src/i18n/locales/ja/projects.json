@@ -287,7 +287,10 @@
 			"createAgent": "エージェントを作成",
 			"finish": "完了",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "あなたはシニアソフトウェアエンジニアです…"
+			"systemPromptPlaceholder": "あなたはシニアソフトウェアエンジニアです…",
+			"agentTypeMeeting": "会議アシスタント",
+			"agentTypeMeetingHint": "通話に参加し、文字起こしをしてタスクを提案します",
+			"agentTypeMeetingGlobalDisabledHint": "会議アシスタントはプロジェクトに属します。プロジェクトの「エージェント」ページから作成してください。"
 		},
 		"card": {
 			"configure": "設定",
@@ -366,7 +369,8 @@
 				"envVars": "環境変数",
 				"globalRole": "グローバルロール",
 				"activity": "アクティビティ",
-				"git": "Git"
+				"git": "Git",
+				"assistant": "アシスタント"
 			},
 			"globalRole": {
 				"title": "グローバルロール",
@@ -630,6 +634,64 @@
 					"description": "このエージェントは、他のエージェントと同じくワークスペースの共有ボットを通じて動作します。"
 				},
 				"permissions": "このエージェントが Git でできることはプロジェクトでのロールに従います。読み取りと書き込みはロールの Git 権限によります。プルリクエストの承認とマージは、デフォルトでは許可されません。"
+			},
+			"assistant": {
+				"intro": "このアシスタントが通話でどのように聞き取り、何を提案できるかを設定します。推論モデルと指示は「概要」タブにあります。アシスタントは発話せず、すべての提案は人が承認するまで何も変更されません。",
+				"listening": "聞き取り",
+				"behavior": "動作",
+				"privacy": "プライバシー",
+				"modes": {
+					"on_demand": "オンデマンド",
+					"auto_suggest": "自動で提案",
+					"notes_only": "メモのみ"
+				},
+				"modeHints": {
+					"on_demand": "誰かが「タスクを提案」をクリックしたときにタスクを提案します。",
+					"auto_suggest": "直近の議論から数分ごとにタスクを提案します。",
+					"notes_only": "文字起こしを保存してメモを作成し、タスクは提案しません。"
+				},
+				"kindNames": {
+					"task": {
+						"create": "タスクの作成",
+						"update": "タスクの更新",
+						"comment": "タスクへのコメント"
+					},
+					"doc": {
+						"create_from_notes": "メモをドキュメントとして保存"
+					}
+				},
+				"targets": {
+					"requester": "追加した人",
+					"host": "通話を開始した人"
+				},
+				"summaries": {
+					"channel_message": "メモをチャンネルに投稿",
+					"none": "メモを投稿しない"
+				},
+				"fields": {
+					"sttProvider": "文字起こしプロバイダー",
+					"sttProviderNone": "プロバイダーを選択",
+					"sttModel": "文字起こしモデル",
+					"sttKey": "文字起こし API キー",
+					"sttKeyStored": "キーが保存されています。入力すると置き換えます。",
+					"sttKeyClear": "保存済みのキーを削除",
+					"sttBaseUrl": "エンドポイント（任意）",
+					"sttBaseUrlHint": "セルフホストの Whisper 用の OpenAI 互換 URL。その場合キーは不要です。",
+					"languages": "言語",
+					"languagesHint": "ja, en のようにカンマ区切りで入力。空欄の場合は言語を自動検出します。",
+					"mode": "モード",
+					"interval": "提案の間隔（秒）",
+					"kinds": "提案できる内容",
+					"kindsHint": "提案は、人が自分の権限で適用した場合にのみ反映されます。",
+					"maxProposals": "1 回の通話での提案の上限",
+					"defaultTarget": "提案を確認する人",
+					"summary": "通話後のメモ",
+					"storeTranscript": "文字起こしを保存",
+					"storeTranscriptHint": "通話と一緒に保存され、保存期間が過ぎると削除されます。",
+					"retention": "保存期間（日）",
+					"announcement": "参加時に表示するメッセージ",
+					"announcementPlaceholder": "例：メモを取るためにこの通話を文字起こししています。"
+				}
 			}
 		},
 		"conversationView": {

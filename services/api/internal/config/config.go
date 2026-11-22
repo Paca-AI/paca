@@ -121,11 +121,14 @@ type DatabaseConfig struct {
 //	LIVEKIT_INTERNAL_URL – where the API reaches LiveKit (http://livekit:7880)
 //	LIVEKIT_API_KEY      – API key shared with the LiveKit server
 //	LIVEKIT_API_SECRET   – API secret shared with the LiveKit server
+//	MEETING_AGENT_TOKEN  – secret the meeting-assistant worker presents to the
+//	                       API; assistants are off until it is set (and calls are on)
 type LiveKitConfig struct {
 	URL         string
 	InternalURL string
 	APIKey      string
 	APISecret   string
+	AgentToken  string
 }
 
 // RedisConfig holds Redis connection settings.

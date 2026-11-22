@@ -287,7 +287,10 @@
 			"createAgent": "Create Agent",
 			"finish": "Finish",
 			"namePlaceholder": "Dev Bot",
-			"systemPromptPlaceholder": "You are a senior software engineer…"
+			"systemPromptPlaceholder": "You are a senior software engineer…",
+			"agentTypeMeeting": "Meeting assistant",
+			"agentTypeMeetingHint": "Joins calls, transcribes and suggests tasks",
+			"agentTypeMeetingGlobalDisabledHint": "Meeting assistants belong to a project. Create one from a project's Agents page."
 		},
 		"card": {
 			"configure": "Configure",
@@ -366,7 +369,8 @@
 				"envVars": "Environment",
 				"globalRole": "Global role",
 				"activity": "Activity",
-				"git": "Git"
+				"git": "Git",
+				"assistant": "Assistant"
 			},
 			"globalRole": {
 				"title": "Global role",
@@ -630,6 +634,64 @@
 					"description": "This agent acts through the workspace's shared bot, like the other agents."
 				},
 				"permissions": "What this agent may do on Git follows its project role: read and write access come from the role's Git permissions. Approving and merging pull requests are not granted by default."
+			},
+			"assistant": {
+				"intro": "How this assistant listens in calls and what it may suggest. Its reasoning model and instructions are on the Overview tab. It never speaks: people approve every suggestion before anything changes.",
+				"listening": "Listening",
+				"behavior": "Behavior",
+				"privacy": "Privacy",
+				"modes": {
+					"on_demand": "On demand",
+					"auto_suggest": "Suggest automatically",
+					"notes_only": "Notes only"
+				},
+				"modeHints": {
+					"on_demand": "Suggests tasks when someone clicks \"Suggest tasks\".",
+					"auto_suggest": "Suggests tasks every few minutes from the latest discussion.",
+					"notes_only": "Keeps the transcript and writes notes, never suggests tasks."
+				},
+				"kindNames": {
+					"task": {
+						"create": "Create tasks",
+						"update": "Update tasks",
+						"comment": "Comment on tasks"
+					},
+					"doc": {
+						"create_from_notes": "Save notes as docs"
+					}
+				},
+				"targets": {
+					"requester": "The person who added it",
+					"host": "The person who started the call"
+				},
+				"summaries": {
+					"channel_message": "Post notes in the channel",
+					"none": "Do not post notes"
+				},
+				"fields": {
+					"sttProvider": "Transcription provider",
+					"sttProviderNone": "Choose a provider",
+					"sttModel": "Transcription model",
+					"sttKey": "Transcription API key",
+					"sttKeyStored": "A key is stored. Type to replace it.",
+					"sttKeyClear": "Remove the stored key",
+					"sttBaseUrl": "Endpoint (optional)",
+					"sttBaseUrlHint": "An OpenAI-compatible URL, for a self-hosted Whisper. Then no key is needed.",
+					"languages": "Languages",
+					"languagesHint": "Comma-separated codes such as en, vi. Leave empty to detect the language.",
+					"mode": "Mode",
+					"interval": "Suggest every (seconds)",
+					"kinds": "What it may suggest",
+					"kindsHint": "Suggestions are only ever applied by a person, with their own permissions.",
+					"maxProposals": "Most suggestions per call",
+					"defaultTarget": "Who reviews its suggestions",
+					"summary": "Notes after the call",
+					"storeTranscript": "Keep the transcript",
+					"storeTranscriptHint": "Stored with the call and deleted after the retention period.",
+					"retention": "Keep it for (days)",
+					"announcement": "Message shown when it joins",
+					"announcementPlaceholder": "For example: I transcribe this call to take notes."
+				}
 			}
 		},
 		"conversationView": {

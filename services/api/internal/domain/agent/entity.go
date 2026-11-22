@@ -185,6 +185,11 @@ const (
 	AgentTypeLLM         = "llm"
 	AgentTypeACP         = "acp"
 	AgentTypeProviderCLI = "provider_cli"
+	// AgentTypeMeeting is an assistant that joins calls: its runtime is the
+	// LiveKit worker (services/meeting-agent), not agent-runner. It reuses the
+	// llm_* fields for its reasoning model; the rest of its configuration is
+	// meetingdom.Settings.
+	AgentTypeMeeting = "meeting"
 )
 
 // AgentScope discriminates a project-owned agent from an instance-wide

@@ -25,7 +25,15 @@ export type ChatErrorKey =
 	| "callsDisabled"
 	| "callNotInCall"
 	| "callSelfModerate"
-	| "callRemoved";
+	| "callRemoved"
+	| "meetingDisabled"
+	| "meetingNoOpenCall"
+	| "meetingAlreadyInCall"
+	| "meetingNotInCall"
+	| "meetingNotConfigured"
+	| "proposalClosed"
+	| "proposalInvalid"
+	| "proposalLimit";
 
 const KEYS: Record<string, ChatErrorKey> = {
 	CHANNEL_NOT_FOUND: "channelNotFound",
@@ -46,6 +54,14 @@ const KEYS: Record<string, ChatErrorKey> = {
 	CALL_NOT_IN_CALL: "callNotInCall",
 	CALL_SELF_MODERATE: "callSelfModerate",
 	CALL_REMOVED: "callRemoved",
+	MEETING_DISABLED: "meetingDisabled",
+	MEETING_NO_OPEN_CALL: "meetingNoOpenCall",
+	MEETING_ALREADY_IN_CALL: "meetingAlreadyInCall",
+	MEETING_NOT_IN_CALL: "meetingNotInCall",
+	MEETING_NOT_CONFIGURED: "meetingNotConfigured",
+	PROPOSAL_CLOSED: "proposalClosed",
+	PROPOSAL_INVALID: "proposalInvalid",
+	PROPOSAL_LIMIT: "proposalLimit",
 	CHAT_NOT_PROJECT_MEMBER: "notProjectMember",
 	CHAT_SEQ_INVALID: "seqInvalid",
 	DM_SELF: "dmSelf",

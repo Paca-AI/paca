@@ -57,6 +57,9 @@ secrets:
   # Secret shared with LiveKit; required when livekit.enabled. With
   # existingSecret, put it under the LIVEKIT_API_SECRET key.
   livekitApiSecret: ""
+  # Secret the meeting-assistant worker presents to the API; required when
+  # meetingAgent.enabled. With existingSecret, put it under MEETING_AGENT_TOKEN.
+  meetingAgentToken: ""
   # Only read when rustfs.enabled is false (external S3) — the bundled
   # RustFS's own credentials live under rustfs.secret.rustfs.* instead, see
   # that section's doc comment for why the two aren't unified into one.
@@ -380,6 +383,26 @@ livekit:
       memory: 128Mi
     limits:
       memory: 1Gi
+
+# ---------------------------------------------------------------------------
+# Meeting assistant worker (opt-in, needs livekit.enabled)
+# ---------------------------------------------------------------------------
+# Joins calls when someone invites a meeting agent: transcribes each person and
+# proposes tasks for them to approve. The agent's own model and transcription
+# keys are configured per agent in the app, not here.
+meetingAgent:
+  enabled: false
+  replicaCount: 1
+  image:
+    repository: ghcr.io/paca-ai/paca-meeting-agent
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
 
 # ---------------------------------------------------------------------------
 # Agent Runner — the AI agent conversation executor, and its sandbox

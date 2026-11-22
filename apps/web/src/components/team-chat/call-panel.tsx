@@ -25,8 +25,14 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { callKeys, muteParticipant, removeParticipant } from "@/lib/call-api";
+import { DM_SCOPE } from "@/lib/chat-api";
 import { chatErrorKey } from "@/lib/chat-errors";
 import { cn } from "@/lib/utils";
+import {
+	AssistantSection,
+	CaptionsStrip,
+	ProposalsSection,
+} from "./call-assistant";
 import { useCall } from "./call-provider";
 
 function initials(name: string): string {
@@ -166,11 +172,14 @@ export function CallPanel({
 	projectId,
 	channelId,
 	canModerate,
+	canInviteAssistant = false,
 }: {
 	projectId: string;
 	channelId: string;
 	/** The caller may mute and remove others (calls:moderate). */
 	canModerate: boolean;
+	/** The caller may bring a meeting assistant into the call (calls:invite_agent). */
+	canInviteAssistant?: boolean;
 }) {
 	const { t } = useTranslation("chat");
 	const queryClient = useQueryClient();
@@ -206,6 +215,15 @@ export function CallPanel({
 		(p) => trackOf(p, Track.Source.ScreenShare).track,
 	);
 	const lp = room.localParticipant;
+	// Who said what, for captions and the proposal chips.
+	const names = new Map<string, string>(
+		everyone.map((p) => [
+			p.identity,
+			p === lp ? t("call.you") : p.name || p.identity,
+		]),
+	);
+	// A direct message has no project, so no assistants.
+	const hasProject = projectId !== DM_SCOPE;
 
 	return (
 		<section
@@ -266,6 +284,7 @@ export function CallPanel({
 					{t("call.mediaBlocked")}
 				</p>
 			) : null}
+			{hasProject ? <CaptionsStrip names={names} /> : null}
 			<div className="mt-3 flex items-center justify-center gap-2">
 				<Button
 					size="icon"
@@ -311,6 +330,21 @@ export function CallPanel({
 					<PhoneOff />
 				</Button>
 			</div>
+			{hasProject ? (
+				<>
+					<AssistantSection
+						projectId={projectId}
+						channelId={channelId}
+						canInvite={canInviteAssistant}
+						canModerate={canModerate}
+					/>
+					<ProposalsSection
+						projectId={projectId}
+						channelId={channelId}
+						names={names}
+					/>
+				</>
+			) : null}
 		</section>
 	);
 }

@@ -54,8 +54,8 @@ func allows(p *iam.Policy, action, resource string) bool {
 func TestEveryShippedPolicyParsesAndValidates(t *testing.T) {
 	platform := defaultroles.Platform()
 	templates := defaultroles.ProjectTemplates()
-	if len(platform) != 3 || len(templates) != 4 {
-		t.Fatalf("platform=%d templates=%d, want 3 and 4", len(platform), len(templates))
+	if len(platform) != 3 || len(templates) != 5 {
+		t.Fatalf("platform=%d templates=%d, want 3 and 5", len(platform), len(templates))
 	}
 	for _, r := range platform {
 		validate(t, r.Name, parse(t, r))
@@ -145,7 +145,7 @@ func TestPlatformRoles(t *testing.T) {
 }
 
 func TestProjectTemplates(t *testing.T) {
-	want := []string{"Admin", "Analyst", "Editor", "Viewer"}
+	want := []string{"Admin", "Analyst", "Editor", "Meeting assistant", "Viewer"}
 	var got []string
 	for _, r := range defaultroles.ProjectTemplates() {
 		got = append(got, r.Name)
@@ -186,7 +186,7 @@ func TestProjectTemplates(t *testing.T) {
 func TestInstantiateReplacesEveryToken(t *testing.T) {
 	pid := uuid.New()
 	roles := defaultroles.Instantiate(pid)
-	if len(roles) != 4 {
+	if len(roles) != 5 {
 		t.Fatalf("got %d roles", len(roles))
 	}
 	for _, r := range roles {

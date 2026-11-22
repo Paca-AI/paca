@@ -1,0 +1,68 @@
+{
+  "version": "2026-10-01",
+  "statements": [
+    {
+      "sid": "ReadProject",
+      "effect": "Allow",
+      "actions": [
+        "projects:read"
+      ],
+      "resources": [
+        "project/PROJECT_ID"
+      ]
+    },
+    {
+      "sid": "Read",
+      "effect": "Allow",
+      "actions": [
+        "docs:read",
+        "project.members:read",
+        "sprints:read",
+        "tasks:read"
+      ],
+      "resources": [
+        "project/PROJECT_ID/*"
+      ]
+    },
+    {
+      "sid": "Propose",
+      "effect": "Allow",
+      "actions": [
+        "proposals:write"
+      ],
+      "resources": [
+        "project/PROJECT_ID",
+        "project/PROJECT_ID/proposal/*"
+      ]
+    },
+    {
+      "sid": "ChatCollection",
+      "effect": "Allow",
+      "actions": [
+        "channels:read"
+      ],
+      "resources": [
+        "project/PROJECT_ID"
+      ]
+    },
+    {
+      "sid": "ChatPublicChannels",
+      "effect": "Allow",
+      "actions": [
+        "channels:read",
+        "messages:write"
+      ],
+      "resources": [
+        "project/PROJECT_ID/channel/*"
+      ],
+      "conditions": {
+        "In": {
+          "channel.kind": [
+            "public",
+            "voice"
+          ]
+        }
+      }
+    }
+  ]
+}
