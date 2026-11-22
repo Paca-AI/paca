@@ -270,7 +270,15 @@
 		"removeParticipant": "Expulsar a {{name}} de la llamada",
 		"voiceRow": "{{count}} en voz",
 		"backToCall": "Volver a la llamada",
-		"ended": "La llamada terminó. Puedes cerrar esta pestaña."
+		"ended": "La llamada terminó. Puedes cerrar esta pestaña.",
+		"audio": {
+			"settings": "Procesamiento del micrófono",
+			"heading": "Procesamiento de audio",
+			"echoCancellation": "Cancelación de eco",
+			"noiseSuppression": "Supresión de ruido",
+			"autoGainControl": "Control automático de ganancia",
+			"hint": "Los auriculares dan el mejor resultado. Los cambios se aplican al instante."
+		}
 	},
 	"assistant": {
 		"sectionLabel": "Asistente de reuniones",

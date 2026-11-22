@@ -270,7 +270,15 @@
 		"removeParticipant": "Remover {{name}} da chamada",
 		"voiceRow": "{{count}} na voz",
 		"backToCall": "Voltar à chamada",
-		"ended": "A chamada terminou. Você pode fechar esta aba."
+		"ended": "A chamada terminou. Você pode fechar esta aba.",
+		"audio": {
+			"settings": "Processamento do microfone",
+			"heading": "Processamento de áudio",
+			"echoCancellation": "Cancelamento de eco",
+			"noiseSuppression": "Supressão de ruído",
+			"autoGainControl": "Controle automático de ganho",
+			"hint": "Fones de ouvido dão o melhor resultado. As alterações são aplicadas na hora."
+		}
 	},
 	"assistant": {
 		"sectionLabel": "Assistente de reunião",

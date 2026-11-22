@@ -270,7 +270,15 @@
 		"removeParticipant": "Retirer {{name}} de l'appel",
 		"voiceRow": "{{count}} en vocal",
 		"backToCall": "Retour à l'appel",
-		"ended": "L'appel est terminé. Vous pouvez fermer cet onglet."
+		"ended": "L'appel est terminé. Vous pouvez fermer cet onglet.",
+		"audio": {
+			"settings": "Traitement du microphone",
+			"heading": "Traitement audio",
+			"echoCancellation": "Annulation d'écho",
+			"noiseSuppression": "Suppression du bruit",
+			"autoGainControl": "Contrôle automatique du gain",
+			"hint": "Un casque donne les meilleurs résultats. Les changements s'appliquent immédiatement."
+		}
 	},
 	"assistant": {
 		"sectionLabel": "Assistant de réunion",

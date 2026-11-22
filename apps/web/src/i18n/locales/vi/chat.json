@@ -270,7 +270,15 @@
 		"removeParticipant": "Mời {{name}} ra khỏi cuộc gọi",
 		"voiceRow": "{{count}} người trong kênh thoại",
 		"backToCall": "Quay lại cuộc gọi",
-		"ended": "Cuộc gọi đã kết thúc. Bạn có thể đóng tab này."
+		"ended": "Cuộc gọi đã kết thúc. Bạn có thể đóng tab này.",
+		"audio": {
+			"settings": "Xử lý micrô",
+			"heading": "Xử lý âm thanh",
+			"echoCancellation": "Khử tiếng vang",
+			"noiseSuppression": "Giảm tiếng ồn",
+			"autoGainControl": "Tự động điều chỉnh âm lượng",
+			"hint": "Dùng tai nghe cho kết quả tốt nhất. Thay đổi có hiệu lực ngay."
+		}
 	},
 	"assistant": {
 		"sectionLabel": "Trợ lý cuộc họp",

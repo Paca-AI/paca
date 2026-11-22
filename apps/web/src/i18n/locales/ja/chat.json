@@ -270,7 +270,15 @@
 		"removeParticipant": "{{name}}を通話から削除",
 		"voiceRow": "ボイス{{count}}人",
 		"backToCall": "通話に戻る",
-		"ended": "通話が終了しました。このタブは閉じて構いません。"
+		"ended": "通話が終了しました。このタブは閉じて構いません。",
+		"audio": {
+			"settings": "マイクの処理",
+			"heading": "音声処理",
+			"echoCancellation": "エコーキャンセル",
+			"noiseSuppression": "ノイズ抑制",
+			"autoGainControl": "自動ゲイン制御",
+			"hint": "ヘッドホンの使用が最適です。変更はすぐに反映されます。"
+		}
 	},
 	"assistant": {
 		"sectionLabel": "会議アシスタント",
