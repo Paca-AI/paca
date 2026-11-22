@@ -166,8 +166,11 @@ function ModerationMenu({
 				render={
 					<Button
 						size="icon-sm"
-						variant="ghost"
-						className={cn("rounded-full", className)}
+						variant="secondary"
+						className={cn(
+							"rounded-full bg-transparent hover:bg-muted",
+							className,
+						)}
 						aria-label={t("call.moderate", { name })}
 					/>
 				}
@@ -212,7 +215,7 @@ function Tile({
 	return (
 		<div
 			className={cn(
-				"group relative min-h-0 min-w-0 overflow-hidden rounded-2xl bg-neutral-800 transition-shadow",
+				"group relative min-h-0 min-w-0 overflow-hidden rounded-2xl bg-neutral-800 transition-shadow [container-type:size]",
 				speaking && "ring-[3px] ring-sky-400",
 				!camera && "bg-black",
 				className,
@@ -277,6 +280,16 @@ function Clock() {
 	);
 }
 
+/** The People / Assistant buttons: light on the dark bar, filled while open. */
+function panelButtonClass(active: boolean): string {
+	return cn(
+		"relative",
+		active
+			? "bg-sky-300 text-neutral-900 hover:bg-sky-200 hover:text-neutral-900"
+			: "bg-transparent text-white hover:bg-white/10 hover:text-white",
+	);
+}
+
 /** A round control in the bottom bar. */
 function BarButton({
 	off,
@@ -288,7 +301,7 @@ function BarButton({
 			size="icon"
 			variant={off ? "destructive" : "secondary"}
 			className={cn(
-				"size-12 rounded-full [&_svg:not([class*='size-'])]:size-5",
+				"size-10 rounded-full md:size-12 [&_svg:not([class*='size-'])]:size-5",
 				className,
 			)}
 			{...props}
@@ -334,10 +347,14 @@ export function CallPanel({
 	const arrivalCount = call.arrivals.length;
 	const seenArrivals = useRef(arrivalCount);
 	const [unseen, setUnseen] = useState(false);
+	const panelRef = useRef(panel);
+	panelRef.current = panel;
 	useEffect(() => {
 		if (arrivalCount > seenArrivals.current) {
-			setPanel((p) => p ?? "assistant");
-			setUnseen(true);
+			const open = panelRef.current;
+			if (open === null) setPanel("assistant");
+			// Already looking at it: nothing is unseen.
+			else if (open !== "assistant") setUnseen(true);
 		}
 		seenArrivals.current = arrivalCount;
 	}, [arrivalCount]);
@@ -436,8 +453,8 @@ export function CallPanel({
 				}),
 			)}
 
-			<div className="flex min-h-0 flex-1 gap-3 p-3 pb-0">
-				<div className="@container relative min-h-0 min-w-0 flex-1">
+			<div className="relative flex min-h-0 flex-1 gap-3 p-3 pb-0">
+				<div className="relative min-h-0 min-w-0 flex-1">
 					{presented ? (
 						<div className="flex size-full min-h-0 flex-col gap-3 md:flex-row">
 							{screenTile(presented, "flex-1")}
@@ -585,7 +602,7 @@ export function CallPanel({
 				) : null}
 			</div>
 
-			<footer className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-3">
+			<footer className="flex flex-wrap items-center justify-center gap-2 px-2 py-3 md:grid md:grid-cols-[1fr_auto_1fr] md:gap-3 md:px-4">
 				<div className="hidden min-w-0 items-center gap-3 text-sm md:flex">
 					<Clock />
 					{title ? (
@@ -596,7 +613,7 @@ export function CallPanel({
 					) : null}
 				</div>
 
-				<div className="col-start-2 flex items-center gap-2">
+				<div className="flex items-center gap-2 md:col-start-2">
 					<div className="flex items-center rounded-full bg-secondary">
 						<AudioSettingsMenu />
 						<BarButton
@@ -640,12 +657,12 @@ export function CallPanel({
 						<RecordButton
 							projectId={projectId}
 							channelId={channelId}
-							buttonClassName="size-12 rounded-full [&_svg:not([class*='size-'])]:size-5"
+							buttonClassName="size-10 rounded-full md:size-12 [&_svg:not([class*='size-'])]:size-5"
 						/>
 					) : null}
 					<BarButton
 						variant="destructive"
-						className="w-16 bg-red-600 text-white hover:bg-red-500"
+						className="w-14 bg-red-600 md:w-16 text-white hover:bg-red-500"
 						aria-label={t("call.leave")}
 						onClick={call.leave}
 					>
@@ -653,10 +670,10 @@ export function CallPanel({
 					</BarButton>
 				</div>
 
-				<div className="col-start-3 flex items-center justify-end gap-1">
+				<div className="flex items-center justify-end gap-1 md:col-start-3">
 					<BarButton
-						variant="ghost"
-						className="relative bg-transparent hover:bg-white/10 aria-pressed:bg-sky-300 aria-pressed:text-neutral-900"
+						variant="secondary"
+						className={panelButtonClass(panel === "people")}
 						aria-label={t("call.people")}
 						aria-pressed={panel === "people"}
 						onClick={() => togglePanel("people")}
@@ -668,14 +685,14 @@ export function CallPanel({
 					</BarButton>
 					{hasProject ? (
 						<BarButton
-							variant="ghost"
-							className="relative bg-transparent hover:bg-white/10 aria-pressed:bg-sky-300 aria-pressed:text-neutral-900"
+							variant="secondary"
+							className={panelButtonClass(panel === "assistant")}
 							aria-label={t("assistant.title")}
 							aria-pressed={panel === "assistant"}
 							onClick={() => togglePanel("assistant")}
 						>
 							<Sparkles />
-							{unseen ? (
+							{unseen && panel !== "assistant" ? (
 								<span
 									aria-hidden
 									className="absolute right-1.5 top-1.5 size-2.5 rounded-full bg-sky-400 ring-2 ring-neutral-950"
@@ -704,8 +721,8 @@ function AudioSettingsMenu() {
 				render={
 					<Button
 						size="icon"
-						variant="ghost"
-						className="h-12 w-8 rounded-l-full rounded-r-none pl-1 hover:bg-white/10"
+						variant="secondary"
+						className="h-10 w-8 rounded-l-full md:h-12 rounded-r-none bg-transparent pl-1 hover:bg-white/10"
 						aria-label={t("call.audio.settings")}
 					/>
 				}
