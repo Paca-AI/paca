@@ -19,6 +19,7 @@ import {
 	stopRecording,
 } from "@/lib/call-api";
 import { chatErrorKey } from "@/lib/chat-errors";
+import { cn } from "@/lib/utils";
 
 /** Whether the call is being recorded, from the call itself: everyone in it sees
  * the same, kept current by the realtime announcement. */
@@ -34,9 +35,11 @@ export function useCallRecording(projectId: string, channelId: string) {
 export function RecordingNotice({
 	projectId,
 	channelId,
+	className,
 }: {
 	projectId: string;
 	channelId: string;
+	className?: string;
 }) {
 	const { t } = useTranslation("chat");
 	const rec = useCallRecording(projectId, channelId);
@@ -44,7 +47,10 @@ export function RecordingNotice({
 	return (
 		<p
 			role="status"
-			className="mb-2 flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-1.5 text-sm font-medium text-destructive"
+			className={cn(
+				"mb-2 flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-1.5 text-sm font-medium text-destructive",
+				className,
+			)}
 		>
 			<span
 				aria-hidden
@@ -64,9 +70,11 @@ export function RecordingNotice({
 export function RecordButton({
 	projectId,
 	channelId,
+	buttonClassName,
 }: {
 	projectId: string;
 	channelId: string;
+	buttonClassName?: string;
 }) {
 	const { t } = useTranslation("chat");
 	const qc = useQueryClient();
@@ -110,6 +118,7 @@ export function RecordButton({
 				<Button
 					size="icon"
 					variant="destructive"
+					className={buttonClassName}
 					aria-label={t("recording.stop")}
 					disabled={stop.isPending}
 					onClick={() => stop.mutate()}
@@ -120,6 +129,7 @@ export function RecordButton({
 				<Button
 					size="icon"
 					variant="secondary"
+					className={buttonClassName}
 					aria-label={t("recording.start")}
 					onClick={() => setConfirm(true)}
 				>

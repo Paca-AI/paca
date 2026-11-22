@@ -278,7 +278,9 @@
 			"noiseSuppression": "Supressão de ruído",
 			"autoGainControl": "Controle automático de ganho",
 			"hint": "Fones de ouvido dão o melhor resultado. As alterações são aplicadas na hora."
-		}
+		},
+		"people": "Pessoas",
+		"closePanel": "Fechar painel"
 	},
 	"assistant": {
 		"sectionLabel": "Assistente de reunião",

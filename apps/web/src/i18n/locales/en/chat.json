@@ -278,7 +278,9 @@
 			"noiseSuppression": "Noise suppression",
 			"autoGainControl": "Automatic gain control",
 			"hint": "Headphones give the best results. Changes apply right away."
-		}
+		},
+		"people": "People",
+		"closePanel": "Close panel"
 	},
 	"assistant": {
 		"sectionLabel": "Meeting assistant",

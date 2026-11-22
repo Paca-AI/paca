@@ -60,46 +60,39 @@ function CallTab() {
 		if (call.status === "idle" && wasIn.current) window.close();
 	}, [call.status]);
 
+	const centred =
+		"flex size-full flex-col items-center justify-center gap-3 p-6 text-sm";
 	return (
-		<div className="fixed inset-0 z-50 flex flex-col bg-background">
-			<header className="flex items-center gap-2 border-b px-4 py-2">
-				<h1 className="min-w-0 flex-1 truncate text-sm font-semibold">
-					{title}
-				</h1>
-			</header>
-			{/* Scrolls when the assistant's captions and suggestion cards make the call
-			    taller than the window; my-auto keeps a short call centred without
-			    clipping the top of a tall one (justify-center would). */}
-			<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-				<div className="my-auto">
-					{call.error ? (
-						<div className="flex flex-col items-center gap-3 p-6 text-sm">
-							<p role="alert" className="text-destructive">
-								{t(`errors.${call.error}`)}
-							</p>
-							<Button variant="outline" onClick={() => window.close()}>
-								{t("call.leave")}
-							</Button>
-						</div>
-					) : call.status === "connected" ? (
-						<CallPanel
-							projectId={scope}
-							channelId={channelId}
-							canModerate={scope !== "dm" && can("calls:moderate")}
-							canInviteAssistant={scope !== "dm" && can("calls:invite_agent")}
-							canRecord={scope !== "dm" && can("calls:record")}
-						/>
-					) : call.status === "idle" && wasIn.current ? (
-						<p className="p-6 text-center text-sm text-muted-foreground">
-							{t("call.ended")}
-						</p>
-					) : (
-						<div className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
-							<Spinner /> {t("call.connecting")}
-						</div>
-					)}
+		<div className="dark fixed inset-0 z-50 bg-neutral-950 text-white">
+			{call.error ? (
+				<div className={centred}>
+					<p role="alert" className="text-red-300">
+						{t(`errors.${call.error}`)}
+					</p>
+					<Button variant="secondary" onClick={() => window.close()}>
+						{t("call.leave")}
+					</Button>
 				</div>
-			</div>
+			) : call.status === "connected" ? (
+				<CallPanel
+					projectId={scope}
+					channelId={channelId}
+					title={title}
+					canModerate={scope !== "dm" && can("calls:moderate")}
+					canInviteAssistant={scope !== "dm" && can("calls:invite_agent")}
+					canRecord={scope !== "dm" && can("calls:record")}
+				/>
+			) : call.status === "idle" && wasIn.current ? (
+				<div className={centred}>
+					<p className="text-neutral-300">{t("call.ended")}</p>
+				</div>
+			) : (
+				<div className={centred}>
+					<Spinner className="size-6" />
+					{title ? <p className="text-lg font-medium">{title}</p> : null}
+					<p className="text-neutral-400">{t("call.connecting")}</p>
+				</div>
+			)}
 		</div>
 	);
 }

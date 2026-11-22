@@ -55,6 +55,8 @@ const CONVERSATIONS_ROUTE_RE = /^\/conversations(\/|$)/;
 // The chat pages (Inbox, direct messages) have their own composer at the same
 // screen corner as the floating launcher.
 const CHAT_ROUTE_RE = /^\/chat(\/|$)/;
+// The call tab is a full-screen meeting; the launcher would float over it.
+const CALL_ROUTE_RE = /^\/call(\/|$)/;
 
 export const Route = createFileRoute("/_authenticated")({
 	beforeLoad: async ({ context: { queryClient }, location }) => {
@@ -106,7 +108,8 @@ function AuthenticatedLayout() {
 		!!user &&
 		!PROJECT_ROUTE_RE.test(pathname) &&
 		!CONVERSATIONS_ROUTE_RE.test(pathname) &&
-		!CHAT_ROUTE_RE.test(pathname);
+		!CHAT_ROUTE_RE.test(pathname) &&
+		!CALL_ROUTE_RE.test(pathname);
 
 	useEffect(() => {
 		if (!user) return;
