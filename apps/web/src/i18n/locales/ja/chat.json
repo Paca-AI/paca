@@ -278,7 +278,9 @@
 			"noiseSuppression": "ノイズ抑制",
 			"autoGainControl": "自動ゲイン制御",
 			"hint": "ヘッドホンの使用が最適です。変更はすぐに反映されます。"
-		}
+		},
+		"people": "参加者",
+		"closePanel": "パネルを閉じる"
 	},
 	"assistant": {
 		"sectionLabel": "会議アシスタント",

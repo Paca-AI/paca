@@ -278,7 +278,9 @@
 			"noiseSuppression": "噪声抑制",
 			"autoGainControl": "自动增益控制",
 			"hint": "使用耳机效果最佳。更改立即生效。"
-		}
+		},
+		"people": "参与者",
+		"closePanel": "关闭面板"
 	},
 	"assistant": {
 		"sectionLabel": "会议助手",

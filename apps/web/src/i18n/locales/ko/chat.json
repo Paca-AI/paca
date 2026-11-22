@@ -278,7 +278,9 @@
 			"noiseSuppression": "노이즈 억제",
 			"autoGainControl": "자동 게인 제어",
 			"hint": "헤드폰을 사용하면 가장 좋습니다. 변경 사항은 즉시 적용됩니다."
-		}
+		},
+		"people": "참가자",
+		"closePanel": "패널 닫기"
 	},
 	"assistant": {
 		"sectionLabel": "회의 어시스턴트",

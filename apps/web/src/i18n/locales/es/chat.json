@@ -278,7 +278,9 @@
 			"noiseSuppression": "Supresión de ruido",
 			"autoGainControl": "Control automático de ganancia",
 			"hint": "Los auriculares dan el mejor resultado. Los cambios se aplican al instante."
-		}
+		},
+		"people": "Personas",
+		"closePanel": "Cerrar panel"
 	},
 	"assistant": {
 		"sectionLabel": "Asistente de reuniones",

@@ -45,6 +45,7 @@ import {
 	resolveProposal,
 } from "@/lib/meeting-api";
 import { executeProposal, type ProposalPayload } from "@/lib/proposal-actions";
+import { cn } from "@/lib/utils";
 import { useCall } from "./call-provider";
 import { TranscriptView } from "./meeting-history";
 
@@ -342,7 +343,13 @@ function privacySummary(a: MeetingAgent, t: TFunction<"chat">): string {
 // ------------------------------------------------------------------ captions
 
 /** The latest live captions, above the controls. */
-export function CaptionsStrip({ names }: { names: Map<string, string> }) {
+export function CaptionsStrip({
+	names,
+	className,
+}: {
+	names: Map<string, string>;
+	className?: string;
+}) {
 	const { t } = useTranslation("chat");
 	const { captions } = useCall();
 	if (captions.length === 0) return null;
@@ -350,7 +357,10 @@ export function CaptionsStrip({ names }: { names: Map<string, string> }) {
 		<div
 			role="log"
 			aria-label={t("assistant.captions")}
-			className="mt-3 space-y-0.5 rounded-md bg-black/70 px-3 py-2 text-sm text-white"
+			className={cn(
+				"mt-3 space-y-0.5 rounded-md bg-black/70 px-3 py-2 text-sm text-white",
+				className,
+			)}
 		>
 			{captions.map((c) => (
 				<p key={c.id}>

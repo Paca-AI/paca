@@ -278,7 +278,9 @@
 			"noiseSuppression": "Giảm tiếng ồn",
 			"autoGainControl": "Tự động điều chỉnh âm lượng",
 			"hint": "Dùng tai nghe cho kết quả tốt nhất. Thay đổi có hiệu lực ngay."
-		}
+		},
+		"people": "Người tham gia",
+		"closePanel": "Đóng bảng"
 	},
 	"assistant": {
 		"sectionLabel": "Trợ lý cuộc họp",
