@@ -18,6 +18,7 @@ import (
 	agentdom "github.com/Paca-AI/api/internal/domain/agent"
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
+	meetingdom "github.com/Paca-AI/api/internal/domain/meeting"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
 	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
@@ -32,6 +33,7 @@ type mockAgentSvc struct {
 	sendChatMessage               func(ctx context.Context, projectID, agentID, sessionID, memberID uuid.UUID) (*agentdom.AgentConversation, error)
 	getAgent                      func(ctx context.Context, projectID, agentID uuid.UUID) (*agentdom.Agent, error)
 	createAgent                   func(ctx context.Context, projectID uuid.UUID, in agentdom.CreateAgentInput) (*agentdom.Agent, error)
+	deleteAgent                   func(ctx context.Context, projectID, agentID uuid.UUID) error
 	createGlobalAgent             func(ctx context.Context, in agentdom.CreateGlobalAgentInput) (*agentdom.Agent, error)
 	updateGlobalAgent             func(ctx context.Context, agentID uuid.UUID, in agentdom.UpdateAgentInput) (*agentdom.Agent, error)
 	startChatSession              func(ctx context.Context, projectID, agentID, memberID uuid.UUID, message string) (*agentdom.AgentChatSession, *agentdom.AgentConversation, error)
@@ -101,7 +103,10 @@ func (m *mockAgentSvc) VerifyCLILogin(ctx context.Context, projectID, agentID uu
 	}
 	return false, agentdom.ErrAgentNotFound
 }
-func (m *mockAgentSvc) DeleteAgent(_ context.Context, _, _ uuid.UUID) error {
+func (m *mockAgentSvc) DeleteAgent(ctx context.Context, projectID, agentID uuid.UUID) error {
+	if m.deleteAgent != nil {
+		return m.deleteAgent(ctx, projectID, agentID)
+	}
 	return agentdom.ErrAgentNotFound
 }
 func (m *mockAgentSvc) TriggerDescriptionWrite(_ context.Context, _, _, _, _ uuid.UUID) (*agentdom.AgentConversation, error) {
@@ -631,9 +636,49 @@ func TestCreateAgent_EmptyLLMBaseURL_Allowed(t *testing.T) {
 	}
 }
 
-// A meeting assistant is created with the same model fields as an llm agent, and
-// the service receives its type (it is not mistaken for an unknown one).
-func TestCreateAgent_MeetingType_PassesThroughWithModelFields(t *testing.T) {
+type fakeMeetingSettings struct {
+	validateErr error
+	saved       *meetingdom.SettingsPatch
+	saveErr     error
+}
+
+func (f *fakeMeetingSettings) ValidateListening(meetingdom.SettingsPatch) error { return f.validateErr }
+func (f *fakeMeetingSettings) NeedsModel(p meetingdom.SettingsPatch) bool {
+	return (p.Mode != nil && *p.Mode != meetingdom.ModeNotesOnly) || (p.SummaryTarget != nil && *p.SummaryTarget != meetingdom.SummaryNone)
+}
+func (f *fakeMeetingSettings) UpdateSettings(_ context.Context, _, _ uuid.UUID, p meetingdom.SettingsPatch) (*meetingdom.Settings, error) {
+	if f.saveErr != nil {
+		return nil, f.saveErr
+	}
+	f.saved = &p
+	return &meetingdom.Settings{}, nil
+}
+
+func meetingRouter(svc *mockAgentSvc, m *fakeMeetingSettings) chi.Router {
+	h := handler.NewAgentHandler(svc, "", "", "")
+	if m != nil {
+		h = h.WithMeetingSettings(m)
+	}
+	r := chi.NewRouter()
+	r.Use(claimsMiddleware(uuid.New().String()))
+	r.Post("/projects/{projectId}/agents", h.CreateAgent)
+	return r
+}
+
+func meetingBody(overrides map[string]any) map[string]any {
+	body := validCreateAgentBody(map[string]any{
+		"agent_type": "meeting", "system_prompt": "Be brief.",
+		"meeting_settings": map[string]any{"stt_provider": "openai", "stt_model": "whisper-1", "stt_api_key": "sk"},
+	})
+	for k, v := range overrides {
+		body[k] = v
+	}
+	return body
+}
+
+// A meeting assistant is created together with how it listens: the service
+// receives its type and the listening settings are saved for the new agent.
+func TestCreateAgent_MeetingType_SavesListeningSettings(t *testing.T) {
 	var got agentdom.CreateAgentInput
 	svc := &mockAgentSvc{
 		createAgent: func(_ context.Context, projectID uuid.UUID, in agentdom.CreateAgentInput) (*agentdom.Agent, error) {
@@ -641,29 +686,100 @@ func TestCreateAgent_MeetingType_PassesThroughWithModelFields(t *testing.T) {
 			return &agentdom.Agent{ID: uuid.New(), ProjectID: projectID, Name: in.Name, Handle: in.Handle, AgentType: in.AgentType}, nil
 		},
 	}
-	h := handler.NewAgentHandler(svc, "", "", "")
-	r := chi.NewRouter()
-	r.Use(claimsMiddleware(uuid.New().String()))
-	r.Post("/projects/{projectId}/agents", h.CreateAgent)
-	w := doAgentRequest(t, r, http.MethodPost,
-		"/projects/"+uuid.New().String()+"/agents",
-		validCreateAgentBody(map[string]any{"agent_type": "meeting", "system_prompt": "Be brief."}))
+	m := &fakeMeetingSettings{}
+	w := doAgentRequest(t, meetingRouter(svc, m), http.MethodPost,
+		"/projects/"+uuid.New().String()+"/agents", meetingBody(nil))
 	if w.Code != http.StatusCreated {
 		t.Fatalf("expected 201 for a meeting agent, got %d: %s", w.Code, w.Body.String())
 	}
 	if got.AgentType != agentdom.AgentTypeMeeting || got.LLMModel != "gpt-4" || got.SystemPrompt != "Be brief." {
 		t.Fatalf("service input = %+v", got)
 	}
+	if m.saved == nil || m.saved.STTProvider == nil || *m.saved.STTProvider != "openai" {
+		t.Fatalf("listening settings were not saved: %+v", m.saved)
+	}
 }
 
-// A meeting agent still needs its reasoning model: the same fields are required.
-func TestCreateAgent_MeetingType_RequiresModelFields(t *testing.T) {
-	r := newAgentRouter(&mockAgentSvc{})
-	w := doAgentRequest(t, r, http.MethodPost,
-		"/projects/"+uuid.New().String()+"/agents",
-		validCreateAgentBody(map[string]any{"agent_type": "meeting", "llm_model": ""}))
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for a meeting agent without a model, got %d: %s", w.Code, w.Body.String())
+// Without how it listens, nothing is created.
+func TestCreateAgent_MeetingType_RequiresListeningSettings(t *testing.T) {
+	created := false
+	svc := &mockAgentSvc{createAgent: func(context.Context, uuid.UUID, agentdom.CreateAgentInput) (*agentdom.Agent, error) {
+		created = true
+		return &agentdom.Agent{ID: uuid.New()}, nil
+	}}
+	body := meetingBody(nil)
+	delete(body, "meeting_settings")
+	w := doAgentRequest(t, meetingRouter(svc, &fakeMeetingSettings{}), http.MethodPost,
+		"/projects/"+uuid.New().String()+"/agents", body)
+	if w.Code != http.StatusBadRequest || created {
+		t.Fatalf("expected 400 and no agent, got %d created=%v: %s", w.Code, created, w.Body.String())
+	}
+	created = false
+	w = doAgentRequest(t, meetingRouter(svc, &fakeMeetingSettings{validateErr: meetingdom.ErrSettingsInvalid}), http.MethodPost,
+		"/projects/"+uuid.New().String()+"/agents", meetingBody(nil))
+	if w.Code != http.StatusBadRequest || created {
+		t.Fatalf("expected 400 and no agent for invalid listening settings, got %d created=%v: %s", w.Code, created, w.Body.String())
+	}
+}
+
+// If the settings cannot be saved the new agent is removed again.
+func TestCreateAgent_MeetingType_RemovesAgentWhenSettingsFail(t *testing.T) {
+	deleted := false
+	svc := &mockAgentSvc{
+		createAgent: func(_ context.Context, projectID uuid.UUID, in agentdom.CreateAgentInput) (*agentdom.Agent, error) {
+			return &agentdom.Agent{ID: uuid.New(), ProjectID: projectID, AgentType: in.AgentType}, nil
+		},
+		deleteAgent: func(context.Context, uuid.UUID, uuid.UUID) error { deleted = true; return nil },
+	}
+	w := doAgentRequest(t, meetingRouter(svc, &fakeMeetingSettings{saveErr: meetingdom.ErrSettingsInvalid}), http.MethodPost,
+		"/projects/"+uuid.New().String()+"/agents", meetingBody(nil))
+	if w.Code != http.StatusBadRequest || !deleted {
+		t.Fatalf("expected 400 and the agent removed, got %d deleted=%v", w.Code, deleted)
+	}
+}
+
+// Without the meeting service wired (assistants off) a meeting agent is refused.
+func TestCreateAgent_MeetingType_RefusedWithoutMeetingService(t *testing.T) {
+	w := doAgentRequest(t, meetingRouter(&mockAgentSvc{}, nil), http.MethodPost,
+		"/projects/"+uuid.New().String()+"/agents", meetingBody(nil))
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// Transcription alone needs no language model: a meeting agent is created with
+// only how it listens.
+func TestCreateAgent_MeetingType_TranscriptionOnlyNeedsNoModel(t *testing.T) {
+	var got agentdom.CreateAgentInput
+	svc := &mockAgentSvc{createAgent: func(_ context.Context, projectID uuid.UUID, in agentdom.CreateAgentInput) (*agentdom.Agent, error) {
+		got = in
+		return &agentdom.Agent{ID: uuid.New(), ProjectID: projectID, AgentType: in.AgentType}, nil
+	}}
+	body := meetingBody(map[string]any{"llm_provider": "", "llm_model": "", "llm_api_key": "", "llm_base_url": ""})
+	w := doAgentRequest(t, meetingRouter(svc, &fakeMeetingSettings{}), http.MethodPost,
+		"/projects/"+uuid.New().String()+"/agents", body)
+	if w.Code != http.StatusCreated || got.AgentType != agentdom.AgentTypeMeeting || got.LLMModel != "" {
+		t.Fatalf("expected 201 without a model, got %d: %s (%+v)", w.Code, w.Body.String(), got)
+	}
+}
+
+// Notes and suggestions use the model, so turning either on at creation needs it.
+func TestCreateAgent_MeetingType_NotesOrSuggestionsNeedTheModel(t *testing.T) {
+	for name, settings := range map[string]map[string]any{
+		"suggestions": {"stt_provider": "openai", "stt_model": "w", "stt_api_key": "k", "mode": "on_demand"},
+		"notes":       {"stt_provider": "openai", "stt_model": "w", "stt_api_key": "k", "summary_target": "channel_message"},
+	} {
+		created := false
+		svc := &mockAgentSvc{createAgent: func(context.Context, uuid.UUID, agentdom.CreateAgentInput) (*agentdom.Agent, error) {
+			created = true
+			return &agentdom.Agent{ID: uuid.New()}, nil
+		}}
+		w := doAgentRequest(t, meetingRouter(svc, &fakeMeetingSettings{}), http.MethodPost,
+			"/projects/"+uuid.New().String()+"/agents",
+			meetingBody(map[string]any{"meeting_settings": settings, "llm_model": ""}))
+		if w.Code != http.StatusBadRequest || created {
+			t.Errorf("%s without a model: want 400 and no agent, got %d created=%v: %s", name, w.Code, created, w.Body.String())
+		}
 	}
 }
 

@@ -118,7 +118,13 @@
 		"meetingNotConfigured": "Il manque des paramètres de modèle à cet assistant. Terminez sa configuration sur la page de l'agent.",
 		"proposalClosed": "Cette suggestion a déjà été traitée ou a expiré.",
 		"proposalInvalid": "Cette suggestion n'est pas valide.",
-		"proposalLimit": "L'assistant a atteint sa limite de suggestions pour cet appel."
+		"proposalLimit": "L'assistant a atteint sa limite de suggestions pour cet appel.",
+		"recordingDisabled": "L'enregistrement n'est pas configuré sur ce serveur.",
+		"recordingActive": "Cet appel est déjà enregistré.",
+		"recordingNone": "Cet appel n'est pas enregistré.",
+		"recordingNotFound": "Cet enregistrement est introuvable.",
+		"callNoOpenCall": "Il n'y a pas d'appel à enregistrer.",
+		"meetingModelRequired": "Configurez d'abord le modèle de l'assistant dans l'onglet Aperçu."
 	},
 	"noPermission": {
 		"title": "Vous n'avez pas l'autorisation d'utiliser la discussion dans ce projet",
@@ -289,11 +295,14 @@
 			"mode": {
 				"on_demand": "Transcrit et suggère sur demande",
 				"auto_suggest": "Transcrit et suggère de lui-même",
-				"notes_only": "Transcrit et rédige des notes"
-			}
+				"notes_only": "Transcrit l'appel"
+			},
+			"withNotes": "{{what}}, rédige des notes"
 		},
 		"captions": "Sous-titres en direct",
-		"someone": "Quelqu'un"
+		"someone": "Quelqu'un",
+		"transcript": "Transcription",
+		"hideTranscript": "Masquer la transcription"
 	},
 	"proposals": {
 		"sectionLabel": "Suggestions",
@@ -342,5 +351,32 @@
 			}
 		},
 		"dismiss": "Ignorer"
+	},
+	"meetings": {
+		"open": "Historique des réunions",
+		"title": "Historique des réunions",
+		"description": "Les appels de ce canal qui ont été transcrits.",
+		"list": "Appels",
+		"live": "En cours",
+		"lines": "Lignes : {{count}}",
+		"download": "Télécharger la transcription",
+		"empty": "Rien n'a encore été dit.",
+		"loadFailed": "Impossible de charger la transcription.",
+		"transcript": "Transcription"
+	},
+	"recording": {
+		"notice": "Cet appel est enregistré.",
+		"stopping": "Finalisation de l'enregistrement…",
+		"start": "Démarrer l'enregistrement",
+		"stop": "Arrêter l'enregistrement",
+		"confirmTitle": "Enregistrer cet appel ?",
+		"confirmBody": "Toutes les personnes de l'appel sont informées qu'il est enregistré, et la vidéo est conservée avec ce canal pour celles qui peuvent le lire.",
+		"confirm": "Démarrer l'enregistrement",
+		"cancel": "Annuler",
+		"play": "Lire l'enregistrement ({{minutes}} min)",
+		"download": "Télécharger l'enregistrement",
+		"processing": "L'enregistrement est en cours de traitement.",
+		"failed": "L'enregistrement a échoué.",
+		"unavailable": "Impossible d'ouvrir l'enregistrement. Réessayez."
 	}
 }

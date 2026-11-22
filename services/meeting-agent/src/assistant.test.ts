@@ -265,3 +265,15 @@ test("toProposal maps only the tools the worker offers", () => {
 	assert.equal(toProposal({ name: "delete_everything", args: {} }), null);
 	assert.equal(describeProposal("task.create", { title: "x".repeat(500) }).length, 200);
 });
+
+test("a transcription-only assistant has no model: it transcribes and flushes, and never suggests or summarises", async () => {
+	const s = setup({ mode: "notes_only", summary_target: "none" });
+	(s.a as unknown as { chat: Chat | null }).chat = null;
+	s.said.push("one", "two", "three");
+	for (const t of [1, 2, 3]) await s.a.hear("alice", utt(t));
+	assert.equal(await s.a.suggest(), 0);
+	await s.a.finish();
+	assert.equal(s.log.appended.length, 1);
+	assert.equal(s.log.posted.length, 0);
+	assert.equal(s.log.finished, 1);
+});

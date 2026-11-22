@@ -34,6 +34,7 @@ import {
 	ProposalsSection,
 } from "./call-assistant";
 import { useCall } from "./call-provider";
+import { RecordButton, RecordingNotice } from "./call-recording";
 
 function initials(name: string): string {
 	const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -173,6 +174,7 @@ export function CallPanel({
 	channelId,
 	canModerate,
 	canInviteAssistant = false,
+	canRecord = false,
 }: {
 	projectId: string;
 	channelId: string;
@@ -180,6 +182,8 @@ export function CallPanel({
 	canModerate: boolean;
 	/** The caller may bring a meeting assistant into the call (calls:invite_agent). */
 	canInviteAssistant?: boolean;
+	/** The caller may record the call (calls:record). */
+	canRecord?: boolean;
 }) {
 	const { t } = useTranslation("chat");
 	const queryClient = useQueryClient();
@@ -284,6 +288,9 @@ export function CallPanel({
 					{t("call.mediaBlocked")}
 				</p>
 			) : null}
+			{hasProject ? (
+				<RecordingNotice projectId={projectId} channelId={channelId} />
+			) : null}
 			{hasProject ? <CaptionsStrip names={names} /> : null}
 			<div className="mt-3 flex items-center justify-center gap-2">
 				<Button
@@ -321,6 +328,9 @@ export function CallPanel({
 				>
 					{lp.isScreenShareEnabled ? <MonitorOff /> : <Monitor />}
 				</Button>
+				{hasProject && canRecord ? (
+					<RecordButton projectId={projectId} channelId={channelId} />
+				) : null}
 				<Button
 					size="icon"
 					variant="destructive"

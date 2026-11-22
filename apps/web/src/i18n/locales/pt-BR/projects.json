@@ -290,7 +290,12 @@
 			"systemPromptPlaceholder": "Você é um engenheiro de software sênior…",
 			"agentTypeMeeting": "Assistente de reunião",
 			"agentTypeMeetingHint": "Entra em chamadas, transcreve e sugere tarefas",
-			"agentTypeMeetingGlobalDisabledHint": "Assistentes de reunião pertencem a um projeto. Crie um na página Agentes de um projeto."
+			"agentTypeMeetingGlobalDisabledHint": "Assistentes de reunião pertencem a um projeto. Crie um na página Agentes de um projeto.",
+			"listeningSection": "Transcrição",
+			"listeningHint": "Um assistente de reunião precisa de um provedor de transcrição para ouvir as chamadas.",
+			"listeningKeyOrEndpoint": "Informe uma chave de API ou um endpoint para um Whisper hospedado por você.",
+			"assistantSection": "Assistente",
+			"assistantSectionHint": "Usado para as anotações e sugestões que você ativar abaixo."
 		},
 		"card": {
 			"configure": "Configurar",
@@ -466,7 +471,8 @@
 				"cliLoginNoEnvironment": "Este agente não tem um ambiente definido — escolha um acima primeiro.",
 				"descriptionLabel": "Descrição",
 				"descriptionPlaceholder": "Para que serve este agente?",
-				"descriptionHint": "Exibido para o Jev ao decidir qual agente deve atender a um chat, ou se deve atribuir uma tarefa a ele, no modo Automático. O provedor e o modelo são adicionados automaticamente."
+				"descriptionHint": "Exibido para o Jev ao decidir qual agente deve atender a um chat, ou se deve atribuir uma tarefa a ele, no modo Automático. O provedor e o modelo são adicionados automaticamente.",
+				"meetingNoModel": "Este assistente só transcreve, então não precisa de modelo. Ative as anotações ou as sugestões na aba Assistente para configurar um."
 			},
 			"mcp": {
 				"serverCount_one": "{{count}} servidor configurado",
@@ -690,7 +696,12 @@
 					"storeTranscriptHint": "Armazenada com a chamada e apagada após o período de retenção.",
 					"retention": "Manter por (dias)",
 					"announcement": "Mensagem exibida quando entra",
-					"announcementPlaceholder": "Por exemplo: Estou transcrevendo esta chamada para fazer anotações."
+					"announcementPlaceholder": "Por exemplo: Estou transcrevendo esta chamada para fazer anotações.",
+					"suggestions": "Sugerir tarefas e documentos",
+					"suggestionsHint": "Opcional. O assistente transcreve e escreve anotações de qualquer forma; ative para que ele também sugira tarefas e documentos para as pessoas aprovarem.",
+					"suggestWhen": "Quando sugerir",
+					"notes": "Escrever anotações da reunião",
+					"notesHint": "Após a chamada, publica no canal um breve resumo com as decisões e os itens de ação. Usa o modelo do assistente."
 				}
 			}
 		},

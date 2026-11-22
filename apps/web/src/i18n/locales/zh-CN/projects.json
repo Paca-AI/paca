@@ -290,7 +290,12 @@
 			"systemPromptPlaceholder": "你是一名高级软件工程师…",
 			"agentTypeMeeting": "会议助手",
 			"agentTypeMeetingHint": "加入通话、转写并建议任务",
-			"agentTypeMeetingGlobalDisabledHint": "会议助手属于某个项目。请在项目的“智能体”页面中创建。"
+			"agentTypeMeetingGlobalDisabledHint": "会议助手属于某个项目。请在项目的“智能体”页面中创建。",
+			"listeningSection": "转写",
+			"listeningHint": "会议助手需要转写服务商才能聆听通话。",
+			"listeningKeyOrEndpoint": "请输入 API 密钥，或自托管 Whisper 的端点。",
+			"assistantSection": "助手",
+			"assistantSectionHint": "用于你在下面开启的笔记和建议。"
 		},
 		"card": {
 			"configure": "配置",
@@ -466,7 +471,8 @@
 				"cliLoginNoEnvironment": "该智能体尚未设置环境 — 请先在上方选择一个环境。",
 				"descriptionLabel": "描述",
 				"descriptionPlaceholder": "此代理的用途是什么？",
-				"descriptionHint": "在自动模式下，当 Jev 决定由哪个代理处理聊天或是否为其分配任务时会显示此内容。提供商和模型会自动添加。"
+				"descriptionHint": "在自动模式下，当 Jev 决定由哪个代理处理聊天或是否为其分配任务时会显示此内容。提供商和模型会自动添加。",
+				"meetingNoModel": "此助手只做转写，因此不需要模型。要设置模型，请在“助手”标签页开启笔记或建议。"
 			},
 			"mcp": {
 				"serverCount_one": "已配置 {{count}} 个服务器",
@@ -690,7 +696,12 @@
 					"storeTranscriptHint": "随通话一起保存，并在保留期结束后删除。",
 					"retention": "保留天数",
 					"announcement": "加入时显示的消息",
-					"announcementPlaceholder": "例如：我正在转写这次通话以便记录笔记。"
+					"announcementPlaceholder": "例如：我正在转写这次通话以便记录笔记。",
+					"suggestions": "建议任务和文档",
+					"suggestionsHint": "可选。无论是否开启，助手都会转写并撰写笔记；开启后它还会建议任务和文档，由人确认。",
+					"suggestWhen": "建议时机",
+					"notes": "撰写会议笔记",
+					"notesHint": "通话结束后，在频道发布一份包含决定和行动项的简短摘要。使用助手的模型。"
 				}
 			}
 		},

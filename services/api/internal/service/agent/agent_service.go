@@ -407,6 +407,10 @@ func (s *Service) CreateAgent(ctx context.Context, projectID uuid.UUID, in agent
 		a.LLMAPIKeySecret = encryptedKey
 		a.LLMBaseURL = in.LLMBaseURL
 		a.SystemPrompt = in.SystemPrompt
+		// Instructions are not required to create one: it starts with the default.
+		if strings.TrimSpace(a.SystemPrompt) == "" {
+			a.SystemPrompt = agentdom.DefaultMeetingSystemPrompt
+		}
 	default:
 		encryptedKey, err := s.encryptKey(in.LLMAPIKey)
 		if err != nil {

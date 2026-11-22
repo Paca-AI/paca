@@ -87,6 +87,7 @@ function CallTab() {
 							channelId={channelId}
 							canModerate={scope !== "dm" && can("calls:moderate")}
 							canInviteAssistant={scope !== "dm" && can("calls:invite_agent")}
+							canRecord={scope !== "dm" && can("calls:record")}
 						/>
 					) : call.status === "idle" && wasIn.current ? (
 						<p className="p-6 text-center text-sm text-muted-foreground">

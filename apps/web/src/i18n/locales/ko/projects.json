@@ -290,7 +290,12 @@
 			"systemPromptPlaceholder": "당신은 시니어 소프트웨어 엔지니어입니다…",
 			"agentTypeMeeting": "회의 어시스턴트",
 			"agentTypeMeetingHint": "통화에 참여해 받아쓰고 작업을 제안합니다",
-			"agentTypeMeetingGlobalDisabledHint": "회의 어시스턴트는 프로젝트에 속합니다. 프로젝트의 에이전트 페이지에서 만드세요."
+			"agentTypeMeetingGlobalDisabledHint": "회의 어시스턴트는 프로젝트에 속합니다. 프로젝트의 에이전트 페이지에서 만드세요.",
+			"listeningSection": "받아쓰기",
+			"listeningHint": "회의 어시스턴트가 통화를 들으려면 받아쓰기 제공업체가 필요합니다.",
+			"listeningKeyOrEndpoint": "API 키 또는 자체 호스팅 Whisper의 엔드포인트를 입력하세요.",
+			"assistantSection": "어시스턴트",
+			"assistantSectionHint": "아래에서 켠 메모와 제안에 사용됩니다."
 		},
 		"card": {
 			"configure": "구성",
@@ -466,7 +471,8 @@
 				"cliLoginNoEnvironment": "이 에이전트에 설정된 환경이 없습니다 — 먼저 위에서 환경을 선택하세요.",
 				"descriptionLabel": "설명",
 				"descriptionPlaceholder": "이 에이전트는 무엇을 위한 것인가요?",
-				"descriptionHint": "자동 모드에서 Jev가 어떤 에이전트가 채팅을 처리할지 또는 작업을 할당할지 결정할 때 표시됩니다. 제공자와 모델은 자동으로 추가됩니다."
+				"descriptionHint": "자동 모드에서 Jev가 어떤 에이전트가 채팅을 처리할지 또는 작업을 할당할지 결정할 때 표시됩니다. 제공자와 모델은 자동으로 추가됩니다.",
+				"meetingNoModel": "이 어시스턴트는 받아쓰기만 하므로 모델이 필요 없습니다. 설정하려면 어시스턴트 탭에서 메모나 제안을 켜세요."
 			},
 			"mcp": {
 				"serverCount_one": "서버 {{count}}개 구성됨",
@@ -690,7 +696,12 @@
 					"storeTranscriptHint": "통화와 함께 저장되며 보관 기간이 지나면 삭제됩니다.",
 					"retention": "보관 기간(일)",
 					"announcement": "참여할 때 표시할 메시지",
-					"announcementPlaceholder": "예: 메모를 위해 이 통화를 받아쓰고 있습니다."
+					"announcementPlaceholder": "예: 메모를 위해 이 통화를 받아쓰고 있습니다.",
+					"suggestions": "작업과 문서 제안",
+					"suggestionsHint": "선택 사항입니다. 어시스턴트는 항상 받아쓰고 메모를 작성합니다. 켜면 사람이 승인할 작업과 문서도 제안합니다.",
+					"suggestWhen": "제안 시점",
+					"notes": "회의 메모 작성",
+					"notesHint": "통화가 끝나면 결정 사항과 실행 항목을 담은 짧은 요약을 채널에 게시합니다. 어시스턴트의 모델을 사용합니다."
 				}
 			}
 		},

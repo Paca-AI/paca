@@ -6,7 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,7 +30,26 @@ type Room interface {
 	VerifyWebhook(authHeader string, body []byte) (*livekit.WebhookEvent, error)
 	RemoveParticipant(ctx context.Context, room, identity string) error
 	MuteParticipant(ctx context.Context, room, identity string) error
+	StartRoomRecording(ctx context.Context, room, filepath string, out livekit.S3Output) (string, error)
+	StopRecording(ctx context.Context, room, egressID string) error
 }
+
+// Storage is the part of the object store the recordings need: a link to a
+// finished file.
+type Storage interface {
+	PresignGetObject(ctx context.Context, bucket, key string, ttl time.Duration, contentDisposition string) (string, error)
+}
+
+// RecordingConfig says where recordings are written. A recording is possible
+// only when the egress service runs (Enabled) and storage is configured.
+type RecordingConfig struct {
+	Enabled bool
+	Bucket  string
+	Out     livekit.S3Output
+}
+
+// RecordingLinkTTL is how long a playback or download link lasts.
+const RecordingLinkTTL = time.Hour
 
 // Service implements calldom.Service.
 type Service struct {
@@ -36,6 +57,14 @@ type Service struct {
 	room     Room
 	notifier calldom.Notifier
 	onEnd    func(ctx context.Context, channelID uuid.UUID)
+	storage  Storage
+	rec      RecordingConfig
+}
+
+// WithRecording enables recordings, written to cfg's bucket and linked through st.
+func (s *Service) WithRecording(st Storage, cfg RecordingConfig) *Service {
+	s.storage, s.rec = st, cfg
+	return s
 }
 
 // New returns a Service.
@@ -114,6 +143,12 @@ func (s *Service) GetCall(ctx context.Context, projectID, channelID uuid.UUID) (
 	if c == nil {
 		c = &calldom.Call{ChannelID: channelID, Participants: []calldom.Participant{}}
 	}
+	// Everyone in the call sees that it is being recorded.
+	if rec, err := s.repo.OpenRecording(ctx, channelID); err != nil {
+		return nil, err
+	} else if rec != nil {
+		c.Recording = rec
+	}
 	return c, nil
 }
 
@@ -187,6 +222,11 @@ func (s *Service) HandleWebhook(ctx context.Context, authHeader string, body []b
 	if err != nil {
 		return err
 	}
+	// Egress events name their room inside egressInfo, not in room.
+	switch ev.Event {
+	case livekit.EventEgressStarted, livekit.EventEgressUpdated, livekit.EventEgressEnded:
+		return s.handleEgress(ctx, ev)
+	}
 	channelID, err := uuid.Parse(ev.Room.Name)
 	if err != nil {
 		return nil
@@ -233,6 +273,165 @@ func (s *Service) HandleWebhook(ctx context.Context, authHeader string, body []b
 		return nil
 	}
 	s.announce(ctx, channelID)
+	return nil
+}
+
+// ---------------------------------------------------------------- recording
+
+// RecordingEnabled implements calldom.Service.
+func (s *Service) RecordingEnabled() bool {
+	return s.Enabled() && s.storage != nil && s.rec.Enabled && s.rec.Bucket != ""
+}
+
+func recordingPath(projectID, channelID, recordingID uuid.UUID) string {
+	scope := "dm"
+	if projectID != uuid.Nil {
+		scope = projectID.String()
+	}
+	return "recordings/" + scope + "/" + channelID.String() + "/" + recordingID.String() + ".mp4"
+}
+
+// StartRecording implements calldom.Service.
+func (s *Service) StartRecording(ctx context.Context, projectID, channelID, by uuid.UUID) (*calldom.Recording, error) {
+	if !s.RecordingEnabled() {
+		return nil, calldom.ErrRecordingDisabled
+	}
+	ch, err := s.channel(ctx, projectID, channelID)
+	if err != nil {
+		return nil, err
+	}
+	if ch.Archived {
+		return nil, chatdom.ErrChannelArchived
+	}
+	rec, err := s.repo.CreateRecording(ctx, channelID, by)
+	if err != nil {
+		return nil, err
+	}
+	egressID, err := s.room.StartRoomRecording(ctx, channelID.String(), recordingPath(projectID, channelID, rec.ID), s.rec.Out)
+	if err != nil {
+		if ferr := s.repo.FailRecording(ctx, rec.ID, "the recording could not be started"); ferr != nil {
+			slog.Warn("calls: close recording that did not start", "recording_id", rec.ID, "err", ferr)
+		}
+		s.announce(ctx, channelID)
+		return nil, fmt.Errorf("calls: start recording: %w", err)
+	}
+	rec.EgressID = egressID
+	if err := s.repo.SetRecordingEgress(ctx, rec.ID, egressID); err != nil {
+		slog.Warn("calls: record egress id", "recording_id", rec.ID, "err", err)
+	}
+	s.announce(ctx, channelID)
+	return rec, nil
+}
+
+// StopRecording implements calldom.Service.
+func (s *Service) StopRecording(ctx context.Context, projectID, channelID uuid.UUID) error {
+	if !s.RecordingEnabled() {
+		return calldom.ErrRecordingDisabled
+	}
+	if _, err := s.channel(ctx, projectID, channelID); err != nil {
+		return err
+	}
+	rec, err := s.repo.OpenRecording(ctx, channelID)
+	if err != nil {
+		return err
+	}
+	if rec == nil {
+		return calldom.ErrNoRecording
+	}
+	if rec.EgressID == "" {
+		// It never got as far as LiveKit.
+		_ = s.repo.FailRecording(ctx, rec.ID, "stopped before it started")
+		s.announce(ctx, channelID)
+		return nil
+	}
+	if err := s.room.StopRecording(ctx, channelID.String(), rec.EgressID); err != nil {
+		if errors.Is(err, livekit.ErrNotFound) {
+			// LiveKit no longer has it (the room ended): close it here.
+			_ = s.repo.FailRecording(ctx, rec.ID, "the recording ended without a file")
+			s.announce(ctx, channelID)
+			return nil
+		}
+		return err
+	}
+	if _, err := s.repo.UpdateRecordingByEgress(ctx, rec.EgressID, calldom.RecordingStopping, "", 0, 0, ""); err != nil {
+		slog.Warn("calls: mark recording stopping", "recording_id", rec.ID, "err", err)
+	}
+	s.announce(ctx, channelID)
+	return nil
+}
+
+// ListRecordings implements calldom.Service.
+func (s *Service) ListRecordings(ctx context.Context, projectID, channelID uuid.UUID) ([]*calldom.Recording, error) {
+	if _, err := s.repo.FindChannel(ctx, projectID, channelID); err != nil {
+		return nil, err
+	}
+	return s.repo.ListRecordings(ctx, channelID, 100)
+}
+
+// RecordingURL implements calldom.Service.
+func (s *Service) RecordingURL(ctx context.Context, projectID, channelID, id uuid.UUID, download bool) (string, error) {
+	if !s.RecordingEnabled() {
+		return "", calldom.ErrRecordingDisabled
+	}
+	if _, err := s.repo.FindChannel(ctx, projectID, channelID); err != nil {
+		return "", err
+	}
+	rec, err := s.repo.FindRecording(ctx, channelID, id)
+	if err != nil {
+		return "", err
+	}
+	if rec.Status != calldom.RecordingComplete || rec.ObjectKey == "" {
+		return "", calldom.ErrRecordingNotFound
+	}
+	disposition := ""
+	if download {
+		disposition = `attachment; filename="recording-` + rec.ID.String()[:8] + `.mp4"`
+	}
+	return s.storage.PresignGetObject(ctx, s.rec.Bucket, rec.ObjectKey, RecordingLinkTTL, disposition)
+}
+
+// egressStatus maps LiveKit's EgressStatus (a name, or its number in JSON) to ours.
+func egressStatus(v string) string {
+	switch strings.TrimPrefix(v, "EGRESS_") {
+	case "STARTING", "0":
+		return calldom.RecordingStarting
+	case "ACTIVE", "1":
+		return calldom.RecordingActive
+	case "ENDING", "2":
+		return calldom.RecordingStopping
+	case "COMPLETE", "3":
+		return calldom.RecordingComplete
+	default: // FAILED, ABORTED, LIMIT_REACHED
+		return calldom.RecordingFailed
+	}
+}
+
+// handleEgress applies an egress_* webhook to the recording it belongs to; an
+// egress that is not one of ours is ignored.
+func (s *Service) handleEgress(ctx context.Context, ev *livekit.WebhookEvent) error {
+	e := ev.EgressInfo
+	if e == nil || e.EgressID == "" {
+		return nil
+	}
+	status := egressStatus(e.Status)
+	var key string
+	var size, durationMs int64
+	if len(e.FileResults) > 0 {
+		f := e.FileResults[0]
+		key, size, durationMs = f.Filename, int64(f.Size), int64(f.Duration)/int64(time.Millisecond)
+	}
+	if status == calldom.RecordingComplete && key == "" {
+		// A recording with no file is not one anybody can play.
+		status = calldom.RecordingFailed
+		e.Error = "the recording has no file"
+	}
+	channelID, err := s.repo.UpdateRecordingByEgress(ctx, e.EgressID, status, key, size, durationMs, e.Error)
+	if err != nil {
+		return err
+	}
+	if channelID != uuid.Nil {
+		s.announce(ctx, channelID)
+	}
 	return nil
 }
 

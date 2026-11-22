@@ -118,7 +118,13 @@
 		"meetingNotConfigured": "此助手缺少模型设置。请在智能体页面完成配置。",
 		"proposalClosed": "此建议已被处理或已过期。",
 		"proposalInvalid": "此建议无效。",
-		"proposalLimit": "助手已达到本次通话的建议数量上限。"
+		"proposalLimit": "助手已达到本次通话的建议数量上限。",
+		"recordingDisabled": "此服务器未设置录制。",
+		"recordingActive": "此通话已在录制。",
+		"recordingNone": "此通话没有在录制。",
+		"recordingNotFound": "找不到该录制。",
+		"callNoOpenCall": "没有可录制的通话。",
+		"meetingModelRequired": "请先在“概览”标签页设置助手的模型。"
 	},
 	"noPermission": {
 		"title": "你无权在此项目中使用聊天",
@@ -289,11 +295,14 @@
 			"mode": {
 				"on_demand": "转写，并在被要求时提出建议",
 				"auto_suggest": "转写，并自动提出建议",
-				"notes_only": "转写并撰写笔记"
-			}
+				"notes_only": "转写通话"
+			},
+			"withNotes": "{{what}}，并撰写笔记"
 		},
 		"captions": "实时字幕",
-		"someone": "某人"
+		"someone": "某人",
+		"transcript": "转写",
+		"hideTranscript": "隐藏转写"
 	},
 	"proposals": {
 		"sectionLabel": "建议",
@@ -342,5 +351,32 @@
 			}
 		},
 		"dismiss": "忽略"
+	},
+	"meetings": {
+		"open": "会议记录",
+		"title": "会议记录",
+		"description": "此频道中已转写的通话。",
+		"list": "通话",
+		"live": "进行中",
+		"lines": "行数：{{count}}",
+		"download": "下载转写",
+		"empty": "还没有人说话。",
+		"loadFailed": "无法加载转写。",
+		"transcript": "转写"
+	},
+	"recording": {
+		"notice": "此通话正在录制。",
+		"stopping": "正在完成录制…",
+		"start": "开始录制",
+		"stop": "停止录制",
+		"confirmTitle": "要录制此通话吗？",
+		"confirmBody": "通话中的所有人都会看到正在录制，视频会保存在此频道，供有权限查看的人观看。",
+		"confirm": "开始录制",
+		"cancel": "取消",
+		"play": "播放录制（{{minutes}} 分钟）",
+		"download": "下载录制",
+		"processing": "录制正在处理中。",
+		"failed": "录制失败。",
+		"unavailable": "无法打开录制。请重试。"
 	}
 }

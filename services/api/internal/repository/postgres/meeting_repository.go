@@ -214,7 +214,7 @@ func (r *MeetingRepository) WasCallParticipant(ctx context.Context, callID, acco
 
 const agentSessionCols = `s.id, s.call_session_id, cs.channel_id, COALESCE(c.project_id::text, '') AS project_id, s.agent_id,
 	COALESCE(ac.name, '') AS agent_name, s.invited_by, s.dispatch_id, s.status, s.joined_at, s.left_at,
-	COALESCE(ms.mode, 'on_demand') AS mode, COALESCE(ms.store_transcript, TRUE) AS store_transcript,
+	COALESCE(ms.mode, 'notes_only') AS mode, COALESCE(ms.summary_target, 'none') AS summary_target, COALESCE(ms.store_transcript, TRUE) AS store_transcript,
 	COALESCE(ms.transcript_retention_days, 30) AS retention_days, COALESCE(ms.announcement, '') AS announcement`
 
 const agentSessionFrom = `call_agent_sessions s
@@ -236,6 +236,7 @@ type agentSessionRecord struct {
 	JoinedAt      time.Time  `db:"joined_at"`
 	LeftAt        *time.Time `db:"left_at"`
 	Mode          string     `db:"mode"`
+	Summary       string     `db:"summary_target"`
 	Store         bool       `db:"store_transcript"`
 	Retention     int        `db:"retention_days"`
 	Announcement  string     `db:"announcement"`
@@ -249,7 +250,7 @@ func (rec agentSessionRecord) entity() *meetingdom.AgentSession {
 	agent, _ := uuid.Parse(rec.AgentID)
 	return &meetingdom.AgentSession{ID: id, CallSessionID: call, ChannelID: ch, ProjectID: proj, AgentID: agent,
 		AgentName: rec.AgentName, InvitedBy: optUUID(rec.InvitedBy), DispatchID: rec.DispatchID, Status: rec.Status,
-		JoinedAt: rec.JoinedAt, LeftAt: rec.LeftAt, Mode: rec.Mode, StoreTranscript: rec.Store,
+		JoinedAt: rec.JoinedAt, LeftAt: rec.LeftAt, Mode: rec.Mode, SummaryTarget: rec.Summary, StoreTranscript: rec.Store,
 		RetentionDays: rec.Retention, Announcement: rec.Announcement}
 }
 
@@ -342,12 +343,13 @@ func (r *MeetingRepository) ListMeetingAgents(ctx context.Context, projectID uui
 		Handle    string `db:"handle"`
 		Desc      string `db:"description"`
 		Mode      string `db:"mode"`
+		Summary   string `db:"summary_target"`
 		Store     bool   `db:"store_transcript"`
 		Retention int    `db:"retention_days"`
 	}
 	err := r.db.SelectContext(ctx, &recs, `
 		SELECT a.id, COALESCE(ac.name, '') AS name, a.handle, COALESCE(ac.description, '') AS description,
-		       COALESCE(ms.mode, 'on_demand') AS mode, COALESCE(ms.store_transcript, TRUE) AS store_transcript,
+		       COALESCE(ms.mode, 'notes_only') AS mode, COALESCE(ms.summary_target, 'none') AS summary_target, COALESCE(ms.store_transcript, TRUE) AS store_transcript,
 		       COALESCE(ms.transcript_retention_days, 30) AS retention_days
 		FROM agents a JOIN accounts ac ON ac.id = a.id AND ac.deleted_at IS NULL
 		LEFT JOIN agent_meeting_settings ms ON ms.agent_id = a.id
@@ -362,7 +364,7 @@ func (r *MeetingRepository) ListMeetingAgents(ctx context.Context, projectID uui
 	for i, rec := range recs {
 		id, _ := uuid.Parse(rec.ID)
 		out[i] = &meetingdom.MeetingAgent{ID: id, Name: rec.Name, Handle: rec.Handle, Description: rec.Desc,
-			Mode: rec.Mode, StoreTranscript: rec.Store, RetentionDays: rec.Retention}
+			Mode: rec.Mode, SummaryTarget: rec.Summary, StoreTranscript: rec.Store, RetentionDays: rec.Retention}
 	}
 	return out, nil
 }
@@ -437,6 +439,70 @@ func (r *MeetingRepository) DeleteExpiredSegments(ctx context.Context) (int64, e
 		return 0, fmt.Errorf("meeting: delete expired segments: %w", err)
 	}
 	return res.RowsAffected()
+}
+
+// ListMeetings implements meetingdom.Repository.
+func (r *MeetingRepository) ListMeetings(ctx context.Context, channelID uuid.UUID, limit int) ([]*meetingdom.MeetingSummary, error) {
+	var recs []struct {
+		ID       string     `db:"id"`
+		Started  time.Time  `db:"started_at"`
+		Ended    *time.Time `db:"ended_at"`
+		Segments int        `db:"segments"`
+		Speakers []byte     `db:"speakers"`
+	}
+	err := r.db.SelectContext(ctx, &recs, `
+		SELECT cs.id, cs.started_at, cs.ended_at, t.segments, t.speakers
+		FROM call_sessions cs
+		JOIN LATERAL (
+			SELECT count(*) AS segments,
+			       COALESCE((SELECT jsonb_agg(n ORDER BY first_at) FROM (
+			            SELECT COALESCE(ac.name, '') AS n, min(s2.spoken_at) AS first_at
+			            FROM call_transcript_segments s2 LEFT JOIN accounts ac ON ac.id = s2.speaker_id
+			            WHERE s2.call_session_id = cs.id GROUP BY ac.name) x), '[]'::jsonb) AS speakers
+			FROM call_transcript_segments s WHERE s.call_session_id = cs.id) t ON TRUE
+		WHERE cs.channel_id = $1::uuid
+		  AND (t.segments > 0 OR EXISTS (SELECT 1 FROM call_recordings r WHERE r.call_session_id = cs.id AND r.status = 'complete'))
+		ORDER BY cs.started_at DESC LIMIT $2`, channelID.String(), limit)
+	if err != nil {
+		return nil, fmt.Errorf("meeting: list meetings: %w", err)
+	}
+	out := make([]*meetingdom.MeetingSummary, len(recs))
+	for i, rec := range recs {
+		id, _ := uuid.Parse(rec.ID)
+		var speakers []string
+		_ = json.Unmarshal(rec.Speakers, &speakers)
+		out[i] = &meetingdom.MeetingSummary{CallID: id, StartedAt: rec.Started, EndedAt: rec.Ended, Segments: rec.Segments, Speakers: speakers}
+	}
+	return out, nil
+}
+
+// ListNamedSegments implements meetingdom.Repository.
+func (r *MeetingRepository) ListNamedSegments(ctx context.Context, channelID, callID uuid.UUID, limit int) ([]*meetingdom.NamedSegment, error) {
+	var ok bool
+	if err := r.db.GetContext(ctx, &ok, `SELECT EXISTS (SELECT 1 FROM call_sessions WHERE id = $1::uuid AND channel_id = $2::uuid)`,
+		callID.String(), channelID.String()); err != nil {
+		return nil, fmt.Errorf("meeting: check call: %w", err)
+	}
+	if !ok {
+		return nil, meetingdom.ErrMeetingNotFound
+	}
+	var recs []struct {
+		Speaker *string   `db:"speaker_id"`
+		Name    string    `db:"name"`
+		Text    string    `db:"text"`
+		Spoken  time.Time `db:"spoken_at"`
+	}
+	err := r.db.SelectContext(ctx, &recs, `SELECT s.speaker_id, COALESCE(ac.name, '') AS name, s.text, s.spoken_at
+		FROM call_transcript_segments s LEFT JOIN accounts ac ON ac.id = s.speaker_id
+		WHERE s.call_session_id = $1::uuid ORDER BY s.spoken_at, s.created_at LIMIT $2`, callID.String(), limit)
+	if err != nil {
+		return nil, fmt.Errorf("meeting: list named segments: %w", err)
+	}
+	out := make([]*meetingdom.NamedSegment, len(recs))
+	for i, rec := range recs {
+		out[i] = &meetingdom.NamedSegment{SpeakerID: optUUID(rec.Speaker), SpeakerName: rec.Name, Text: rec.Text, SpokenAt: rec.Spoken}
+	}
+	return out, nil
 }
 
 // CountProposals implements meetingdom.Repository.

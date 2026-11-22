@@ -192,6 +192,16 @@ const (
 	AgentTypeMeeting = "meeting"
 )
 
+// DefaultMeetingSystemPrompt is what a meeting assistant created without
+// instructions starts with. The web create dialog pre-fills the same text
+// (apps/web/src/lib/meeting-api.ts), where people edit it freely.
+const DefaultMeetingSystemPrompt = `You are the meeting assistant for this project team. You listen to calls through their transcript and you never speak.
+- Write the notes accurately and briefly: what was decided, what is still open, and who agreed to do what.
+- Use the speakers' own words and names. Do not invent details, owners or dates that were not said.
+- When suggesting tasks, suggest only concrete action items someone clearly committed to or asked for. Give each a short imperative title and one line of context.
+- Do not suggest a task for a topic that was only discussed, or one that already exists.
+- Write in the language the team speaks.`
+
 // AgentScope discriminates a project-owned agent from an instance-wide
 // (global) one. See the Agent doc comment.
 type AgentScope string

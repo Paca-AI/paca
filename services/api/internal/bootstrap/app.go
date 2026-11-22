@@ -589,10 +589,12 @@ func New(cfg *config.Config) (*App, error) {
 		meetingService = meetingService.WithCrypter(encryptor)
 	}
 	callService := callsvc.New(pgRepo.NewCallRepository(db), livekitClient).
+		WithRecording(storageClient, recordingConfig(cfg)).
 		WithNotifier(callsvc.NewPubSubNotifier(publisher)).
 		WithCallEndHook(meetingService.CallEnded)
 	callHandler := handler.NewCallHandler(callService).WithCallListScoper(authorizer)
 	meetingHandler := handler.NewMeetingHandler(meetingService)
+	agentHandler = agentHandler.WithMeetingSettings(meetingService)
 	chatHandler := handler.NewChatHandler(chatService).WithChatListScoper(authorizer).WithChatProjectsScoper(authorizer).WithChatRootScoper(authorizer)
 	annotationHandler := handler.NewAnnotationHandler(annotationService).
 		WithAnnotationListScoper(authorizer).
@@ -814,4 +816,21 @@ func (a *App) Shutdown(ctx context.Context) error {
 		a.publisher.Close()
 	}
 	return a.server.Shutdown(ctx)
+}
+
+// recordingConfig says where call recordings go: the object-store bucket the API
+// already uses, reached by LiveKit's egress service with the same credentials.
+// Recording is on only when the egress service is (LIVEKIT_EGRESS_ENABLED).
+func recordingConfig(cfg *config.Config) callsvc.RecordingConfig {
+	st := cfg.Storage
+	out := livekit.S3Output{AccessKey: st.AccessKeyID, Secret: st.SecretAccessKey, Region: st.Region, Bucket: st.Bucket}
+	if st.Provider != "s3" {
+		scheme := "http://"
+		if st.UseSSL {
+			scheme = "https://"
+		}
+		out.Endpoint = scheme + st.Endpoint
+		out.ForcePathStyle = true
+	}
+	return callsvc.RecordingConfig{Enabled: cfg.LiveKit.EgressEnabled, Bucket: st.Bucket, Out: out}
 }

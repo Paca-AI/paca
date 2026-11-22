@@ -290,7 +290,12 @@
 			"systemPromptPlaceholder": "You are a senior software engineer…",
 			"agentTypeMeeting": "Meeting assistant",
 			"agentTypeMeetingHint": "Joins calls, transcribes and suggests tasks",
-			"agentTypeMeetingGlobalDisabledHint": "Meeting assistants belong to a project. Create one from a project's Agents page."
+			"agentTypeMeetingGlobalDisabledHint": "Meeting assistants belong to a project. Create one from a project's Agents page.",
+			"listeningSection": "Transcription",
+			"listeningHint": "A meeting assistant needs a transcription provider to listen to calls.",
+			"listeningKeyOrEndpoint": "Enter an API key, or an endpoint for a self-hosted Whisper.",
+			"assistantSection": "Assistant",
+			"assistantSectionHint": "Used for the notes and suggestions you turn on below."
 		},
 		"card": {
 			"configure": "Configure",
@@ -466,7 +471,8 @@
 				"cliLoginNotAuthenticated": "Not authenticated yet — log in via the terminal, then verify again.",
 				"cliLoginVerifyFailed": "Couldn't check login status. Please try again.",
 				"cliLoginLastVerified": "Last verified {{date}}.",
-				"cliLoginNoEnvironment": "This agent has no environment set — pick one above first."
+				"cliLoginNoEnvironment": "This agent has no environment set — pick one above first.",
+				"meetingNoModel": "This assistant only transcribes, so it needs no model. Turn on notes or suggestions on the Assistant tab to set one up."
 			},
 			"mcp": {
 				"serverCount_one": "{{count}} server configured",
@@ -690,7 +696,12 @@
 					"storeTranscriptHint": "Stored with the call and deleted after the retention period.",
 					"retention": "Keep it for (days)",
 					"announcement": "Message shown when it joins",
-					"announcementPlaceholder": "For example: I transcribe this call to take notes."
+					"announcementPlaceholder": "For example: I transcribe this call to take notes.",
+					"suggestions": "Suggest tasks and docs",
+					"suggestionsHint": "Optional. The assistant transcribes and writes notes either way; turn this on to let it also suggest tasks and docs for people to approve.",
+					"suggestWhen": "When to suggest",
+					"notes": "Write meeting notes",
+					"notesHint": "After the call, post a short summary with the decisions and action items in the channel. Uses the assistant's model."
 				}
 			}
 		},

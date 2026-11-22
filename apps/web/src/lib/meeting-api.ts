@@ -8,6 +8,19 @@ export type MeetingMode = "on_demand" | "auto_suggest" | "notes_only";
 export type SummaryTarget = "none" | "channel_message";
 export type DefaultTarget = "requester" | "host";
 
+/** The transcription providers the worker supports (the settings response lists
+ * the same; the create dialog needs them before an agent exists). */
+export const STT_PROVIDERS = ["openai", "deepgram"] as const;
+
+/** The instructions a new meeting assistant starts with (the API fills the same
+ * text in for an agent created without any). People edit them freely. */
+export const DEFAULT_MEETING_PROMPT = `You are the meeting assistant for this project team. You listen to calls through their transcript and you never speak.
+- Write the notes accurately and briefly: what was decided, what is still open, and who agreed to do what.
+- Use the speakers' own words and names. Do not invent details, owners or dates that were not said.
+- When suggesting tasks, suggest only concrete action items someone clearly committed to or asked for. Give each a short imperative title and one line of context.
+- Do not suggest a task for a topic that was only discussed, or one that already exists.
+- Write in the language the team speaks.`;
+
 export const PROPOSAL_KINDS = [
 	"task.create",
 	"task.update",
@@ -52,6 +65,7 @@ export interface MeetingAgent {
 	handle: string;
 	description: string;
 	mode: MeetingMode;
+	summary_target: SummaryTarget;
 	store_transcript: boolean;
 	transcript_retention_days: number;
 }
@@ -64,6 +78,7 @@ export interface CallAssistant {
 	invited_by: string | null;
 	joined_at: string;
 	mode: MeetingMode;
+	summary_target: SummaryTarget;
 	store_transcript: boolean;
 	transcript_retention_days: number;
 	announcement: string;
@@ -98,7 +113,29 @@ export interface Proposal extends ProposalChip {
 	resolved_by: string | null;
 }
 
+/** A call of a channel that was transcribed. */
+export interface Meeting {
+	call_id: string;
+	started_at: string;
+	/** null while the call is still open. */
+	ended_at: string | null;
+	segments: number;
+	speakers: string[];
+}
+
+/** One turn of a transcript, with who said it. */
+export interface TranscriptLine {
+	speaker_id: string | null;
+	speaker_name: string;
+	text: string;
+	spoken_at: string;
+}
+
 export const meetingKeys = {
+	meetings: (projectId: string, channelId: string) =>
+		["meeting", projectId, "meetings", channelId] as const,
+	transcript: (projectId: string, channelId: string, callId: string) =>
+		["meeting", projectId, "transcript", channelId, callId] as const,
 	config: () => ["meeting", "config"] as const,
 	settings: (projectId: string, agentId: string) =>
 		["meeting", projectId, "settings", agentId] as const,
@@ -261,4 +298,63 @@ export async function resolveProposal(
 		{ status, result },
 	);
 	return data.data;
+}
+
+const meetingsBase = (projectId: string, channelId: string) =>
+	`/projects/${projectId}/channels/${channelId}/meetings`;
+
+/** The calls of a channel that were transcribed, newest first. */
+export const channelMeetingsQueryOptions = (
+	projectId: string,
+	channelId: string,
+	enabled = true,
+	live = false,
+) =>
+	queryOptions({
+		queryKey: meetingKeys.meetings(projectId, channelId),
+		queryFn: async (): Promise<Meeting[]> => {
+			const { data } = await apiClient.instance.get<SuccessEnvelope<Meeting[]>>(
+				meetingsBase(projectId, channelId),
+			);
+			return data.data;
+		},
+		enabled,
+		staleTime: 10_000,
+		refetchInterval: live ? 5_000 : false,
+	});
+
+export const meetingTranscriptQueryOptions = (
+	projectId: string,
+	channelId: string,
+	callId: string,
+	live = false,
+) =>
+	queryOptions({
+		queryKey: meetingKeys.transcript(projectId, channelId, callId),
+		queryFn: async (): Promise<TranscriptLine[]> => {
+			const { data } = await apiClient.instance.get<
+				SuccessEnvelope<TranscriptLine[]>
+			>(`${meetingsBase(projectId, channelId)}/${callId}/transcript`);
+			return data.data;
+		},
+		// A call that is still going gets new lines every few seconds.
+		refetchInterval: live ? 5_000 : false,
+	});
+
+/** Fetches a transcript as a plain-text file and hands it to the browser to save. */
+export async function downloadTranscript(
+	projectId: string,
+	channelId: string,
+	callId: string,
+): Promise<void> {
+	const { data } = await apiClient.instance.get<string>(
+		`${meetingsBase(projectId, channelId)}/${callId}/transcript`,
+		{ params: { format: "txt" }, responseType: "text" },
+	);
+	const url = URL.createObjectURL(new Blob([data], { type: "text/plain" }));
+	const a = document.createElement("a");
+	a.href = url;
+	a.download = `transcript-${callId.slice(0, 8)}.txt`;
+	a.click();
+	URL.revokeObjectURL(url);
 }

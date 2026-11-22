@@ -118,7 +118,13 @@
 		"meetingNotConfigured": "이 어시스턴트에 모델 설정이 없습니다. 에이전트 페이지에서 설정을 완료하세요.",
 		"proposalClosed": "이 제안은 이미 처리되었거나 만료되었습니다.",
 		"proposalInvalid": "이 제안은 유효하지 않습니다.",
-		"proposalLimit": "어시스턴트가 이번 통화의 제안 한도에 도달했습니다."
+		"proposalLimit": "어시스턴트가 이번 통화의 제안 한도에 도달했습니다.",
+		"recordingDisabled": "이 서버에는 녹화가 설정되어 있지 않습니다.",
+		"recordingActive": "이 통화는 이미 녹화 중입니다.",
+		"recordingNone": "이 통화는 녹화 중이 아닙니다.",
+		"recordingNotFound": "해당 녹화를 찾을 수 없습니다.",
+		"callNoOpenCall": "녹화할 통화가 없습니다.",
+		"meetingModelRequired": "먼저 개요 탭에서 어시스턴트의 모델을 설정하세요."
 	},
 	"noPermission": {
 		"title": "이 프로젝트에서 채팅을 사용할 권한이 없습니다",
@@ -289,11 +295,14 @@
 			"mode": {
 				"on_demand": "받아쓰고, 요청하면 제안합니다",
 				"auto_suggest": "받아쓰고, 스스로 제안합니다",
-				"notes_only": "받아쓰고 메모를 작성합니다"
-			}
+				"notes_only": "통화를 받아씁니다"
+			},
+			"withNotes": "{{what}}, 메모를 작성합니다"
 		},
 		"captions": "실시간 자막",
-		"someone": "누군가"
+		"someone": "누군가",
+		"transcript": "녹취록",
+		"hideTranscript": "녹취록 숨기기"
 	},
 	"proposals": {
 		"sectionLabel": "제안",
@@ -342,5 +351,32 @@
 			}
 		},
 		"dismiss": "무시"
+	},
+	"meetings": {
+		"open": "회의 기록",
+		"title": "회의 기록",
+		"description": "이 채널에서 받아쓴 통화입니다.",
+		"list": "통화",
+		"live": "진행 중",
+		"lines": "줄 수: {{count}}",
+		"download": "녹취록 다운로드",
+		"empty": "아직 발언이 없습니다.",
+		"loadFailed": "녹취록을 불러오지 못했습니다.",
+		"transcript": "녹취록"
+	},
+	"recording": {
+		"notice": "이 통화는 녹화 중입니다.",
+		"stopping": "녹화를 마무리하는 중…",
+		"start": "녹화 시작",
+		"stop": "녹화 중지",
+		"confirmTitle": "이 통화를 녹화할까요?",
+		"confirmBody": "통화의 모든 사람에게 녹화 중임이 표시되며, 영상은 이 채널을 읽을 수 있는 사람을 위해 보관됩니다.",
+		"confirm": "녹화 시작",
+		"cancel": "취소",
+		"play": "녹화 재생({{minutes}}분)",
+		"download": "녹화 다운로드",
+		"processing": "녹화를 처리하는 중입니다.",
+		"failed": "녹화에 실패했습니다.",
+		"unavailable": "녹화를 열 수 없습니다. 다시 시도하세요."
 	}
 }

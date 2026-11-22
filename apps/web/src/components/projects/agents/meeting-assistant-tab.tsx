@@ -26,13 +26,12 @@ import {
 	meetingSettingsQueryOptions,
 	PROPOSAL_KINDS,
 	type ProposalKind,
-	type SummaryTarget,
 	updateMeetingSettings,
 } from "@/lib/meeting-api";
 import { notifyError } from "@/lib/notify";
 
-const MODES: MeetingMode[] = ["on_demand", "auto_suggest", "notes_only"];
-const SUMMARY_TARGETS: SummaryTarget[] = ["channel_message", "none"];
+// Suggesting is an option; "notes_only" (the default) is the switch being off.
+const SUGGEST_MODES: MeetingMode[] = ["on_demand", "auto_suggest"];
 const DEFAULT_TARGETS: DefaultTarget[] = ["requester", "host"];
 
 /** The Assistant tab of a meeting agent: how it listens, what it may propose and
@@ -101,7 +100,15 @@ function SettingsForm({
 		.map((l) => l.trim())
 		.filter(Boolean);
 	const num = (v: string) => Number.parseInt(v, 10);
+	// A working setup is always required: provider, model, and a key or endpoint
+	// (an already stored key counts unless it is being removed).
+	const hasKey = clearKey
+		? false
+		: sttKey.trim() !== "" || settings.has_stt_key;
 	const valid =
+		!!sttProvider &&
+		sttModel.trim() !== "" &&
+		(hasKey || sttBaseUrl.trim() !== "") &&
 		num(interval) >= 30 &&
 		num(interval) <= 3600 &&
 		num(maxProposals) >= 0 &&
@@ -262,28 +269,44 @@ function SettingsForm({
 				<h2 className="text-sm font-medium">
 					{t("agents.detail.assistant.behavior")}
 				</h2>
-				<div className="space-y-1.5">
-					<Label>{t(`agents.detail.${field}.mode`)}</Label>
-					<Select
-						value={mode}
-						onValueChange={(v) => v && setMode(v as MeetingMode)}
+				{/* Transcription and notes are always on; suggesting tasks and docs is an option. */}
+				<label className="flex items-center justify-between gap-3 text-sm">
+					<span>
+						{t(`agents.detail.${field}.suggestions`)}
+						<span className="block text-xs text-muted-foreground">
+							{t(`agents.detail.${field}.suggestionsHint`)}
+						</span>
+					</span>
+					<Switch
+						checked={mode !== "notes_only"}
+						onCheckedChange={(on) => setMode(on ? "on_demand" : "notes_only")}
 						disabled={disabled}
-					>
-						<SelectTrigger>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{MODES.map((m) => (
-								<SelectItem key={m} value={m}>
-									{t(`agents.detail.assistant.modes.${m}`)}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-					<p className="text-xs text-muted-foreground">
-						{t(`agents.detail.assistant.modeHints.${mode}`)}
-					</p>
-				</div>
+					/>
+				</label>
+				{mode !== "notes_only" ? (
+					<div className="space-y-1.5">
+						<Label>{t(`agents.detail.${field}.suggestWhen`)}</Label>
+						<Select
+							value={mode}
+							onValueChange={(v) => v && setMode(v as MeetingMode)}
+							disabled={disabled}
+						>
+							<SelectTrigger>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{SUGGEST_MODES.map((m) => (
+									<SelectItem key={m} value={m}>
+										{t(`agents.detail.assistant.modes.${m}`)}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+						<p className="text-xs text-muted-foreground">
+							{t(`agents.detail.assistant.modeHints.${mode}`)}
+						</p>
+					</div>
+				) : null}
 				{mode === "auto_suggest" ? (
 					<div className="space-y-1.5">
 						<Label htmlFor="interval">
@@ -355,25 +378,21 @@ function SettingsForm({
 						</div>
 					</>
 				) : null}
-				<div className="space-y-1.5">
-					<Label>{t(`agents.detail.${field}.summary`)}</Label>
-					<Select
-						value={summary}
-						onValueChange={(v) => v && setSummary(v as SummaryTarget)}
+				<label className="flex items-center justify-between gap-3 text-sm">
+					<span>
+						{t(`agents.detail.${field}.notes`)}
+						<span className="block text-xs text-muted-foreground">
+							{t(`agents.detail.${field}.notesHint`)}
+						</span>
+					</span>
+					<Switch
+						checked={summary !== "none"}
+						onCheckedChange={(on) =>
+							setSummary(on ? "channel_message" : "none")
+						}
 						disabled={disabled}
-					>
-						<SelectTrigger>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{SUMMARY_TARGETS.map((x) => (
-								<SelectItem key={x} value={x}>
-									{t(`agents.detail.assistant.summaries.${x}`)}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</div>
+					/>
+				</label>
 			</section>
 
 			<Separator />

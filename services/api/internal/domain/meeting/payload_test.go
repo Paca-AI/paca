@@ -47,7 +47,7 @@ func TestValidatePayload(t *testing.T) {
 
 func TestDefaultSettings(t *testing.T) {
 	s := meetingdom.DefaultSettings(uuid.New())
-	if s.Mode != meetingdom.ModeOnDemand || !s.StoreTranscript || len(s.ProposalKinds) != len(meetingdom.ProposalKinds) {
+	if s.Mode != meetingdom.ModeNotesOnly || !s.StoreTranscript || len(s.ProposalKinds) != len(meetingdom.ProposalKinds) {
 		t.Fatalf("unexpected defaults %+v", s)
 	}
 }

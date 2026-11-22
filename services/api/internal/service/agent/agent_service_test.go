@@ -787,6 +787,33 @@ func TestCreateAgent_Success(t *testing.T) {
 	assert.True(t, projRepo.invalidateMembersCacheCalled)
 }
 
+// A meeting assistant created without instructions starts with the default
+// ones; instructions that were given are kept as written.
+func TestCreateAgent_MeetingGetsDefaultInstructions(t *testing.T) {
+	projectID, roleID, userID := uuid.New(), uuid.New(), uuid.New()
+	repo := &mockAgentRepo{
+		findAgentByHandle: func(_ context.Context, _ uuid.UUID, _ string) (*agentdom.Agent, error) {
+			return nil, agentdom.ErrAgentNotFound
+		},
+		createAgentWithMembership: func(_ context.Context, _ *agentdom.Agent, _ uuid.UUID, _, _ uuid.UUID) error {
+			return nil
+		},
+	}
+	svc := New(repo, projectRepoWithRole(projectID), nil, &mockPluginRepo{})
+	create := func(prompt string) *agentdom.Agent {
+		a, err := svc.CreateAgent(context.Background(), projectID, agentdom.CreateAgentInput{
+			Name: "Scribe", Handle: "scribe" + uuid.NewString()[:4], AgentType: agentdom.AgentTypeMeeting,
+			LLMProvider: "openai", LLMModel: "gpt-4", LLMAPIKey: "sk", SystemPrompt: prompt,
+			RoleIDs: []uuid.UUID{roleID}, CreatedBy: &userID,
+		})
+		assert.NoError(t, err)
+		return a
+	}
+	assert.Equal(t, agentdom.DefaultMeetingSystemPrompt, create("").SystemPrompt)
+	assert.Equal(t, agentdom.DefaultMeetingSystemPrompt, create("   ").SystemPrompt)
+	assert.Equal(t, "Only decisions.", create("Only decisions.").SystemPrompt)
+}
+
 // GHSA-xxc8-ggm7-vmxp: CreateAgent grants role_ids to the new agent's
 // membership, so a role that cannot be attached in the target project (another
 // project's role, an unknown id, a project role used platform-wide) must fail

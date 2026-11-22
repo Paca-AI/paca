@@ -290,7 +290,12 @@
 			"systemPromptPlaceholder": "あなたはシニアソフトウェアエンジニアです…",
 			"agentTypeMeeting": "会議アシスタント",
 			"agentTypeMeetingHint": "通話に参加し、文字起こしをしてタスクを提案します",
-			"agentTypeMeetingGlobalDisabledHint": "会議アシスタントはプロジェクトに属します。プロジェクトの「エージェント」ページから作成してください。"
+			"agentTypeMeetingGlobalDisabledHint": "会議アシスタントはプロジェクトに属します。プロジェクトの「エージェント」ページから作成してください。",
+			"listeningSection": "文字起こし",
+			"listeningHint": "会議アシスタントが通話を聞き取るには、文字起こしプロバイダーが必要です。",
+			"listeningKeyOrEndpoint": "API キー、またはセルフホストの Whisper のエンドポイントを入力してください。",
+			"assistantSection": "アシスタント",
+			"assistantSectionHint": "下でオンにしたメモと提案に使われます。"
 		},
 		"card": {
 			"configure": "設定",
@@ -466,7 +471,8 @@
 				"cliLoginNoEnvironment": "このエージェントには環境が設定されていません — まず上で環境を選択してください。",
 				"descriptionLabel": "説明",
 				"descriptionPlaceholder": "このエージェントの用途は？",
-				"descriptionHint": "自動モードで、どのエージェントがチャットを担当するか、またはタスクを割り当てるかをJevが判断する際に表示されます。プロバイダーとモデルは自動的に追加されます。"
+				"descriptionHint": "自動モードで、どのエージェントがチャットを担当するか、またはタスクを割り当てるかをJevが判断する際に表示されます。プロバイダーとモデルは自動的に追加されます。",
+				"meetingNoModel": "このアシスタントは文字起こしのみのため、モデルは不要です。設定するには、「アシスタント」タブでメモまたは提案をオンにしてください。"
 			},
 			"mcp": {
 				"serverCount_one": "{{count}}件のサーバーを設定済み",
@@ -690,7 +696,12 @@
 					"storeTranscriptHint": "通話と一緒に保存され、保存期間が過ぎると削除されます。",
 					"retention": "保存期間（日）",
 					"announcement": "参加時に表示するメッセージ",
-					"announcementPlaceholder": "例：メモを取るためにこの通話を文字起こししています。"
+					"announcementPlaceholder": "例：メモを取るためにこの通話を文字起こししています。",
+					"suggestions": "タスクとドキュメントを提案",
+					"suggestionsHint": "任意です。アシスタントはどちらの場合も文字起こしとメモ作成を行います。オンにすると、人が承認するタスクやドキュメントも提案します。",
+					"suggestWhen": "提案するタイミング",
+					"notes": "会議メモを作成",
+					"notesHint": "通話の後、決定事項とアクション項目の短い要約をチャンネルに投稿します。アシスタントのモデルを使います。"
 				}
 			}
 		},

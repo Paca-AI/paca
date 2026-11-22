@@ -118,7 +118,13 @@
 		"meetingNotConfigured": "Trợ lý này thiếu cài đặt mô hình. Hãy hoàn tất cấu hình trên trang của tác tử.",
 		"proposalClosed": "Đề xuất này đã được xử lý hoặc đã hết hạn.",
 		"proposalInvalid": "Đề xuất này không hợp lệ.",
-		"proposalLimit": "Trợ lý đã đạt giới hạn đề xuất cho cuộc gọi này."
+		"proposalLimit": "Trợ lý đã đạt giới hạn đề xuất cho cuộc gọi này.",
+		"recordingDisabled": "Máy chủ này chưa thiết lập ghi hình.",
+		"recordingActive": "Cuộc gọi này đang được ghi hình.",
+		"recordingNone": "Cuộc gọi này không được ghi hình.",
+		"recordingNotFound": "Không tìm thấy bản ghi hình đó.",
+		"callNoOpenCall": "Không có cuộc gọi nào để ghi hình.",
+		"meetingModelRequired": "Hãy thiết lập mô hình của trợ lý ở thẻ Tổng quan trước."
 	},
 	"noPermission": {
 		"title": "Bạn không có quyền dùng trò chuyện trong dự án này",
@@ -289,11 +295,14 @@
 			"mode": {
 				"on_demand": "Ghi lại lời nói, đề xuất khi được yêu cầu",
 				"auto_suggest": "Ghi lại lời nói, tự đề xuất",
-				"notes_only": "Ghi lại lời nói và viết ghi chú"
-			}
+				"notes_only": "Ghi lại lời nói trong cuộc gọi"
+			},
+			"withNotes": "{{what}}, viết ghi chú"
 		},
 		"captions": "Phụ đề trực tiếp",
-		"someone": "Ai đó"
+		"someone": "Ai đó",
+		"transcript": "Bản ghi lời nói",
+		"hideTranscript": "Ẩn bản ghi"
 	},
 	"proposals": {
 		"sectionLabel": "Đề xuất",
@@ -342,5 +351,32 @@
 			}
 		},
 		"dismiss": "Bỏ qua"
+	},
+	"meetings": {
+		"open": "Lịch sử cuộc họp",
+		"title": "Lịch sử cuộc họp",
+		"description": "Các cuộc gọi của kênh này đã được ghi lại.",
+		"list": "Cuộc gọi",
+		"live": "Đang diễn ra",
+		"lines": "Số dòng: {{count}}",
+		"download": "Tải bản ghi xuống",
+		"empty": "Chưa có ai nói gì.",
+		"loadFailed": "Không thể tải bản ghi.",
+		"transcript": "Bản ghi lời nói"
+	},
+	"recording": {
+		"notice": "Cuộc gọi này đang được ghi hình.",
+		"stopping": "Đang hoàn tất bản ghi hình…",
+		"start": "Bắt đầu ghi hình",
+		"stop": "Dừng ghi hình",
+		"confirmTitle": "Ghi hình cuộc gọi này?",
+		"confirmBody": "Mọi người trong cuộc gọi đều được báo là đang ghi hình, và video được lưu cùng kênh này cho những người có thể đọc kênh.",
+		"confirm": "Bắt đầu ghi hình",
+		"cancel": "Hủy",
+		"play": "Phát bản ghi hình ({{minutes}} phút)",
+		"download": "Tải bản ghi hình xuống",
+		"processing": "Bản ghi hình đang được xử lý.",
+		"failed": "Ghi hình thất bại.",
+		"unavailable": "Không thể mở bản ghi hình. Hãy thử lại."
 	}
 }

@@ -141,6 +141,45 @@ func cleanList(in []string, maxItems, maxLen int) ([]string, bool) {
 	return out, len(out) <= maxItems
 }
 
+// ValidateListening implements meetingdom.Service.
+func (s *Service) ValidateListening(p meetingdom.SettingsPatch) error {
+	str := func(v *string) string {
+		if v == nil {
+			return ""
+		}
+		return strings.TrimSpace(*v)
+	}
+	provider, model := str(p.STTProvider), str(p.STTModel)
+	if provider == "" || !oneOf(provider, STTProviders...) {
+		return fmt.Errorf("%w: stt_provider", meetingdom.ErrSettingsInvalid)
+	}
+	if model == "" {
+		return fmt.Errorf("%w: stt_model", meetingdom.ErrSettingsInvalid)
+	}
+	// A hosted provider needs a key; a self-hosted endpoint may go without.
+	if str(p.STTAPIKey) == "" && str(p.STTBaseURL) == "" {
+		return fmt.Errorf("%w: stt_api_key or stt_base_url", meetingdom.ErrSettingsInvalid)
+	}
+	return nil
+}
+
+// NeedsModel implements meetingdom.Service: what the patch would make of the
+// defaults (suggestions and notes both off) needs a language model.
+func (s *Service) NeedsModel(p meetingdom.SettingsPatch) bool {
+	set := meetingdom.DefaultSettings(uuid.Nil)
+	if p.Mode != nil {
+		set.Mode = *p.Mode
+	}
+	if p.SummaryTarget != nil {
+		set.SummaryTarget = *p.SummaryTarget
+	}
+	return set.NeedsModel()
+}
+
+func hasModel(info *meetingdom.AgentInfo) bool {
+	return info.LLMProvider != "" && info.LLMModel != "" && info.LLMKeySecret != ""
+}
+
 // UpdateSettings implements meetingdom.Service.
 func (s *Service) UpdateSettings(ctx context.Context, projectID, agentID uuid.UUID, p meetingdom.SettingsPatch) (*meetingdom.Settings, error) {
 	if _, err := s.meetingAgent(ctx, projectID, agentID); err != nil {
@@ -244,6 +283,24 @@ func (s *Service) UpdateSettings(ctx context.Context, projectID, agentID uuid.UU
 		}
 		cur.DefaultTarget = *p.DefaultTarget
 	}
+	// Touching any transcription field must leave a working setup: an agent
+	// cannot be edited into one that cannot listen. Other edits (an
+	// announcement, a limit) leave an older, unconfigured agent alone.
+	if p.STTProvider != nil || p.STTModel != nil || p.STTAPIKey != nil || p.STTBaseURL != nil {
+		if cur.STTProvider == "" || cur.STTModel == "" || (!cur.HasSTTKey() && cur.STTBaseURL == "") {
+			return bad("stt_provider, stt_model and a key or endpoint are required")
+		}
+	}
+	// Notes and suggestions use the agent's language model.
+	if cur.NeedsModel() {
+		info, err := s.meetingAgent(ctx, projectID, agentID)
+		if err != nil {
+			return nil, err
+		}
+		if !hasModel(info) {
+			return nil, meetingdom.ErrModelRequired
+		}
+	}
 	if err := s.repo.SaveSettings(ctx, cur); err != nil {
 		return nil, err
 	}
@@ -257,7 +314,7 @@ func (s *Service) ListMeetingAgents(ctx context.Context, projectID uuid.UUID) ([
 
 // ready reports whether the assistant has what it needs to run.
 func (s *Service) ready(info *meetingdom.AgentInfo, set *meetingdom.Settings) bool {
-	if info.LLMProvider == "" || info.LLMModel == "" || set.STTProvider == "" || set.STTModel == "" {
+	if set.STTProvider == "" || set.STTModel == "" || (set.NeedsModel() && !hasModel(info)) {
 		return false
 	}
 	// A hosted provider needs a key; a self-hosted endpoint may not.
@@ -541,6 +598,19 @@ func (s *Service) Finish(ctx context.Context, secret string, sessionID uuid.UUID
 	}
 	s.end(ctx, sess)
 	return nil
+}
+
+// MaxTranscriptSegments bounds one transcript read.
+const MaxTranscriptSegments = 5000
+
+// ListMeetings implements meetingdom.Service.
+func (s *Service) ListMeetings(ctx context.Context, channelID uuid.UUID) ([]*meetingdom.MeetingSummary, error) {
+	return s.repo.ListMeetings(ctx, channelID, 50)
+}
+
+// MeetingTranscript implements meetingdom.Service.
+func (s *Service) MeetingTranscript(ctx context.Context, channelID, callID uuid.UUID) ([]*meetingdom.NamedSegment, error) {
+	return s.repo.ListNamedSegments(ctx, channelID, callID, MaxTranscriptSegments)
 }
 
 // ------------------------------------------------------------- proposals

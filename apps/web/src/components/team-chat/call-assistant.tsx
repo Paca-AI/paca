@@ -5,7 +5,7 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
-import { Check, Headphones, Lightbulb, Plus, X } from "lucide-react";
+import { Check, FileText, Headphones, Lightbulb, Plus, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ import { chatErrorKey } from "@/lib/chat-errors";
 import {
 	type CallAssistant,
 	callAssistantsQueryOptions,
+	channelMeetingsQueryOptions,
 	channelProposalsQueryOptions,
 	claimProposal,
 	inviteAssistant,
@@ -45,6 +46,7 @@ import {
 } from "@/lib/meeting-api";
 import { executeProposal, type ProposalPayload } from "@/lib/proposal-actions";
 import { useCall } from "./call-provider";
+import { TranscriptView } from "./meeting-history";
 
 function refresh(qc: QueryClient, projectId: string) {
 	void qc.invalidateQueries({ queryKey: ["meeting", projectId] });
@@ -78,6 +80,16 @@ export function AssistantSection({
 	).data;
 	const [error, setError] = useState<string | null>(null);
 	const [note, setNote] = useState<string | null>(null);
+	const [showTranscript, setShowTranscript] = useState(false);
+	// The call that is still open, whose transcript fills in while people talk.
+	const openMeeting = useQuery(
+		channelMeetingsQueryOptions(
+			projectId,
+			channelId,
+			enabled && showTranscript,
+			true,
+		),
+	).data?.find((m) => m.ended_at === null);
 
 	const suggest = useMutation({
 		mutationFn: () => call.suggest(),
@@ -120,6 +132,19 @@ export function AssistantSection({
 				<Headphones className="size-4 text-muted-foreground" aria-hidden />
 				<h2 className="text-sm font-medium">{t("assistant.title")}</h2>
 				<div className="ml-auto flex items-center gap-2">
+					{active.length > 0 ? (
+						<Button
+							size="sm"
+							variant="ghost"
+							aria-expanded={showTranscript}
+							onClick={() => setShowTranscript((v) => !v)}
+						>
+							<FileText />
+							{showTranscript
+								? t("assistant.hideTranscript")
+								: t("assistant.transcript")}
+						</Button>
+					) : null}
 					{canSuggest ? (
 						<Button
 							size="sm"
@@ -149,6 +174,21 @@ export function AssistantSection({
 					onRemove={() => remove.mutate(a.agent_id)}
 				/>
 			))}
+			{showTranscript ? (
+				<div className="max-h-64 overflow-y-auto rounded-md bg-background p-2">
+					{openMeeting ? (
+						<TranscriptView
+							projectId={projectId}
+							channelId={channelId}
+							meeting={openMeeting}
+						/>
+					) : (
+						<p className="text-xs text-muted-foreground">
+							{t("meetings.empty")}
+						</p>
+					)}
+				</div>
+			) : null}
 			{active.length === 0 ? (
 				<p className="text-xs text-muted-foreground">{t("assistant.none")}</p>
 			) : null}
@@ -191,7 +231,7 @@ function AssistantRow({
 				<p className="font-medium">
 					{listening
 						? t(
-								a.mode === "notes_only"
+								a.mode === "notes_only" && a.summary_target !== "none"
 									? "assistant.listeningNotes"
 									: "assistant.listening",
 								{ name: a.name },
@@ -291,7 +331,12 @@ function privacySummary(a: MeetingAgent, t: TFunction<"chat">): string {
 	const kept = a.store_transcript
 		? t("assistant.picker.keeps", { days: a.transcript_retention_days })
 		: t("assistant.picker.keepsNothing");
-	return `${t(`assistant.picker.mode.${a.mode}`)} · ${kept}`;
+	const what = t(`assistant.picker.mode.${a.mode}`);
+	const withNotes =
+		a.summary_target !== "none"
+			? t("assistant.picker.withNotes", { what })
+			: what;
+	return `${withNotes} · ${kept}`;
 }
 
 // ------------------------------------------------------------------ captions

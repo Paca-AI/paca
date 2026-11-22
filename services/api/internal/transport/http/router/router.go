@@ -1169,6 +1169,13 @@ func New(deps Deps) http.Handler {
 								moderate := require.ChannelEntity(iam.ActionChannelsRead, iam.ActionCallsModerate)
 								r.With(moderate).Post("/call/participants/{accountId}/mute", deps.Call.Mute)
 								r.With(moderate).Delete("/call/participants/{accountId}", deps.Call.Remove)
+								// Recording needs calls:record; seeing the recordings of a channel
+								// and playing one needs only the channel, like its messages.
+								record := require.ChannelEntity(iam.ActionChannelsRead, iam.ActionCallsRecord)
+								r.With(record).Post("/call/recording", deps.Call.StartRecording)
+								r.With(record).Delete("/call/recording", deps.Call.StopRecording)
+								r.With(read).Get("/recordings", deps.Call.ListRecordings)
+								r.With(read).Get("/recordings/{recordingId}/url", deps.Call.RecordingURL)
 								// The assistants in the call. Inviting one needs the call and
 								// calls:invite_agent on that agent; taking one out is moderation.
 								if deps.Meeting != nil {
@@ -1177,6 +1184,10 @@ func New(deps Deps) http.Handler {
 										Post("/call/assistants/{agentId}", deps.Meeting.Invite)
 									r.With(moderate).Delete("/call/assistants/{agentId}", deps.Meeting.Remove)
 									r.With(read).Get("/proposals", deps.Meeting.ListChannelProposals)
+									// What was said: anyone who can read the channel reads the
+									// transcripts of its calls, as they read its messages.
+									r.With(read).Get("/meetings", deps.Meeting.ListMeetings)
+									r.With(read).Get("/meetings/{callId}/transcript", deps.Meeting.MeetingTranscript)
 								}
 							}
 						})

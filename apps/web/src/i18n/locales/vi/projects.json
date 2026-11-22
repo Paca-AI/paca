@@ -290,7 +290,12 @@
 			"systemPromptPlaceholder": "Bạn là một kỹ sư phần mềm cấp cao…",
 			"agentTypeMeeting": "Trợ lý cuộc họp",
 			"agentTypeMeetingHint": "Tham gia cuộc gọi, ghi lại lời nói và đề xuất công việc",
-			"agentTypeMeetingGlobalDisabledHint": "Trợ lý cuộc họp thuộc về một dự án. Hãy tạo từ trang Tác tử của dự án."
+			"agentTypeMeetingGlobalDisabledHint": "Trợ lý cuộc họp thuộc về một dự án. Hãy tạo từ trang Tác tử của dự án.",
+			"listeningSection": "Ghi lời nói",
+			"listeningHint": "Trợ lý cuộc họp cần một nhà cung cấp ghi lời nói để lắng nghe cuộc gọi.",
+			"listeningKeyOrEndpoint": "Nhập khóa API, hoặc endpoint của Whisper tự lưu trữ.",
+			"assistantSection": "Trợ lý",
+			"assistantSectionHint": "Dùng cho ghi chú và đề xuất bạn bật bên dưới."
 		},
 		"card": {
 			"configure": "Cấu hình",
@@ -466,7 +471,8 @@
 				"cliLoginNoEnvironment": "Agent này chưa có môi trường nào được đặt — hãy chọn một môi trường ở trên trước.",
 				"descriptionLabel": "Mô tả",
 				"descriptionPlaceholder": "Tác nhân này dùng để làm gì?",
-				"descriptionHint": "Hiển thị cho Jev khi quyết định tác nhân nào sẽ xử lý cuộc trò chuyện, hoặc có nên giao nhiệm vụ cho tác nhân đó hay không, ở chế độ Tự động. Nhà cung cấp và mô hình được thêm tự động."
+				"descriptionHint": "Hiển thị cho Jev khi quyết định tác nhân nào sẽ xử lý cuộc trò chuyện, hoặc có nên giao nhiệm vụ cho tác nhân đó hay không, ở chế độ Tự động. Nhà cung cấp và mô hình được thêm tự động.",
+				"meetingNoModel": "Trợ lý này chỉ ghi lại lời nói nên không cần mô hình. Bật ghi chú hoặc đề xuất ở thẻ Trợ lý để thiết lập."
 			},
 			"mcp": {
 				"serverCount_one": "{{count}} máy chủ đã cấu hình",
@@ -690,7 +696,12 @@
 					"storeTranscriptHint": "Được lưu cùng cuộc gọi và xóa sau thời gian lưu giữ.",
 					"retention": "Giữ trong (ngày)",
 					"announcement": "Thông báo hiển thị khi tham gia",
-					"announcementPlaceholder": "Ví dụ: Tôi đang ghi lại cuộc gọi này để ghi chú."
+					"announcementPlaceholder": "Ví dụ: Tôi đang ghi lại cuộc gọi này để ghi chú.",
+					"suggestions": "Đề xuất công việc và tài liệu",
+					"suggestionsHint": "Tùy chọn. Trợ lý luôn ghi lại lời nói và viết ghi chú; bật để nó cũng đề xuất công việc và tài liệu cho mọi người phê duyệt.",
+					"suggestWhen": "Khi nào đề xuất",
+					"notes": "Viết ghi chú cuộc họp",
+					"notesHint": "Sau cuộc gọi, đăng lên kênh một bản tóm tắt ngắn gồm các quyết định và việc cần làm. Dùng mô hình của trợ lý."
 				}
 			}
 		},

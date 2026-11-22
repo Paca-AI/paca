@@ -118,7 +118,13 @@
 		"meetingNotConfigured": "このアシスタントにはモデルの設定がありません。エージェントのページで設定を完了してください。",
 		"proposalClosed": "この提案はすでに処理済みか、期限切れです。",
 		"proposalInvalid": "この提案は無効です。",
-		"proposalLimit": "アシスタントがこの通話での提案の上限に達しました。"
+		"proposalLimit": "アシスタントがこの通話での提案の上限に達しました。",
+		"recordingDisabled": "このサーバーでは録画が設定されていません。",
+		"recordingActive": "この通話はすでに録画中です。",
+		"recordingNone": "この通話は録画されていません。",
+		"recordingNotFound": "その録画は見つかりません。",
+		"callNoOpenCall": "録画する通話がありません。",
+		"meetingModelRequired": "まず「概要」タブでアシスタントのモデルを設定してください。"
 	},
 	"noPermission": {
 		"title": "このプロジェクトでチャットを使う権限がありません",
@@ -289,11 +295,14 @@
 			"mode": {
 				"on_demand": "文字起こしし、求められたときに提案します",
 				"auto_suggest": "文字起こしし、自動で提案します",
-				"notes_only": "文字起こしとメモ作成を行います"
-			}
+				"notes_only": "通話を文字起こしします"
+			},
+			"withNotes": "{{what}}、メモを作成します"
 		},
 		"captions": "ライブ字幕",
-		"someone": "誰か"
+		"someone": "誰か",
+		"transcript": "文字起こし",
+		"hideTranscript": "文字起こしを隠す"
 	},
 	"proposals": {
 		"sectionLabel": "提案",
@@ -342,5 +351,32 @@
 			}
 		},
 		"dismiss": "却下"
+	},
+	"meetings": {
+		"open": "会議の履歴",
+		"title": "会議の履歴",
+		"description": "このチャンネルで文字起こしされた通話です。",
+		"list": "通話",
+		"live": "進行中",
+		"lines": "行数：{{count}}",
+		"download": "文字起こしをダウンロード",
+		"empty": "まだ発言はありません。",
+		"loadFailed": "文字起こしを読み込めませんでした。",
+		"transcript": "文字起こし"
+	},
+	"recording": {
+		"notice": "この通話は録画されています。",
+		"stopping": "録画を終了しています…",
+		"start": "録画を開始",
+		"stop": "録画を停止",
+		"confirmTitle": "この通話を録画しますか？",
+		"confirmBody": "通話の全員に録画中であることが表示され、動画はこのチャンネルを閲覧できる人向けに保存されます。",
+		"confirm": "録画を開始",
+		"cancel": "キャンセル",
+		"play": "録画を再生（{{minutes}} 分）",
+		"download": "録画をダウンロード",
+		"processing": "録画を処理しています。",
+		"failed": "録画に失敗しました。",
+		"unavailable": "録画を開けませんでした。もう一度お試しください。"
 	}
 }

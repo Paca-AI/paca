@@ -118,7 +118,13 @@
 		"meetingNotConfigured": "This assistant is missing model settings. Finish its setup on the agent's page.",
 		"proposalClosed": "This suggestion was already handled or has expired.",
 		"proposalInvalid": "This suggestion is not valid.",
-		"proposalLimit": "The assistant reached its suggestion limit for this call."
+		"proposalLimit": "The assistant reached its suggestion limit for this call.",
+		"recordingDisabled": "Recording is not set up on this server.",
+		"recordingActive": "This call is already being recorded.",
+		"recordingNone": "This call is not being recorded.",
+		"recordingNotFound": "That recording was not found.",
+		"callNoOpenCall": "There is no call to record.",
+		"meetingModelRequired": "Set up the assistant's model on the Overview tab first."
 	},
 	"noPermission": {
 		"title": "You don't have permission to use chat in this project",
@@ -289,11 +295,14 @@
 			"mode": {
 				"on_demand": "Transcribes, suggests when asked",
 				"auto_suggest": "Transcribes, suggests on its own",
-				"notes_only": "Transcribes and writes notes"
-			}
+				"notes_only": "Transcribes the call"
+			},
+			"withNotes": "{{what}}, writes notes"
 		},
 		"captions": "Live captions",
-		"someone": "Someone"
+		"someone": "Someone",
+		"transcript": "Transcript",
+		"hideTranscript": "Hide transcript"
 	},
 	"proposals": {
 		"sectionLabel": "Suggestions",
@@ -342,5 +351,32 @@
 			}
 		},
 		"dismiss": "Dismiss"
+	},
+	"meetings": {
+		"open": "Meeting history",
+		"title": "Meeting history",
+		"description": "The calls of this channel that were transcribed.",
+		"list": "Calls",
+		"live": "In progress",
+		"lines": "Lines: {{count}}",
+		"download": "Download transcript",
+		"empty": "Nothing has been said yet.",
+		"loadFailed": "The transcript could not be loaded.",
+		"transcript": "Transcript"
+	},
+	"recording": {
+		"notice": "This call is being recorded.",
+		"stopping": "Finishing the recording…",
+		"start": "Start recording",
+		"stop": "Stop recording",
+		"confirmTitle": "Record this call?",
+		"confirmBody": "Everyone in the call is told it is being recorded, and the video is kept with this channel for people who can read it.",
+		"confirm": "Start recording",
+		"cancel": "Cancel",
+		"play": "Play recording ({{minutes}} min)",
+		"download": "Download recording",
+		"processing": "The recording is being processed.",
+		"failed": "The recording failed.",
+		"unavailable": "The recording could not be opened. Try again."
 	}
 }

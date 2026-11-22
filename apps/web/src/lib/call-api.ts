@@ -12,11 +12,26 @@ export interface CallParticipant {
 	joined_at: string;
 }
 
+/** A recording of a call (a LiveKit egress writing one MP4). */
+export interface CallRecording {
+	id: string;
+	call_id: string;
+	status: "starting" | "recording" | "stopping" | "complete" | "failed";
+	started_by: string | null;
+	started_at: string;
+	ended_at: string | null;
+	duration_ms: number;
+	size_bytes: number;
+	error: string;
+}
+
 /** The open call of a channel. No participants means nobody is in it. */
 export interface Call {
 	channel_id: string;
 	started_at: string | null;
 	participants: CallParticipant[];
+	/** Set while the call is being recorded: everyone in it is told. */
+	recording?: CallRecording | null;
 }
 
 /** What a client connects to a call with. */
@@ -48,6 +63,23 @@ export const callConfigQueryOptions = queryOptions({
 				"/chat/calls/config",
 			);
 		return data.data.enabled;
+	},
+	staleTime: 5 * 60_000,
+});
+
+/** What this deployment can do with calls: whether they are on at all, and
+ * whether they can be recorded (LiveKit egress and storage are set up). */
+export const callFeaturesQueryOptions = queryOptions({
+	queryKey: [...callKeys.config(), "features"] as const,
+	queryFn: async (): Promise<{ enabled: boolean; recording: boolean }> => {
+		const { data } =
+			await apiClient.instance.get<
+				SuccessEnvelope<{ enabled: boolean; recording?: boolean }>
+			>("/chat/calls/config");
+		return {
+			enabled: data.data.enabled,
+			recording: data.data.recording === true,
+		};
 	},
 	staleTime: 5 * 60_000,
 });
@@ -116,4 +148,58 @@ export async function removeParticipant(
 	await apiClient.instance.delete(
 		`${base(projectId, channelId)}/participants/${accountId}`,
 	);
+}
+
+/** Starts recording the call (needs calls:record). Everyone in it sees that. */
+export async function startRecording(
+	projectId: string,
+	channelId: string,
+): Promise<CallRecording> {
+	const { data } = await apiClient.instance.post<
+		SuccessEnvelope<CallRecording>
+	>(`${base(projectId, channelId)}/recording`);
+	return data.data;
+}
+
+/** Stops the recording; the file is finalised and appears in the meeting history. */
+export async function stopRecording(
+	projectId: string,
+	channelId: string,
+): Promise<void> {
+	await apiClient.instance.delete(`${base(projectId, channelId)}/recording`);
+}
+
+export const channelRecordingsQueryOptions = (
+	projectId: string,
+	channelId: string,
+	enabled = true,
+) =>
+	queryOptions({
+		queryKey: ["calls", projectId, "recordings", channelId] as const,
+		queryFn: async (): Promise<CallRecording[]> => {
+			const { data } = await apiClient.instance.get<
+				SuccessEnvelope<CallRecording[]>
+			>(`/projects/${projectId}/channels/${channelId}/recordings`);
+			return data.data;
+		},
+		enabled,
+		staleTime: 10_000,
+	});
+
+/** A short-lived link to play (or, with download, save) a finished recording. */
+export async function recordingUrl(
+	projectId: string,
+	channelId: string,
+	recordingId: string,
+	download = false,
+): Promise<string> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<{ url: string }>
+	>(
+		`/projects/${projectId}/channels/${channelId}/recordings/${recordingId}/url`,
+		{
+			params: download ? { download: 1 } : undefined,
+		},
+	);
+	return data.data.url;
 }

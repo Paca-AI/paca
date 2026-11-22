@@ -94,6 +94,7 @@ import {
 	environmentConfigQueryOptions,
 	environmentQueryOptions,
 } from "@/lib/environment-api";
+import { meetingSettingsQueryOptions } from "@/lib/meeting-api";
 import { notifyError } from "@/lib/notify";
 import { agentAvatar } from "@/lib/provider-logos";
 import { splitShellCommand } from "@/lib/shell-command";
@@ -250,6 +251,17 @@ function OverviewTab({
 	// the system prompt, but it runs in the LiveKit worker: no git identity,
 	// Docker or environment (the server rejects them).
 	const isMeeting = agent.agent_type === "meeting";
+	// Notes and suggestions use the assistant's language model; transcription
+	// alone does not, so a transcription-only assistant has no model to show.
+	const meetingSettings = useQuery({
+		...meetingSettingsQueryOptions(projectId ?? "", agent.id),
+		enabled: isMeeting && !!projectId,
+	}).data;
+	const usesModel =
+		!isMeeting ||
+		!meetingSettings ||
+		meetingSettings.mode !== "notes_only" ||
+		meetingSettings.summary_target !== "none";
 	// Mirrors agentsvc.requiresSerialDispatch on the server exactly: an
 	// ACP-type agent (apps/acp-bridge's own session model rejects a second
 	// concurrent turn rather than queueing it) or any agent attached to a
@@ -382,7 +394,7 @@ function OverviewTab({
 				(acpProviderSelect !== "custom" || acpCommandParts.length > 0)
 			: isProviderCli
 				? !!cliProviderSelect && !!defaultEnvironmentId
-				: !!llmProvider && !!llmModel && !!llmBaseUrl.trim()) &&
+				: !usesModel || (!!llmProvider && !!llmModel && !!llmBaseUrl.trim())) &&
 		!saveMutation.isPending;
 
 	// The environment/folder pickers are populated from a live query, so a
@@ -445,7 +457,13 @@ function OverviewTab({
 
 			<Separator />
 
-			{!isAcp && !isProviderCli && (
+			{isMeeting && !usesModel && (
+				<p className="text-sm text-muted-foreground">
+					{t("agents.detail.overview.meetingNoModel")}
+				</p>
+			)}
+
+			{!isAcp && !isProviderCli && usesModel && (
 				<div>
 					<p className="text-sm font-medium mb-3">
 						{t("agents.detail.overview.llmConfiguration")}
@@ -745,7 +763,7 @@ function OverviewTab({
 			{/* System prompt and git committer identity are LLM-only — an ACP
 			    or provider_cli agent's underlying CLI owns its own prompt and
 			    git identity. */}
-			{!isAcp && !isProviderCli && (
+			{!isAcp && !isProviderCli && usesModel && (
 				<>
 					<div className="space-y-1.5">
 						<Label>{t("agents.detail.overview.systemPromptLabel")}</Label>

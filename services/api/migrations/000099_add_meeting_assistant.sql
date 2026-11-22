@@ -9,9 +9,17 @@
 -- 3. call_transcript_segments: finalized speech turns, flushed by the worker.
 -- 4. agent_proposals: what an assistant proposes; a person's browser performs
 --    the write after approving (see "Forwarded tool calls" in the doc).
--- 5. The "Meeting assistant" project role for every existing project. The
+-- 5. call_recordings: a recording is a LiveKit egress that composes the room into
+--    one MP4 in the object store, followed through LiveKit's egress_* webhooks.
+-- 6. The "Meeting assistant" project role for every existing project. The
 --    policy must match internal/bootstrap/defaultroles/policies/
---    project_meeting_assistant.json with PROJECT_ID replaced.
+--    project_meeting_assistant.json with PROJECT_ID replaced; the Editor and
+--    Analyst roles that exist get calls:invite_agent and proposals:resolve.
+--
+-- Transcription is what a meeting assistant is for: its mode defaults to
+-- "notes_only" (no suggestions) and its summary_target to "none" (no notes after
+-- the call). Suggesting tasks and docs and writing notes are options its owner
+-- turns on, and only they use a language model.
 
 BEGIN;
 
@@ -34,7 +42,7 @@ CREATE TABLE IF NOT EXISTS agent_meeting_settings (
     stt_api_key_secret        TEXT        NOT NULL DEFAULT '',
     stt_base_url              TEXT        NOT NULL DEFAULT '',
     stt_languages             TEXT[]      NOT NULL DEFAULT '{}',
-    mode                      TEXT        NOT NULL DEFAULT 'on_demand'
+    mode                      TEXT        NOT NULL DEFAULT 'notes_only'
                               CHECK (mode IN ('on_demand', 'auto_suggest', 'notes_only')),
     suggest_interval_seconds  INTEGER     NOT NULL DEFAULT 120 CHECK (suggest_interval_seconds BETWEEN 30 AND 3600),
     proposal_kinds            TEXT[]      NOT NULL DEFAULT '{task.create,task.update,task.comment,doc.create_from_notes}',
@@ -42,7 +50,7 @@ CREATE TABLE IF NOT EXISTS agent_meeting_settings (
     store_transcript          BOOLEAN     NOT NULL DEFAULT TRUE,
     transcript_retention_days INTEGER     NOT NULL DEFAULT 30 CHECK (transcript_retention_days BETWEEN 1 AND 3650),
     announcement              TEXT        NOT NULL DEFAULT '',
-    summary_target            TEXT        NOT NULL DEFAULT 'channel_message'
+    summary_target            TEXT        NOT NULL DEFAULT 'none'
                               CHECK (summary_target IN ('none', 'channel_message')),
     default_target            TEXT        NOT NULL DEFAULT 'requester'
                               CHECK (default_target IN ('requester', 'host')),
@@ -101,6 +109,28 @@ CREATE TABLE IF NOT EXISTS agent_proposals (
 CREATE INDEX IF NOT EXISTS idx_agent_proposals_target ON agent_proposals (target_account_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_proposals_channel ON agent_proposals (channel_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_proposals_call ON agent_proposals (call_session_id);
+
+CREATE TABLE IF NOT EXISTS call_recordings (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    call_session_id UUID        NOT NULL REFERENCES call_sessions(id) ON DELETE CASCADE,
+    channel_id      UUID        NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    egress_id       TEXT        NOT NULL DEFAULT '',
+    status          TEXT        NOT NULL DEFAULT 'starting'
+                    CHECK (status IN ('starting', 'recording', 'stopping', 'complete', 'failed')),
+    started_by      UUID        REFERENCES accounts(id) ON DELETE SET NULL,
+    started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ended_at        TIMESTAMPTZ,
+    object_key      TEXT        NOT NULL DEFAULT '',
+    size_bytes      BIGINT      NOT NULL DEFAULT 0,
+    duration_ms     BIGINT      NOT NULL DEFAULT 0,
+    error           TEXT        NOT NULL DEFAULT ''
+);
+
+-- One recording at a time per call.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_call_recordings_open
+    ON call_recordings (call_session_id) WHERE status IN ('starting', 'recording', 'stopping');
+CREATE INDEX IF NOT EXISTS idx_call_recordings_channel ON call_recordings (channel_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_call_recordings_egress ON call_recordings (egress_id) WHERE egress_id <> '';
 
 INSERT INTO roles (name, description, policy, project_id, is_system)
 SELECT 'Meeting assistant',

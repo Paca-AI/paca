@@ -2,9 +2,14 @@
 # Gateway Caddy configuration — DEVELOPMENT OVERRIDE
 # =============================================================================
 #
-# Identical to ../caddy/Caddyfile except the site address is hardcoded to
-# plain HTTP on :80 — the dev stack never performs ACME/HTTPS issuance.
-# Mounted by docker-compose.dev.yml; do not use in production.
+# Identical to ../caddy/Caddyfile except the site address defaults to plain
+# HTTP on :80. Set SITE_ADDRESS (deploy/.env.dev) to a host name or IP to serve
+# HTTPS on 443 (and redirect 80), for example SITE_ADDRESS=pc.paca-ai.org with
+# GATEWAY_HTTP_PORT=80 and GATEWAY_HTTPS_PORT=443: Caddy then
+# uses its local CA for an internal name or IP and Let's Encrypt for a public
+# domain. Browsers allow the microphone, camera and screen share only on
+# https:// or localhost, which calls need. Mounted by docker-compose.dev.yml;
+# do not use in production.
 #
 # Caddy's reverse_proxy has no default read timeout (unlike nginx), so the
 # long-lived Vite HMR / WebSocket connections that used to require a dev-only
@@ -100,7 +105,7 @@
 	import plugin_mcp_skills_{$PLUGINS_STORE:local}
 }
 
-:80 {
+{$SITE_ADDRESS::80} {
 	encode gzip
 
 	log {

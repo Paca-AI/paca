@@ -130,6 +130,10 @@ type CreateAgentRequest struct {
 	DefaultFolderID *uuid.UUID `json:"default_folder_id"`
 	// RoleIDs are the roles the new agent holds in the project (at least one).
 	RoleIDs []uuid.UUID `json:"role_ids"`
+	// MeetingSettings are required when agent_type is "meeting": a meeting
+	// assistant cannot be created without its transcription provider, model and
+	// a key or endpoint (the rest take their defaults).
+	MeetingSettings *UpdateMeetingSettingsRequest `json:"meeting_settings"`
 }
 
 // UpdateAgentRequest is the body for PATCH /projects/:projectId/agents/:agentId

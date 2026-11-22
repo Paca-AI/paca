@@ -290,7 +290,12 @@
 			"systemPromptPlaceholder": "Eres un ingeniero de software sénior…",
 			"agentTypeMeeting": "Asistente de reuniones",
 			"agentTypeMeetingHint": "Se une a las llamadas, transcribe y sugiere tareas",
-			"agentTypeMeetingGlobalDisabledHint": "Los asistentes de reuniones pertenecen a un proyecto. Crea uno desde la página Agentes de un proyecto."
+			"agentTypeMeetingGlobalDisabledHint": "Los asistentes de reuniones pertenecen a un proyecto. Crea uno desde la página Agentes de un proyecto.",
+			"listeningSection": "Transcripción",
+			"listeningHint": "Un asistente de reuniones necesita un proveedor de transcripción para escuchar las llamadas.",
+			"listeningKeyOrEndpoint": "Introduce una clave de API, o un endpoint para un Whisper autoalojado.",
+			"assistantSection": "Asistente",
+			"assistantSectionHint": "Se usa para las notas y sugerencias que actives abajo."
 		},
 		"card": {
 			"configure": "Configurar",
@@ -466,7 +471,8 @@
 				"cliLoginNoEnvironment": "Este agente no tiene un entorno configurado — elige uno arriba primero.",
 				"descriptionLabel": "Descripción",
 				"descriptionPlaceholder": "¿Para qué sirve este agente?",
-				"descriptionHint": "Se muestra a Jev al decidir qué agente debe encargarse de un chat, o si asignarle una tarea, en el modo Automático. El proveedor y el modelo se añaden automáticamente."
+				"descriptionHint": "Se muestra a Jev al decidir qué agente debe encargarse de un chat, o si asignarle una tarea, en el modo Automático. El proveedor y el modelo se añaden automáticamente.",
+				"meetingNoModel": "Este asistente solo transcribe, así que no necesita modelo. Activa las notas o las sugerencias en la pestaña Asistente para configurarlo."
 			},
 			"mcp": {
 				"serverCount_one": "{{count}} servidor configurado",
@@ -690,7 +696,12 @@
 					"storeTranscriptHint": "Se guarda con la llamada y se borra al terminar el periodo de retención.",
 					"retention": "Conservarla durante (días)",
 					"announcement": "Mensaje al unirse",
-					"announcementPlaceholder": "Por ejemplo: Transcribo esta llamada para tomar notas."
+					"announcementPlaceholder": "Por ejemplo: Transcribo esta llamada para tomar notas.",
+					"suggestions": "Sugerir tareas y documentos",
+					"suggestionsHint": "Opcional. El asistente transcribe y redacta notas en cualquier caso; actívalo para que también sugiera tareas y documentos que las personas aprueben.",
+					"suggestWhen": "Cuándo sugerir",
+					"notes": "Redactar notas de la reunión",
+					"notesHint": "Al terminar la llamada, publica en el canal un breve resumen con las decisiones y los puntos de acción. Usa el modelo del asistente."
 				}
 			}
 		},

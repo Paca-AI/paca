@@ -30,8 +30,13 @@ var (
 	// needs to run (reasoning model, and a transcription model unless it only
 	// takes notes).
 	ErrAssistantNotConfigured = errors.New("the assistant is missing model settings")
+	// ErrModelRequired means notes or suggestions are on but the agent has no
+	// language model configured.
+	ErrModelRequired = errors.New("notes and suggestions need the assistant's model settings")
 	// ErrSettingsInvalid means a settings value is out of range or unknown.
 	ErrSettingsInvalid = errors.New("meeting settings are invalid")
+	// ErrMeetingNotFound means the call is not one of this channel's.
+	ErrMeetingNotFound = errors.New("meeting not found")
 	// ErrProposalNotFound means the proposal does not exist.
 	ErrProposalNotFound = errors.New("proposal not found")
 	// ErrProposalInvalid means the kind is unknown or the payload does not fit it.
@@ -47,11 +52,16 @@ var (
 	ErrWorkerUnauthorized = errors.New("meeting worker is not authorized")
 )
 
-// Modes of an assistant.
+// Modes of an assistant. Transcription (and the notes at the end) is always on;
+// the mode says whether the assistant also suggests tasks and docs, which its
+// owner turns on.
 const (
-	ModeOnDemand    = "on_demand"
+	// ModeNotesOnly transcribes and writes notes and never suggests. The default.
+	ModeNotesOnly = "notes_only"
+	// ModeOnDemand also suggests when someone asks ("Suggest tasks").
+	ModeOnDemand = "on_demand"
+	// ModeAutoSuggest also suggests every suggest_interval_seconds.
 	ModeAutoSuggest = "auto_suggest"
-	ModeNotesOnly   = "notes_only"
 )
 
 // SummaryTarget values.
@@ -117,6 +127,13 @@ type Settings struct {
 	UpdatedAt               time.Time
 }
 
+// NeedsModel reports whether the assistant uses a language model: for the notes
+// it writes after a call, or for suggesting tasks and docs. Transcription alone
+// needs only the transcription provider.
+func (s *Settings) NeedsModel() bool {
+	return s.Mode != ModeNotesOnly || s.SummaryTarget != SummaryNone
+}
+
 // HasSTTKey reports whether a transcription key is stored.
 func (s *Settings) HasSTTKey() bool { return s.STTAPIKeySecret != "" }
 
@@ -125,13 +142,13 @@ func DefaultSettings(agentID uuid.UUID) *Settings {
 	return &Settings{
 		AgentID:                 agentID,
 		STTLanguages:            []string{},
-		Mode:                    ModeOnDemand,
+		Mode:                    ModeNotesOnly,
 		SuggestIntervalSeconds:  120,
 		ProposalKinds:           append([]string(nil), ProposalKinds...),
 		MaxProposalsPerCall:     10,
 		StoreTranscript:         true,
 		TranscriptRetentionDays: 30,
-		SummaryTarget:           SummaryChannelMessage,
+		SummaryTarget:           SummaryNone,
 		DefaultTarget:           TargetRequester,
 	}
 }
@@ -171,6 +188,7 @@ type AgentSession struct {
 	// Mode and the privacy summary are copied from the settings so the call
 	// view can say what the assistant does without another request.
 	Mode            string
+	SummaryTarget   string
 	StoreTranscript bool
 	RetentionDays   int
 	Announcement    string
@@ -183,6 +201,26 @@ type Segment struct {
 	SpeakerID     *uuid.UUID
 	Text          string
 	SpokenAt      time.Time
+}
+
+// NamedSegment is a stored turn of speech with who said it, for reading.
+type NamedSegment struct {
+	SpeakerID   *uuid.UUID
+	SpeakerName string
+	Text        string
+	SpokenAt    time.Time
+}
+
+// MeetingSummary is one call of a channel that left a transcript or a
+// recording behind.
+type MeetingSummary struct {
+	CallID    uuid.UUID
+	StartedAt time.Time
+	EndedAt   *time.Time
+	Segments  int
+	// Speakers are the display names of the people who spoke, in order of first
+	// words.
+	Speakers []string
 }
 
 // SegmentInput is a turn the worker reports.
@@ -294,6 +332,11 @@ type Repository interface {
 	AppendSegments(ctx context.Context, callID, channelID uuid.UUID, retentionDays int, segs []SegmentInput) error
 	ListSegments(ctx context.Context, callID uuid.UUID, limit int) ([]*Segment, error)
 	DeleteExpiredSegments(ctx context.Context) (int64, error)
+	// ListMeetings returns the calls of a channel that have a transcript, newest first.
+	ListMeetings(ctx context.Context, channelID uuid.UUID, limit int) ([]*MeetingSummary, error)
+	// ListNamedSegments returns a call's transcript, oldest first, only when the
+	// call belongs to the channel (ErrMeetingNotFound otherwise).
+	ListNamedSegments(ctx context.Context, channelID, callID uuid.UUID, limit int) ([]*NamedSegment, error)
 
 	CountProposals(ctx context.Context, callID, agentID uuid.UUID) (int, error)
 	CreateProposal(ctx context.Context, p *Proposal) error
@@ -324,6 +367,7 @@ type MeetingAgent struct {
 	Handle          string
 	Description     string
 	Mode            string
+	SummaryTarget   string
 	StoreTranscript bool
 	RetentionDays   int
 }
@@ -343,6 +387,13 @@ type Service interface {
 	Enabled() bool
 	GetSettings(ctx context.Context, projectID, agentID uuid.UUID) (*Settings, error)
 	UpdateSettings(ctx context.Context, projectID, agentID uuid.UUID, p SettingsPatch) (*Settings, error)
+	// ValidateListening checks that a patch carries what a meeting agent needs
+	// to listen: a transcription provider and model, and a key or an endpoint.
+	// Creating a meeting agent requires it.
+	ValidateListening(p SettingsPatch) error
+	// NeedsModel reports whether the settings a new agent is created with turn on
+	// notes or suggestions, which need its language model.
+	NeedsModel(p SettingsPatch) bool
 	ListMeetingAgents(ctx context.Context, projectID uuid.UUID) ([]*MeetingAgent, error)
 
 	Invite(ctx context.Context, projectID, channelID, agentID, invitedBy uuid.UUID) (*AgentSession, error)
@@ -356,6 +407,12 @@ type Service interface {
 	AppendTranscript(ctx context.Context, secret string, sessionID uuid.UUID, segs []SegmentInput) error
 	Transcript(ctx context.Context, secret string, sessionID uuid.UUID, limit int) ([]*Segment, error)
 	Finish(ctx context.Context, secret string, sessionID uuid.UUID) error
+
+	// ListMeetings and MeetingTranscript are what people read: the calls of a
+	// channel that were transcribed, and one call's transcript. The router
+	// gates both on reading the channel.
+	ListMeetings(ctx context.Context, channelID uuid.UUID) ([]*MeetingSummary, error)
+	MeetingTranscript(ctx context.Context, channelID, callID uuid.UUID) ([]*NamedSegment, error)
 
 	CreateProposal(ctx context.Context, in NewProposal) (*Proposal, error)
 	GetProposal(ctx context.Context, projectID, id uuid.UUID) (*Proposal, error)

@@ -74,7 +74,17 @@ export async function runJob(ctx: JobContext, cfg: Config): Promise<void> {
 		},
 	};
 
-	const assistant = new Assistant(boot, paca, makeChat(boot.llm), makeTranscriber(boot.stt), transport, log);
+	// The language model is for notes and suggestions only; transcription alone
+	// needs just the transcription provider.
+	const usesModel = boot.behavior.mode !== "notes_only" || boot.behavior.summary_target !== "none";
+	const assistant = new Assistant(
+		boot,
+		paca,
+		usesModel ? makeChat(boot.llm) : null,
+		makeTranscriber(boot.stt),
+		transport,
+		log,
+	);
 	assistant.start();
 
 	// A person asks for suggestions ("Suggest tasks" in the call view).

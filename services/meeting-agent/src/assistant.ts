@@ -104,7 +104,8 @@ export class Assistant {
 	constructor(
 		readonly boot: Bootstrap,
 		private readonly paca: PacaClient,
-		private readonly chat: Chat,
+		/** null for a transcription-only assistant: it uses no language model. */
+		private readonly chat: Chat | null,
 		private readonly stt: Transcriber,
 		private readonly out: Transport,
 		private readonly log: Logger,
@@ -176,7 +177,7 @@ export class Assistant {
 	 * many it made. */
 	async suggest(targetId?: string): Promise<number> {
 		const b = this.boot.behavior;
-		if (b.mode === "notes_only" || this.stopped) return 0;
+		if (b.mode === "notes_only" || this.stopped || !this.chat) return 0;
 		const tools = this.tools();
 		if (tools.length === 0 || this.lines.length === this.seen) return 0;
 		this.lastSuggestAt = this.now();
@@ -246,7 +247,7 @@ export class Assistant {
 	}
 
 	private async summarise(): Promise<void> {
-		if (this.boot.behavior.summary_target !== "channel_message" || this.lines.length < 3) return;
+		if (!this.chat || this.boot.behavior.summary_target !== "channel_message" || this.lines.length < 3) return;
 		const res = await this.chat.complete({
 			system: `${BASE_PROMPT}\n\nWrite meeting notes. Use plain sentences, no headings syntax: a two-sentence summary, then "Decisions:" and "Action items:" lists (write "none" if empty). Stay under 200 words.`,
 			user: this.transcriptText(),

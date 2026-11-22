@@ -80,6 +80,7 @@ type MeetingAgentResponse struct {
 	Handle          string    `json:"handle"`
 	Description     string    `json:"description"`
 	Mode            string    `json:"mode"`
+	SummaryTarget   string    `json:"summary_target"`
 	StoreTranscript bool      `json:"store_transcript"`
 	RetentionDays   int       `json:"transcript_retention_days"`
 }
@@ -87,7 +88,7 @@ type MeetingAgentResponse struct {
 // MeetingAgentFromEntity converts a picker row.
 func MeetingAgentFromEntity(a *meetingdom.MeetingAgent) MeetingAgentResponse {
 	return MeetingAgentResponse{ID: a.ID, Name: a.Name, Handle: a.Handle, Description: a.Description,
-		Mode: a.Mode, StoreTranscript: a.StoreTranscript, RetentionDays: a.RetentionDays}
+		Mode: a.Mode, SummaryTarget: a.SummaryTarget, StoreTranscript: a.StoreTranscript, RetentionDays: a.RetentionDays}
 }
 
 // CallAssistantResponse is an assistant in a call, with what it does.
@@ -98,6 +99,7 @@ type CallAssistantResponse struct {
 	InvitedBy       *uuid.UUID `json:"invited_by"`
 	JoinedAt        time.Time  `json:"joined_at"`
 	Mode            string     `json:"mode"`
+	SummaryTarget   string     `json:"summary_target"`
 	StoreTranscript bool       `json:"store_transcript"`
 	RetentionDays   int        `json:"transcript_retention_days"`
 	Announcement    string     `json:"announcement"`
@@ -106,7 +108,7 @@ type CallAssistantResponse struct {
 // CallAssistantFromEntity converts an agent session.
 func CallAssistantFromEntity(s *meetingdom.AgentSession) CallAssistantResponse {
 	return CallAssistantResponse{AgentID: s.AgentID, Name: s.AgentName, Status: s.Status, InvitedBy: s.InvitedBy,
-		JoinedAt: s.JoinedAt, Mode: s.Mode, StoreTranscript: s.StoreTranscript, RetentionDays: s.RetentionDays,
+		JoinedAt: s.JoinedAt, Mode: s.Mode, SummaryTarget: s.SummaryTarget, StoreTranscript: s.StoreTranscript, RetentionDays: s.RetentionDays,
 		Announcement: s.Announcement}
 }
 
@@ -234,4 +236,35 @@ type TranscriptSegmentResponse struct {
 	SpeakerID *uuid.UUID `json:"speaker_id"`
 	Text      string     `json:"text"`
 	SpokenAt  time.Time  `json:"spoken_at"`
+}
+
+// MeetingResponse is a call of a channel that was transcribed.
+type MeetingResponse struct {
+	CallID    uuid.UUID  `json:"call_id"`
+	StartedAt time.Time  `json:"started_at"`
+	EndedAt   *time.Time `json:"ended_at"`
+	Segments  int        `json:"segments"`
+	Speakers  []string   `json:"speakers"`
+}
+
+// MeetingFromEntity converts a meeting summary.
+func MeetingFromEntity(m *meetingdom.MeetingSummary) MeetingResponse {
+	sp := m.Speakers
+	if sp == nil {
+		sp = []string{}
+	}
+	return MeetingResponse{CallID: m.CallID, StartedAt: m.StartedAt, EndedAt: m.EndedAt, Segments: m.Segments, Speakers: sp}
+}
+
+// TranscriptLineResponse is one turn of a call's transcript, with who said it.
+type TranscriptLineResponse struct {
+	SpeakerID   *uuid.UUID `json:"speaker_id"`
+	SpeakerName string     `json:"speaker_name"`
+	Text        string     `json:"text"`
+	SpokenAt    time.Time  `json:"spoken_at"`
+}
+
+// TranscriptLineFromEntity converts a named segment.
+func TranscriptLineFromEntity(s *meetingdom.NamedSegment) TranscriptLineResponse {
+	return TranscriptLineResponse{SpeakerID: s.SpeakerID, SpeakerName: s.SpeakerName, Text: s.Text, SpokenAt: s.SpokenAt}
 }

@@ -180,6 +180,62 @@ try {
 	const roleId = (name) => roleList.find((r) => r.name === name)?.id;
 	check("every project has a Meeting assistant role", !!roleId("Meeting assistant"));
 
+	const noListening = await admin.req("POST", `/projects/${pid}/agents`, {
+		name: `NoStt ${run}`,
+		handle: `nostt${run}`,
+		agent_type: "meeting",
+		llm_provider: "openai",
+		llm_model: "m",
+		llm_api_key: "k",
+		llm_base_url: "http://x",
+		role_ids: [roleId("Meeting assistant")],
+	});
+	check(
+		"a meeting agent cannot be created without its transcription settings",
+		noListening.status === 400,
+		`${noListening.status}`,
+	);
+	const halfListening = await admin.req("POST", `/projects/${pid}/agents`, {
+		name: `Half ${run}`,
+		handle: `half${run}`,
+		agent_type: "meeting",
+		llm_provider: "openai",
+		llm_model: "m",
+		llm_api_key: "k",
+		llm_base_url: "http://x",
+		role_ids: [roleId("Meeting assistant")],
+		meeting_settings: { stt_provider: "openai", stt_model: "whisper-1" },
+	});
+	check("a provider and model alone are not enough", halfListening.status === 400, `${halfListening.status}`);
+	// Transcription alone needs no model at all.
+	const minimal = await admin.req("POST", `/projects/${pid}/agents`, {
+		name: `Mini ${run}`,
+		handle: `mini${run}`,
+		agent_type: "meeting",
+		role_ids: [roleId("Meeting assistant")],
+		meeting_settings: { stt_provider: "openai", stt_model: "whisper-1", stt_api_key: "k" },
+	});
+	check("a transcription-only agent is created without any model settings", minimal.status < 300 && minimal.data?.agent_type === "meeting", `${minimal.status} ${minimal.text.slice(0, 160)}`);
+	const mset = must(await admin.req("GET", `/projects/${pid}/agents/${minimal.data?.id}/meeting-settings`), "minimal settings");
+	check("it transcribes only by default", mset.mode === "notes_only" && mset.summary_target === "none");
+	for (const [what, patch] of [["suggestions", { mode: "on_demand" }], ["notes", { summary_target: "channel_message" }]]) {
+		const r = await admin.req("PATCH", `/projects/${pid}/agents/${minimal.data?.id}/meeting-settings`, patch);
+		check(`turning on ${what} needs the model first`, r.status === 400 && r.error?.code === "MEETING_MODEL_REQUIRED", `${r.status} ${r.text.slice(0, 120)}`);
+	}
+	const needsModel = await admin.req("POST", `/projects/${pid}/agents`, {
+		name: `NeedsModel ${run}`,
+		handle: `needs${run}`,
+		agent_type: "meeting",
+		role_ids: [roleId("Meeting assistant")],
+		meeting_settings: { stt_provider: "openai", stt_model: "whisper-1", stt_api_key: "k", summary_target: "channel_message" },
+	});
+	check("notes at creation need the model", needsModel.status === 400, `${needsModel.status}`);
+	const leftovers = must(await admin.req("GET", `/projects/${pid}/agents`), "agents");
+	check(
+		"the refused requests left no agent behind",
+		(leftovers.items ?? leftovers).every((a) => !/^(NoStt|Half|NeedsModel) /.test(a.name)),
+	);
+
 	const agent = must(
 		await admin.req("POST", `/projects/${pid}/agents`, {
 			name: `Atlas ${run}`,
@@ -192,6 +248,17 @@ try {
 			llm_base_url: `http://localhost:${FAKE_PORT}`,
 			system_prompt: "Be brief.",
 			role_ids: [roleId("Meeting assistant")],
+			// How it transcribes is part of creating it.
+			meeting_settings: {
+				stt_provider: "openai",
+				stt_model: "fake-stt",
+				stt_api_key: "stt-secret-key",
+				stt_base_url: `http://localhost:${FAKE_PORT}`,
+				stt_languages: ["en"],
+				// Suggestions and notes are options that use the model; this run turns both on.
+				mode: "on_demand",
+				summary_target: "channel_message",
+			},
 		}),
 		"create agent",
 	);
@@ -211,7 +278,10 @@ try {
 	check("git identity is refused for a meeting agent", bad.status === 400, `${bad.status} ${bad.text.slice(0, 120)}`);
 
 	const st = must(await admin.req("GET", `/projects/${pid}/agents/${agent.id}/meeting-settings`), "settings");
-	check("defaults before configuring", st.mode === "on_demand" && st.has_stt_key === false);
+	check(
+		"it listens as configured at creation, with defaults for the rest",
+		st.mode === "on_demand" && st.has_stt_key === true && st.stt_provider === "openai" && st.stt_model === "fake-stt",
+	);
 	const notReady = await admin.req("GET", `/projects/${pid}/channels`);
 	const channel = must(
 		await admin.req("POST", `/projects/${pid}/channels`, { kind: "voice", name: `lounge${run}`.toLowerCase() }),
@@ -219,7 +289,7 @@ try {
 	);
 	void notReady;
 
-	// ---- the caller joins, but the assistant is not configured yet --------------
+	// ---- the caller joins -------------------------------------------------------
 	const join = must(await admin.req("POST", `/projects/${pid}/channels/${channel.id}/call/join`), "join");
 	lk = new Room();
 	const captions = [];
@@ -247,20 +317,8 @@ try {
 		),
 	);
 
-	const early = await admin.req("POST", `/projects/${pid}/channels/${channel.id}/call/assistants/${agent.id}`);
-	check(
-		"inviting an unconfigured assistant is refused",
-		early.status === 409 && early.error?.code === "MEETING_NOT_CONFIGURED",
-		`${early.status} ${early.text.slice(0, 160)}`,
-	);
-
 	const patched = must(
 		await admin.req("PATCH", `/projects/${pid}/agents/${agent.id}/meeting-settings`, {
-			stt_provider: "openai",
-			stt_model: "fake-stt",
-			stt_api_key: "stt-secret-key",
-			stt_base_url: `http://localhost:${FAKE_PORT}`,
-			stt_languages: ["en"],
 			announcement: "I transcribe this call.",
 			store_transcript: true,
 			transcript_retention_days: 7,
@@ -271,6 +329,8 @@ try {
 		"the STT key is stored but never returned",
 		patched.has_stt_key === true && !JSON.stringify(patched).includes("stt-secret-key"),
 	);
+	const unlisten = await admin.req("PATCH", `/projects/${pid}/agents/${agent.id}/meeting-settings`, { stt_model: "" });
+	check("it cannot be edited into one that cannot listen", unlisten.status === 400, `${unlisten.status}`);
 	const keyInDb = await admin.req("GET", `/projects/${pid}/agents/${agent.id}`);
 	check("the agent response does not leak the LLM key", !keyInDb.text.includes("llm-secret-key"));
 
@@ -419,6 +479,74 @@ try {
 		`${closed.status} ${closed.text.slice(0, 100)}`,
 	);
 
+	// ---- recording -------------------------------------------------------------------
+	const features = must(await admin.req("GET", "/chat/calls/config"), "call config");
+	if (features.recording) {
+		const base = `/projects/${pid}/channels/${channel.id}`;
+		const denied = await peer.req("POST", `${base}/call/recording`);
+		check("an Editor without calls:record cannot start a recording", denied.status === 403, `${denied.status}`);
+		const started = must(await admin.req("POST", `${base}/call/recording`), "start recording");
+		check("the admin starts a recording", started.status === "starting" || started.status === "recording");
+		const dup = await admin.req("POST", `${base}/call/recording`);
+		check(
+			"a second recording is refused",
+			dup.status === 409 && dup.error?.code === "RECORDING_ACTIVE",
+			`${dup.status} ${dup.text.slice(0, 100)}`,
+		);
+		const during = must(await admin.req("GET", `${base}/call`), "call");
+		check("everyone in the call can see it is being recorded", during.recording?.id === started.id);
+		await until(
+			"the egress to be active",
+			async () =>
+				must(await admin.req("GET", `${base}/recordings`), "recordings").find((r) => r.id === started.id)?.status ===
+				"recording",
+			60000,
+		);
+		await speak(3000);
+		await hush(1000);
+		const none = await peer.req("DELETE", `${base}/call/recording`);
+		check("an Editor cannot stop it either", none.status === 403, `${none.status}`);
+		const stopped = await admin.req("DELETE", `${base}/call/recording`);
+		check("the admin stops it", stopped.status === 204, `${stopped.status}`);
+		const done = await until(
+			"the recording to complete",
+			async () => {
+				const r = must(await admin.req("GET", `${base}/recordings`), "recordings").find((x) => x.id === started.id);
+				return r?.status === "complete" || r?.status === "failed" ? r : null;
+			},
+			120000,
+		);
+		check(
+			"the recording completes with a file",
+			done.status === "complete" && done.size_bytes > 0 && done.duration_ms > 0,
+			JSON.stringify(done),
+		);
+		const link = must(await admin.req("GET", `${base}/recordings/${started.id}/url`), "recording url");
+		const file = await fetch(link.url);
+		const bytes = Buffer.from(await file.arrayBuffer());
+		check(
+			"the link serves an MP4",
+			file.ok && bytes.subarray(4, 8).toString() === "ftyp",
+			`${file.status} ${bytes.length}`,
+		);
+		const dl = must(await admin.req("GET", `${base}/recordings/${started.id}/url?download=1`), "download url");
+		check(
+			"a download link forces a save",
+			(await fetch(dl.url, { headers: { Range: "bytes=0-1" } })).headers
+				.get("content-disposition")
+				?.includes("attachment") === true,
+		);
+		const outsider = await stranger.req("GET", `${base}/recordings/${started.id}/url`);
+		check("someone outside the project cannot get it", outsider.status === 403, `${outsider.status}`);
+		const hist = must(await admin.req("GET", `${base}/meetings`), "meetings");
+		check(
+			"the call is in the meeting history",
+			hist.some((m) => m.call_id === done.call_id),
+		);
+	} else {
+		console.log("SKIP  recording (the API says it is not enabled)");
+	}
+
 	// ---- leave: notes are posted, the assistant leaves ---------------------------------
 	await lk.disconnect();
 	lk = null;
@@ -437,6 +565,37 @@ try {
 		"the notes were posted to the channel by the agent",
 		notes.includes("Meeting notes from") && notes.includes(agent.id),
 		notes.slice(0, 200),
+	);
+	// ---- transcripts people can read ---------------------------------------------------
+	const tbase = `/projects/${pid}/channels/${channel.id}`;
+	const meetings = must(await admin.req("GET", `${tbase}/meetings`), "meetings");
+	check(
+		"the call is listed with its transcript",
+		meetings.length >= 1 && meetings[0].segments >= 3 && meetings[0].speakers.length >= 1,
+		JSON.stringify(meetings),
+	);
+	const lines = must(await admin.req("GET", `${tbase}/meetings/${meetings[0].call_id}/transcript`), "transcript");
+	check(
+		"the transcript names who said what",
+		lines.length >= 3 && lines[0].speaker_name !== "" && lines[0].text.includes("login page"),
+		JSON.stringify(lines[0]),
+	);
+	const txt = await fetch(`${API}${tbase}/meetings/${meetings[0].call_id}/transcript?format=txt`, {
+		headers: { Cookie: [...admin.cookies].map(([k, v]) => `${k}=${v}`).join("; ") },
+	});
+	const body = await txt.text();
+	check(
+		"it can be saved as a text file",
+		txt.headers.get("content-disposition")?.includes("attachment") && body.includes("login page"),
+		body.slice(0, 80),
+	);
+	check(
+		"a stranger cannot read it",
+		(await stranger.req("GET", `${tbase}/meetings/${meetings[0].call_id}/transcript`)).status === 403,
+	);
+	check(
+		"another channel's call id is not found",
+		(await admin.req("GET", `${tbase}/meetings/${crypto.randomUUID()}/transcript`)).status === 404,
 	);
 	check(
 		"the model was asked (suggest + summary) and speech was transcribed",

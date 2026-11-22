@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -123,5 +124,51 @@ func TestRemoveParticipantNotFound(t *testing.T) {
 func TestInternalURLDerivedFromPublic(t *testing.T) {
 	if got := New(Config{PublicURL: "wss://x.test/livekit/"}).cfg.InternalURL; got != "https://x.test/livekit" {
 		t.Errorf("internal url = %q", got)
+	}
+}
+
+func TestEgressWebhookDecodesProtobufJSON(t *testing.T) {
+	body := []byte(`{"event":"egress_ended","egressInfo":{"egressId":"EG_1","roomName":"r","status":"EGRESS_COMPLETE",
+		"fileResults":[{"filename":"recordings/a.mp4","location":"s3://b/recordings/a.mp4","size":"2048","duration":"90000000000"}]}}`)
+	var ev WebhookEvent
+	if err := json.Unmarshal(body, &ev); err != nil {
+		t.Fatal(err)
+	}
+	e := ev.EgressInfo
+	if e == nil || e.EgressID != "EG_1" || e.Status != "EGRESS_COMPLETE" || len(e.FileResults) != 1 {
+		t.Fatalf("%+v", e)
+	}
+	// int64 fields arrive as strings; a plain number is read too.
+	if f := e.FileResults[0]; int64(f.Size) != 2048 || int64(f.Duration) != 90_000_000_000 {
+		t.Errorf("%+v", f)
+	}
+	var n struct {
+		V FlexInt `json:"v"`
+	}
+	if err := json.Unmarshal([]byte(`{"v": 7}`), &n); err != nil || n.V != 7 {
+		t.Errorf("number: %v %v", n, err)
+	}
+}
+
+func TestStartRoomRecordingReadsTheEgressID(t *testing.T) {
+	for name, body := range map[string]string{"snake": `{"egress_id":"EG_1","status":"EGRESS_STARTING"}`, "camel": `{"egressId":"EG_1"}`} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/twirp/livekit.Egress/StartRoomCompositeEgress" || !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+				t.Errorf("request %s %q", r.URL.Path, r.Header.Get("Authorization"))
+			}
+			_, _ = w.Write([]byte(body))
+		}))
+		c := New(Config{PublicURL: "ws://x", InternalURL: srv.URL, APIKey: "k", APISecret: "secretsecretsecretsecret0123456789"})
+		id, err := c.StartRoomRecording(t.Context(), "room", "recordings/a.mp4", S3Output{Bucket: "b"})
+		srv.Close()
+		if err != nil || id != "EG_1" {
+			t.Errorf("%s: id %q err %v", name, id, err)
+		}
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{}`)) }))
+	defer srv.Close()
+	c := New(Config{PublicURL: "ws://x", InternalURL: srv.URL, APIKey: "k", APISecret: "secretsecretsecretsecret0123456789"})
+	if _, err := c.StartRoomRecording(t.Context(), "room", "a.mp4", S3Output{}); err == nil {
+		t.Error("an egress answered without an id must be an error")
 	}
 }

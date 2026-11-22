@@ -118,7 +118,13 @@
 		"meetingNotConfigured": "A este asistente le faltan ajustes del modelo. Termina su configuración en la página del agente.",
 		"proposalClosed": "Esta sugerencia ya se gestionó o ha caducado.",
 		"proposalInvalid": "Esta sugerencia no es válida.",
-		"proposalLimit": "El asistente alcanzó su límite de sugerencias para esta llamada."
+		"proposalLimit": "El asistente alcanzó su límite de sugerencias para esta llamada.",
+		"recordingDisabled": "La grabación no está configurada en este servidor.",
+		"recordingActive": "Esta llamada ya se está grabando.",
+		"recordingNone": "Esta llamada no se está grabando.",
+		"recordingNotFound": "No se encontró esa grabación.",
+		"callNoOpenCall": "No hay ninguna llamada que grabar.",
+		"meetingModelRequired": "Configura primero el modelo del asistente en la pestaña Resumen."
 	},
 	"noPermission": {
 		"title": "No tienes permiso para usar el chat en este proyecto",
@@ -289,11 +295,14 @@
 			"mode": {
 				"on_demand": "Transcribe y sugiere cuando se le pide",
 				"auto_suggest": "Transcribe y sugiere por su cuenta",
-				"notes_only": "Transcribe y redacta notas"
-			}
+				"notes_only": "Transcribe la llamada"
+			},
+			"withNotes": "{{what}}, redacta notas"
 		},
 		"captions": "Subtítulos en directo",
-		"someone": "Alguien"
+		"someone": "Alguien",
+		"transcript": "Transcripción",
+		"hideTranscript": "Ocultar transcripción"
 	},
 	"proposals": {
 		"sectionLabel": "Sugerencias",
@@ -342,5 +351,32 @@
 			}
 		},
 		"dismiss": "Descartar"
+	},
+	"meetings": {
+		"open": "Historial de reuniones",
+		"title": "Historial de reuniones",
+		"description": "Las llamadas de este canal que se transcribieron.",
+		"list": "Llamadas",
+		"live": "En curso",
+		"lines": "Líneas: {{count}}",
+		"download": "Descargar transcripción",
+		"empty": "Todavía no se ha dicho nada.",
+		"loadFailed": "No se pudo cargar la transcripción.",
+		"transcript": "Transcripción"
+	},
+	"recording": {
+		"notice": "Esta llamada se está grabando.",
+		"stopping": "Finalizando la grabación…",
+		"start": "Iniciar grabación",
+		"stop": "Detener grabación",
+		"confirmTitle": "¿Grabar esta llamada?",
+		"confirmBody": "Todos en la llamada verán que se está grabando, y el vídeo se conserva en este canal para quienes puedan leerlo.",
+		"confirm": "Iniciar grabación",
+		"cancel": "Cancelar",
+		"play": "Reproducir grabación ({{minutes}} min)",
+		"download": "Descargar grabación",
+		"processing": "La grabación se está procesando.",
+		"failed": "La grabación falló.",
+		"unavailable": "No se pudo abrir la grabación. Inténtalo de nuevo."
 	}
 }

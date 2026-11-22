@@ -12,6 +12,7 @@ import {
 	Eye,
 	EyeOff,
 	FlaskConical,
+	Headphones,
 	Lock,
 	Search,
 	Server,
@@ -82,6 +83,7 @@ import {
 	environmentConfigQueryOptions,
 	environmentQueryOptions,
 } from "@/lib/environment-api";
+import { DEFAULT_MEETING_PROMPT, STT_PROVIDERS } from "@/lib/meeting-api";
 import type { Role } from "@/lib/role-api";
 import { splitShellCommand } from "@/lib/shell-command";
 import { cn } from "@/lib/utils";
@@ -212,6 +214,18 @@ export function CreateAgentDialog({
 	const [modelSelect, setModelSelect] = useState("claude-sonnet-4-5-20250929");
 	const [customModel, setCustomModel] = useState("");
 	const [llmApiKey, setLlmApiKey] = useState("");
+	// A meeting assistant's transcription setup: required to create one.
+	const [sttProvider, setSttProvider] = useState("");
+	const [sttModel, setSttModel] = useState("");
+	const [sttKey, setSttKey] = useState("");
+	const [sttBaseUrl, setSttBaseUrl] = useState("");
+	const [sttLanguages, setSttLanguages] = useState("");
+	// Suggesting tasks and docs is an option; transcription is the job.
+	const [suggestTasks, setSuggestTasks] = useState(false);
+	// Notes after the call are an option too.
+	const [writeNotes, setWriteNotes] = useState(false);
+	// Notes and suggestions use a language model; transcription alone does not.
+	const assistantUsesModel = suggestTasks || writeNotes;
 	const [llmBaseUrl, setLlmBaseUrl] = useState(
 		llmModels.anthropic?.base_url ?? "",
 	);
@@ -269,6 +283,13 @@ export function CreateAgentDialog({
 		setModelSelect("claude-sonnet-4-5-20250929");
 		setCustomModel("");
 		setLlmApiKey("");
+		setSttProvider("");
+		setSttModel("");
+		setSttKey("");
+		setSttBaseUrl("");
+		setSttLanguages("");
+		setSuggestTasks(false);
+		setWriteNotes(false);
 		setLlmBaseUrl(llmModels.anthropic?.base_url ?? "");
 		setAcpProvider("claude-code");
 		setAcpCommand("");
@@ -393,11 +414,33 @@ export function CreateAgentDialog({
 						? {
 								// The reasoning model; listening and behaviour are set on the
 								// agent's Assistant tab after it is created.
-								llm_provider: llmProvider,
-								llm_model: llmModel,
-								llm_api_key: llmApiKey,
-								llm_base_url: llmBaseUrl,
-								system_prompt: systemPrompt,
+								...(assistantUsesModel
+									? {
+											llm_provider: llmProvider,
+											llm_model: llmModel,
+											llm_api_key: llmApiKey,
+											llm_base_url: llmBaseUrl,
+											system_prompt: systemPrompt,
+										}
+									: {}),
+								meeting_settings: {
+									stt_provider: sttProvider,
+									stt_model: sttModel.trim(),
+									...(sttKey.trim() ? { stt_api_key: sttKey.trim() } : {}),
+									...(sttBaseUrl.trim()
+										? { stt_base_url: sttBaseUrl.trim() }
+										: {}),
+									mode: suggestTasks
+										? ("on_demand" as const)
+										: ("notes_only" as const),
+									summary_target: writeNotes
+										? ("channel_message" as const)
+										: ("none" as const),
+									stt_languages: sttLanguages
+										.split(/[,\s]+/)
+										.map((l) => l.trim())
+										.filter(Boolean),
+								},
 							}
 						: agentType === "provider_cli"
 							? {
@@ -538,15 +581,51 @@ export function CreateAgentDialog({
 	};
 
 	const step1Valid = !!(name.trim() && handle.trim());
+	const systemPromptField = (
+		<div className="space-y-1.5">
+			<div className="flex items-center justify-between">
+				<Label htmlFor="agent-system-prompt">
+					{t("agents.createDialog.systemPromptLabel")}{" "}
+					<span className="text-muted-foreground font-normal text-xs">
+						{t("agents.createDialog.optional")}
+					</span>
+				</Label>
+				{systemPrompt.length > 0 && (
+					<span className="text-xs text-muted-foreground">
+						{t("agents.createDialog.charsCount", {
+							count: systemPrompt.length,
+						})}
+					</span>
+				)}
+			</div>
+			<Textarea
+				id="agent-system-prompt"
+				placeholder={t("agents.createDialog.systemPromptPlaceholder")}
+				value={systemPrompt}
+				onChange={(e) => setSystemPrompt(e.target.value)}
+				rows={4}
+				className="resize-none text-sm"
+			/>
+		</div>
+	);
+
+	// A meeting assistant also needs its transcription provider and model, and a
+	// key or a self-hosted endpoint (the server requires the same).
+	const listeningValid =
+		agentType !== "meeting" ||
+		!!(sttProvider && sttModel.trim() && (sttKey.trim() || sttBaseUrl.trim()));
 	const step2Valid =
-		agentType === "llm" || agentType === "meeting"
-			? !!(llmProvider && llmModel && llmBaseUrl.trim() && llmApiKey.trim())
+		listeningValid &&
+		(agentType === "llm" || agentType === "meeting"
+			? agentType === "meeting" && !assistantUsesModel
+				? true
+				: !!(llmProvider && llmModel && llmBaseUrl.trim() && llmApiKey.trim())
 			: agentType === "provider_cli"
 				? !!(cliProvider && defaultEnvironmentId && defaultFolderId)
 				: !!(
 						acpProvider &&
 						(acpProvider !== "custom" || acpCommandParts.length > 0)
-					);
+					));
 	// A project agent must have a project role, which is part of its create request.
 	const roleStepValid = !projectId || roleIds.length > 0;
 	const canSubmit = !!(
@@ -694,7 +773,20 @@ export function CreateAgentDialog({
 												<button
 													key={type}
 													type="button"
-													onClick={() => setAgentType(type)}
+													onClick={() => {
+														// A meeting assistant starts with a default set of
+														// instructions; leaving the type drops them again unless
+														// they were edited.
+														if (type === "meeting" && systemPrompt === "") {
+															setSystemPrompt(DEFAULT_MEETING_PROMPT);
+														} else if (
+															type !== "meeting" &&
+															systemPrompt === DEFAULT_MEETING_PROMPT
+														) {
+															setSystemPrompt("");
+														}
+														setAgentType(type);
+													}}
 													className={buttonClassName}
 												>
 													{content}
@@ -1130,16 +1222,156 @@ export function CreateAgentDialog({
 							</>
 						)}
 
-						{/* Provider + Model card */}
-						{(agentType === "llm" || agentType === "meeting") && (
-							<>
-								<div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-3">
+						{/* Transcription — required for a meeting assistant */}
+						{agentType === "meeting" && (
+							<div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-3">
+								<div className="flex items-center gap-1.5">
+									<Headphones className="size-3.5 text-muted-foreground" />
+									<span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+										{t("agents.createDialog.listeningSection")}
+									</span>
+								</div>
+								<p className="text-xs text-muted-foreground">
+									{t("agents.createDialog.listeningHint")}
+								</p>
+								<div className="grid grid-cols-2 gap-3">
+									<div className="space-y-1.5">
+										<Label>
+											{t("agents.detail.assistant.fields.sttProvider")}{" "}
+											<span className="text-destructive">*</span>
+										</Label>
+										<Select
+											value={sttProvider}
+											onValueChange={(v) => setSttProvider(v ?? "")}
+										>
+											<SelectTrigger
+												aria-label={t(
+													"agents.detail.assistant.fields.sttProvider",
+												)}
+											>
+												<SelectValue
+													placeholder={t(
+														"agents.detail.assistant.fields.sttProviderNone",
+													)}
+												/>
+											</SelectTrigger>
+											<SelectContent>
+												{STT_PROVIDERS.map((p) => (
+													<SelectItem key={p} value={p}>
+														{p}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+									</div>
+									<div className="space-y-1.5">
+										<Label htmlFor="agent-stt-model">
+											{t("agents.detail.assistant.fields.sttModel")}{" "}
+											<span className="text-destructive">*</span>
+										</Label>
+										<Input
+											id="agent-stt-model"
+											placeholder="whisper-1"
+											value={sttModel}
+											onChange={(e) => setSttModel(e.target.value)}
+										/>
+									</div>
+									<div className="space-y-1.5">
+										<Label htmlFor="agent-stt-key">
+											{t("agents.detail.assistant.fields.sttKey")}
+										</Label>
+										<Input
+											id="agent-stt-key"
+											type="password"
+											autoComplete="off"
+											value={sttKey}
+											onChange={(e) => setSttKey(e.target.value)}
+										/>
+									</div>
+									<div className="space-y-1.5">
+										<Label htmlFor="agent-stt-base">
+											{t("agents.detail.assistant.fields.sttBaseUrl")}
+										</Label>
+										<Input
+											id="agent-stt-base"
+											placeholder="http://whisper:8000/v1"
+											value={sttBaseUrl}
+											onChange={(e) => setSttBaseUrl(e.target.value)}
+										/>
+									</div>
+									<div className="col-span-2 space-y-1.5">
+										<Label htmlFor="agent-stt-langs">
+											{t("agents.detail.assistant.fields.languages")}
+										</Label>
+										<Input
+											id="agent-stt-langs"
+											placeholder="en, vi"
+											value={sttLanguages}
+											onChange={(e) => setSttLanguages(e.target.value)}
+										/>
+									</div>
+								</div>
+								<p className="text-xs text-muted-foreground">
+									{t("agents.createDialog.listeningKeyOrEndpoint")}
+								</p>
+								<label className="flex items-center justify-between gap-3 text-sm">
+									<span>
+										{t("agents.detail.assistant.fields.notes")}
+										<span className="block text-xs text-muted-foreground">
+											{t("agents.detail.assistant.fields.notesHint")}
+										</span>
+									</span>
+									<Switch
+										checked={writeNotes}
+										onCheckedChange={setWriteNotes}
+									/>
+								</label>
+								<label className="flex items-center justify-between gap-3 text-sm">
+									<span>
+										{t("agents.detail.assistant.fields.suggestions")}
+										<span className="block text-xs text-muted-foreground">
+											{t("agents.detail.assistant.fields.suggestionsHint")}
+										</span>
+									</span>
+									<Switch
+										checked={suggestTasks}
+										onCheckedChange={setSuggestTasks}
+									/>
+								</label>
+							</div>
+						)}
+
+						{/* Provider + Model: one bordered Assistant card for a meeting assistant
+						    (model, key, base URL and instructions together), like Transcription. */}
+						{(agentType === "llm" ||
+							(agentType === "meeting" && assistantUsesModel)) && (
+							<div
+								className={
+									agentType === "meeting"
+										? "rounded-lg border border-border/60 bg-muted/20 p-4 space-y-4"
+										: "space-y-5"
+								}
+							>
+								<div
+									className={
+										agentType === "meeting"
+											? "space-y-3"
+											: "rounded-lg border border-border/60 bg-muted/20 p-4 space-y-3"
+									}
+								>
 									<div className="flex items-center gap-1.5">
 										<Cpu className="size-3.5 text-muted-foreground" />
 										<span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-											{t("agents.createDialog.modelSection")}
+											{agentType === "meeting"
+												? t("agents.createDialog.assistantSection")
+												: t("agents.createDialog.modelSection")}
 										</span>
 									</div>
+									{agentType === "meeting" && (
+										<p className="text-xs text-muted-foreground">
+											{t("agents.createDialog.assistantSectionHint")}
+										</p>
+									)}
 									<div className="grid grid-cols-2 gap-3">
 										<div className="space-y-1.5">
 											<Label>{t("agents.createDialog.providerLabel")}</Label>
@@ -1269,6 +1501,8 @@ export function CreateAgentDialog({
 									/>
 								</div>
 
+								{agentType === "meeting" && systemPromptField}
+
 								{/* Environment + Docker card */}
 								{agentType === "llm" && (
 									<div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-3">
@@ -1333,37 +1567,12 @@ export function CreateAgentDialog({
 										)}
 									</div>
 								)}
-							</>
-						)}
-
-						{/* System Prompt — LLM and meeting only; an ACP agent's local CLI owns its own prompt (a meeting assistant's instructions are this prompt) */}
-						{(agentType === "llm" || agentType === "meeting") && (
-							<div className="space-y-1.5">
-								<div className="flex items-center justify-between">
-									<Label htmlFor="agent-system-prompt">
-										{t("agents.createDialog.systemPromptLabel")}{" "}
-										<span className="text-muted-foreground font-normal text-xs">
-											{t("agents.createDialog.optional")}
-										</span>
-									</Label>
-									{systemPrompt.length > 0 && (
-										<span className="text-xs text-muted-foreground">
-											{t("agents.createDialog.charsCount", {
-												count: systemPrompt.length,
-											})}
-										</span>
-									)}
-								</div>
-								<Textarea
-									id="agent-system-prompt"
-									placeholder={t("agents.createDialog.systemPromptPlaceholder")}
-									value={systemPrompt}
-									onChange={(e) => setSystemPrompt(e.target.value)}
-									rows={4}
-									className="resize-none text-sm"
-								/>
 							</div>
 						)}
+
+						{/* System prompt of an llm agent. A meeting assistant's instructions are
+						    the same field, shown inside its Assistant card above. */}
+						{agentType === "llm" && systemPromptField}
 
 						{createStep === 2 && createError}
 					</div>

@@ -56,7 +56,7 @@ func TestMeetingRepository_SettingsAndAgentInfo(t *testing.T) {
 	}
 
 	s, err := m.repo.GetSettings(ctx, m.agent)
-	if err != nil || s.Mode != meetingdom.ModeOnDemand || !s.StoreTranscript || len(s.ProposalKinds) != 4 {
+	if err != nil || s.Mode != meetingdom.ModeNotesOnly || !s.StoreTranscript || len(s.ProposalKinds) != 4 {
 		t.Fatalf("defaults %+v err %v", s, err)
 	}
 	s.STTProvider, s.STTModel, s.STTAPIKeySecret = "openai", "whisper-1", "enc"
@@ -177,6 +177,22 @@ func TestMeetingRepository_Transcript(t *testing.T) {
 	segs, err := m.repo.ListSegments(ctx, m.call, 2)
 	if err != nil || len(segs) != 2 || segs[0].Text != "two" || segs[1].Text != "three" {
 		t.Fatalf("the latest two, oldest first: %+v err %v", segs, err)
+	}
+	// What people read: the call is listed with who spoke, and its transcript
+	// names the speakers, but only through the channel it belongs to.
+	meetings, err := m.repo.ListMeetings(ctx, m.channel, 10)
+	if err != nil || len(meetings) != 1 || meetings[0].CallID != m.call || meetings[0].Segments != 3 || len(meetings[0].Speakers) != 2 {
+		t.Fatalf("meetings %+v err %v", meetings, err)
+	}
+	named, err := m.repo.ListNamedSegments(ctx, m.channel, m.call, 100)
+	if err != nil || len(named) != 3 || named[0].Text != "one" || named[1].SpeakerName == "" {
+		t.Fatalf("named %+v err %v", named, err)
+	}
+	if _, err := m.repo.ListNamedSegments(ctx, uuid.New(), m.call, 100); !errors.Is(err, meetingdom.ErrMeetingNotFound) {
+		t.Errorf("another channel must not read this call: %v", err)
+	}
+	if other, _ := m.repo.ListMeetings(ctx, uuid.New(), 10); len(other) != 0 {
+		t.Errorf("another channel lists %d meetings", len(other))
 	}
 	pgExec(t, m.db.db, `UPDATE call_transcript_segments SET expires_at = NOW() - interval '1 day' WHERE text = 'one'`)
 	if n, err := m.repo.DeleteExpiredSegments(ctx); err != nil || n != 1 {

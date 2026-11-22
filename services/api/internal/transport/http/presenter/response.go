@@ -709,10 +709,14 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusConflict, apierr.CodeMeetingNotConfigured
 	case errors.Is(err, meetingdom.ErrNotMeetingAgent):
 		return http.StatusBadRequest, apierr.CodeMeetingNotAssistant
+	case errors.Is(err, meetingdom.ErrModelRequired):
+		return http.StatusBadRequest, apierr.CodeMeetingModelRequired
 	case errors.Is(err, meetingdom.ErrSettingsInvalid):
 		return http.StatusBadRequest, apierr.CodeMeetingSettingsInvalid
 	case errors.Is(err, meetingdom.ErrWorkerUnauthorized):
 		return http.StatusUnauthorized, apierr.CodeMeetingWorkerUnauthorized
+	case errors.Is(err, meetingdom.ErrMeetingNotFound):
+		return http.StatusNotFound, apierr.CodeMeetingNotFound
 	case errors.Is(err, meetingdom.ErrProposalNotFound):
 		return http.StatusNotFound, apierr.CodeProposalNotFound
 	case errors.Is(err, meetingdom.ErrProposalInvalid):
@@ -725,6 +729,16 @@ func statusAndCodeFor(err error) (int, apierr.Code) {
 		return http.StatusConflict, apierr.CodeProposalClosed
 	case errors.Is(err, calldom.ErrDisabled), errors.Is(err, livekit.ErrDisabled):
 		return http.StatusServiceUnavailable, apierr.CodeCallsDisabled
+	case errors.Is(err, calldom.ErrRecordingDisabled):
+		return http.StatusServiceUnavailable, apierr.CodeRecordingDisabled
+	case errors.Is(err, calldom.ErrRecordingActive):
+		return http.StatusConflict, apierr.CodeRecordingActive
+	case errors.Is(err, calldom.ErrNoRecording):
+		return http.StatusConflict, apierr.CodeRecordingNone
+	case errors.Is(err, calldom.ErrNoOpenCall):
+		return http.StatusConflict, apierr.CodeCallNoOpenCall
+	case errors.Is(err, calldom.ErrRecordingNotFound):
+		return http.StatusNotFound, apierr.CodeRecordingNotFound
 	case errors.Is(err, calldom.ErrNotInCall):
 		return http.StatusConflict, apierr.CodeCallNotInCall
 	case errors.Is(err, calldom.ErrRemoved):

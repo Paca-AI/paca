@@ -2,8 +2,10 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -166,6 +168,66 @@ func (h *MeetingHandler) Remove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	presenter.NoContent(w)
+}
+
+// ListMeetings handles GET .../channels/{channelId}/meetings: the calls of the
+// channel that were transcribed.
+func (h *MeetingHandler) ListMeetings(w http.ResponseWriter, r *http.Request) {
+	_, channelID, err := chatIDs(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	ms, err := h.svc.ListMeetings(r.Context(), channelID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	out := make([]dto.MeetingResponse, len(ms))
+	for i, m := range ms {
+		out[i] = dto.MeetingFromEntity(m)
+	}
+	presenter.OK(w, r, out)
+}
+
+// MeetingTranscript handles GET .../channels/{channelId}/meetings/{callId}/transcript.
+// With ?format=txt it answers a plain-text file to save.
+func (h *MeetingHandler) MeetingTranscript(w http.ResponseWriter, r *http.Request) {
+	_, channelID, err := chatIDs(r)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	callID, err := chatURLID(r, "callId", "call")
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	segs, err := h.svc.MeetingTranscript(r.Context(), channelID, callID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+	if r.URL.Query().Get("format") == "txt" {
+		var b strings.Builder
+		for _, s := range segs {
+			name := s.SpeakerName
+			if name == "" {
+				name = "?"
+			}
+			fmt.Fprintf(&b, "[%s] %s: %s\n", s.SpokenAt.UTC().Format("15:04:05"), name, s.Text)
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Content-Disposition", `attachment; filename="transcript-`+callID.String()[:8]+`.txt"`)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		_, _ = w.Write([]byte(b.String()))
+		return
+	}
+	out := make([]dto.TranscriptLineResponse, len(segs))
+	for i, s := range segs {
+		out[i] = dto.TranscriptLineFromEntity(s)
+	}
+	presenter.OK(w, r, out)
 }
 
 // ---------------------------------------------------------------- proposals

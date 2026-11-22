@@ -56,6 +56,7 @@ const assistant = (over: Record<string, unknown> = {}) => ({
 	invited_by: "me",
 	joined_at: "2026-01-01T00:00:00Z",
 	mode: "on_demand",
+	summary_target: "channel_message",
 	store_transcript: true,
 	transcript_retention_days: 30,
 	announcement: "I transcribe this call.",
@@ -199,6 +200,7 @@ describe("AssistantSection", () => {
 					handle: "scribe",
 					description: "",
 					mode: "notes_only",
+					summary_target: "channel_message",
 					store_transcript: true,
 					transcript_retention_days: 7,
 				},
@@ -220,7 +222,7 @@ describe("AssistantSection", () => {
 		);
 		expect(
 			await screen.findByText(
-				/Transcribes and writes notes · transcript kept 7 days/,
+				/Transcribes the call, writes notes · transcript kept 7 days/,
 			),
 		).toBeInTheDocument();
 		await userEvent.click(screen.getByRole("button", { name: /Scribe/ }));
@@ -232,7 +234,11 @@ describe("AssistantSection", () => {
 	});
 
 	it("asks for suggestions only when an active assistant can make them", async () => {
-		serve({ assistants: [assistant({ mode: "notes_only" })] });
+		serve({
+			assistants: [
+				assistant({ mode: "notes_only", summary_target: "channel_message" }),
+			],
+		});
 		const { unmount } = wrap(
 			<AssistantSection
 				projectId="p1"

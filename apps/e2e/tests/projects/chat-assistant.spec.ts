@@ -140,6 +140,16 @@ test.describe("Meeting assistant", () => {
 					llm_api_key: "fake",
 					llm_base_url: MODEL_URL,
 					role_ids: [roleId],
+					// How it transcribes is part of creating it.
+					meeting_settings: {
+						stt_provider: "openai",
+						stt_model: "fake",
+						stt_base_url: MODEL_URL,
+						// Suggestions and notes are options that use the model; these
+						// tests turn them on.
+						mode: "on_demand",
+						summary_target: "channel_message",
+					},
 				},
 			},
 		);
@@ -149,9 +159,6 @@ test.describe("Meeting assistant", () => {
 			`${API_URL}/projects/${projectId}/agents/${agentId}/meeting-settings`,
 			{
 				data: {
-					stt_provider: "openai",
-					stt_model: "fake",
-					stt_base_url: MODEL_URL,
 					store_transcript: true,
 					transcript_retention_days: 7,
 				},
@@ -195,7 +202,7 @@ test.describe("Meeting assistant", () => {
 		await call.getByRole("button", { name: "Add assistant" }).click();
 		await expect(
 			call.getByText(
-				/Transcribes, suggests when asked · transcript kept 7 days/,
+				/Transcribes, suggests when asked, writes notes · transcript kept 7 days/,
 			),
 		).toBeVisible();
 		await call.getByRole("button", { name: new RegExp(agentName) }).click();
@@ -210,6 +217,12 @@ test.describe("Meeting assistant", () => {
 		await expect(
 			call.getByRole("log", { name: "Live captions" }).getByText(SAID).first(),
 		).toBeVisible({ timeout: 60_000 });
+
+		// The whole transcript is a click away while the call goes on.
+		await call.getByRole("button", { name: "Transcript", exact: true }).click();
+		await expect(
+			call.getByRole("list", { name: "Transcript" }).getByText(SAID).first(),
+		).toBeVisible({ timeout: 30_000 });
 
 		await call.getByRole("button", { name: "Suggest tasks" }).click();
 		const title = call.getByRole("textbox", { name: "Title" });
@@ -228,6 +241,20 @@ test.describe("Meeting assistant", () => {
 		await expect
 			.poll(async () => (await assistants(request)).length, { timeout: 60_000 })
 			.toBe(0);
+
+		// Afterwards the transcript is in the channel's meeting history, to read
+		// and to save.
+		await page.goto(chatUrl());
+		await page.getByRole("button", { name: "Meeting history" }).click();
+		const history = page.getByRole("dialog", { name: "Meeting history" });
+		await expect(history.getByText(SAID).first()).toBeVisible({
+			timeout: 30_000,
+		});
+		const [file] = await Promise.all([
+			page.waitForEvent("download"),
+			history.getByRole("button", { name: "Download transcript" }).click(),
+		]);
+		expect(file.suggestedFilename()).toMatch(/^transcript-.*\.txt$/);
 	});
 
 	test("someone who cannot invite agents is offered no way to add one", async ({
@@ -261,6 +288,10 @@ test.describe("Meeting assistant", () => {
 		await expect(
 			call.getByRole("button", { name: "Add assistant" }),
 		).toHaveCount(0);
+		// Recording needs calls:record too.
+		await expect(
+			call.getByRole("button", { name: "Start recording" }),
+		).toHaveCount(0);
 		await ctx.close();
 	});
 
@@ -283,12 +314,31 @@ test.describe("Meeting assistant", () => {
 		// A meeting assistant has its reasoning model but no environment, Docker
 		// or git identity to configure.
 		await expect(dialog.getByText("Docker")).toHaveCount(0);
+		// Transcription is the job: no model, key or instructions are asked for
+		// unless notes or suggestions are turned on.
+		await expect(dialog.getByLabel(/^API Key/)).toHaveCount(0);
+		// It cannot be created without how it transcribes.
+		const next = dialog.getByRole("button", { name: "Continue" });
+		await expect(next).toBeDisabled();
+		await dialog
+			.getByRole("combobox", { name: "Transcription provider" })
+			.click();
+		await page.getByRole("option", { name: "openai" }).click();
+		await dialog.getByLabel(/^Transcription model/).fill("whisper-1");
+		await expect(next).toBeDisabled();
+		await dialog.getByLabel("Transcription API key").fill("sk-stt-e2e");
+		await expect(next).toBeEnabled();
+
+		// Turning notes on brings in the assistant's model, which is then needed.
+		await dialog.getByRole("switch", { name: /Write meeting notes/ }).click();
+		await expect(next).toBeDisabled();
 		await dialog.getByLabel(/^API Key/).fill("sk-e2e-placeholder-key");
 		const baseUrl = dialog.getByRole("textbox", { name: /^Base URL/ });
 		if ((await baseUrl.inputValue()) === "") {
 			await baseUrl.fill("https://api.anthropic.com");
 		}
-		await dialog.getByRole("button", { name: "Continue" }).click();
+		await expect(next).toBeEnabled();
+		await next.click();
 		await expect(dialog.getByText("3 / 3")).toBeVisible();
 		await setRole(page, dialog, "Project Role", "Meeting assistant", true);
 		await dialog.getByRole("button", { name: "Create Agent" }).click();
@@ -310,10 +360,12 @@ test.describe("Meeting assistant", () => {
 		await expect(page.getByRole("tab", { name: "MCP Servers" })).toHaveCount(0);
 		await page.getByRole("tab", { name: "Assistant" }).click();
 
-		await page.getByRole("combobox").first().click();
-		await page.getByRole("option", { name: "openai" }).click();
-		await page.getByLabel("Transcription model").fill("whisper-1");
-		await page.getByLabel("Transcription API key").fill("sk-stt-e2e");
+		// What was entered at creation is there, and the key is never shown.
+		await expect(page.getByLabel("Transcription model")).toHaveValue(
+			"whisper-1",
+		);
+		await expect(page.getByLabel("Transcription API key")).toHaveValue("");
+		await page.getByLabel("Transcription model").fill("whisper-large");
 		await page.getByLabel("Keep it for (days)").fill("14");
 		await page.getByRole("button", { name: "Save changes" }).click();
 
@@ -325,8 +377,125 @@ test.describe("Meeting assistant", () => {
 				const d = (await r.json()).data;
 				return `${d.stt_provider}|${d.stt_model}|${d.has_stt_key}|${d.transcript_retention_days}`;
 			})
-			.toBe("openai|whisper-1|true|14");
+			.toBe("openai|whisper-large|true|14");
 		// The key never comes back to the page.
 		await expect(page.getByLabel("Transcription API key")).toHaveValue("");
+	});
+
+	test("a call is recorded, everyone is told, and the recording plays afterwards", async ({
+		page,
+		request,
+	}) => {
+		test.setTimeout(240_000);
+		const cfg = await request.get(`${API_URL}/chat/calls/config`);
+		test.skip(
+			(await cfg.json()).data?.recording !== true,
+			"call recording is not enabled on this stack",
+		);
+		await page.goto(chatUrl());
+		const [call] = await Promise.all([
+			page.waitForEvent("popup"),
+			page.getByRole("button", { name: "Join call" }).first().click(),
+		]);
+		await expect(call.getByRole("region", { name: "Call" })).toBeVisible();
+
+		await call.getByRole("button", { name: "Start recording" }).click();
+		// Starting asks first: everyone in the call is told.
+		await expect(call.getByText("Record this call?")).toBeVisible();
+		await call.getByRole("button", { name: "Start recording" }).last().click();
+		await expect(call.getByText("This call is being recorded.")).toBeVisible({
+			timeout: 60_000,
+		});
+		await expect(
+			call.getByRole("button", { name: "Stop recording" }),
+		).toBeVisible();
+
+		await call.waitForTimeout(8_000);
+		await call.getByRole("button", { name: "Stop recording" }).click();
+		await expect(call.getByText("This call is being recorded.")).toBeHidden({
+			timeout: 60_000,
+		});
+		await call.getByRole("button", { name: "Leave call" }).click();
+
+		// The file is finalised by LiveKit's egress, then listed with the call.
+		await expect
+			.poll(
+				async () => {
+					const r = await request.get(
+						`${API_URL}/projects/${projectId}/channels/${channelId}/recordings`,
+					);
+					const list = (await r.json()).data as { status: string }[];
+					return list[0]?.status;
+				},
+				{ timeout: 120_000 },
+			)
+			.toBe("complete");
+
+		await page.goto(chatUrl());
+		await page.getByRole("button", { name: "Meeting history" }).click();
+		const history = page.getByRole("dialog", { name: "Meeting history" });
+		await history.getByRole("button", { name: /Play recording/ }).click();
+		const video = history.locator("video");
+		await expect(video).toBeVisible();
+		await expect
+			.poll(async () => video.evaluate((v: HTMLVideoElement) => v.readyState), {
+				timeout: 30_000,
+			})
+			.toBeGreaterThan(0);
+	});
+
+	test("an assistant with no model transcribes, and offers no suggestions", async ({
+		page,
+		request,
+	}) => {
+		test.setTimeout(150_000);
+		// Transcription alone: no model, key or instructions at all.
+		const roles = await request.get(
+			`${API_URL}/projects/${projectId}/roles?page_size=100`,
+		);
+		const list = (await roles.json()).data;
+		const roleId = (list.items ?? list).find(
+			(r: { name: string }) => r.name === "Meeting assistant",
+		).id as string;
+		const name = `Plain ${RUN_ID}`;
+		const created = await request.post(
+			`${API_URL}/projects/${projectId}/agents`,
+			{
+				data: {
+					name,
+					handle: `plain${RUN_ID}`.toLowerCase(),
+					agent_type: "meeting",
+					role_ids: [roleId],
+					meeting_settings: {
+						stt_provider: "openai",
+						stt_model: "fake",
+						stt_base_url: MODEL_URL,
+					},
+				},
+			},
+		);
+		expect(created.ok()).toBeTruthy();
+
+		await page.goto(chatUrl());
+		const [call] = await Promise.all([
+			page.waitForEvent("popup"),
+			page.getByRole("button", { name: "Join call" }).first().click(),
+		]);
+		await expect(call.getByRole("region", { name: "Call" })).toBeVisible();
+		await call.getByRole("button", { name: "Add assistant" }).click();
+		await expect(
+			call.getByText(/Transcribes the call · transcript kept 30 days/),
+		).toBeVisible();
+		await call.getByRole("button", { name: new RegExp(name) }).click();
+		await expect(
+			call.getByText(`${name} is listening and transcribing`),
+		).toBeVisible({ timeout: 60_000 });
+		await expect(
+			call.getByRole("log", { name: "Live captions" }).getByText(SAID).first(),
+		).toBeVisible({ timeout: 60_000 });
+		// Suggestions are off, so there is nothing to ask for.
+		await expect(
+			call.getByRole("button", { name: "Suggest tasks" }),
+		).toHaveCount(0);
 	});
 });

@@ -140,6 +140,12 @@ func (f *fakeRepo) ListSegments(context.Context, uuid.UUID, int) ([]*meetingdom.
 	return nil, nil
 }
 func (f *fakeRepo) DeleteExpiredSegments(context.Context) (int64, error) { return 0, nil }
+func (f *fakeRepo) ListMeetings(context.Context, uuid.UUID, int) ([]*meetingdom.MeetingSummary, error) {
+	return nil, nil
+}
+func (f *fakeRepo) ListNamedSegments(context.Context, uuid.UUID, uuid.UUID, int) ([]*meetingdom.NamedSegment, error) {
+	return nil, nil
+}
 func (f *fakeRepo) CountProposals(_ context.Context, _, agent uuid.UUID) (int, error) {
 	n := 0
 	for _, p := range f.proposals {
@@ -603,9 +609,21 @@ func TestUpdateSettings(t *testing.T) {
 	if _, err := s.UpdateSettings(ctx, uuid.New(), repo.info.ID, meetingdom.SettingsPatch{Announcement: str("hi")}); err != nil || repo.settings.STTAPIKeySecret != "enc:k-123" {
 		t.Errorf("an unrelated patch must leave the key alone (err %v)", err)
 	}
-	if _, err := s.UpdateSettings(ctx, uuid.New(), repo.info.ID, meetingdom.SettingsPatch{STTAPIKey: str("")}); err != nil || repo.settings.STTAPIKeySecret != "" {
-		t.Errorf("an empty key clears it (err %v)", err)
+	// An edit of the transcription setup cannot leave an agent unable to listen.
+	if _, err := s.UpdateSettings(ctx, uuid.New(), repo.info.ID, meetingdom.SettingsPatch{STTAPIKey: str("")}); !errors.Is(err, meetingdom.ErrSettingsInvalid) {
+		t.Errorf("clearing the only key must be refused, got %v", err)
 	}
+	if _, err := s.UpdateSettings(ctx, uuid.New(), repo.info.ID, meetingdom.SettingsPatch{STTAPIKey: str(""), STTBaseURL: str("http://whisper:8000/v1")}); err != nil || repo.settings.STTAPIKeySecret != "" {
+		t.Errorf("a key may be cleared when an endpoint replaces it (err %v)", err)
+	}
+	if _, err := s.UpdateSettings(ctx, uuid.New(), repo.info.ID, meetingdom.SettingsPatch{STTModel: str("")}); !errors.Is(err, meetingdom.ErrSettingsInvalid) {
+		t.Errorf("an empty model must be refused, got %v", err)
+	}
+	repo.settings.STTProvider, repo.settings.STTModel, repo.settings.STTBaseURL = "", "", ""
+	if _, err := s.UpdateSettings(ctx, uuid.New(), repo.info.ID, meetingdom.SettingsPatch{Announcement: str("hello")}); err != nil {
+		t.Errorf("an unrelated edit leaves an older unconfigured agent alone (err %v)", err)
+	}
+	repo.settings.STTProvider, repo.settings.STTModel, repo.settings.STTBaseURL = "deepgram", "nova-3", "http://whisper:8000/v1"
 	for name, p := range map[string]meetingdom.SettingsPatch{
 		"provider":  {STTProvider: str("nope")},
 		"mode":      {Mode: str("loud")},
@@ -624,6 +642,86 @@ func TestUpdateSettings(t *testing.T) {
 	repo.info.Type = agentdom.AgentTypeACP
 	if _, err := s.GetSettings(ctx, uuid.New(), repo.info.ID); !errors.Is(err, meetingdom.ErrNotMeetingAgent) {
 		t.Errorf("got %v", err)
+	}
+}
+
+func TestNotesAndSuggestionsNeedTheModel(t *testing.T) {
+	ctx := context.Background()
+	str := func(v string) *string { return &v }
+	s, repo, _, _ := setup()
+	repo.info.LLMProvider, repo.info.LLMModel, repo.info.LLMKeySecret = "", "", ""
+	repo.settings.Mode, repo.settings.SummaryTarget = meetingdom.ModeNotesOnly, meetingdom.SummaryNone
+
+	// Transcription alone: nothing to refuse, and it can be invited.
+	if _, err := s.UpdateSettings(ctx, uuid.New(), repo.info.ID, meetingdom.SettingsPatch{Announcement: str("hi")}); err != nil {
+		t.Fatalf("transcription only needs no model: %v", err)
+	}
+	requester := uuid.New()
+	repo.inCall[requester] = true
+	if _, err := s.Invite(ctx, uuid.New(), uuid.New(), repo.info.ID, requester); err != nil {
+		t.Fatalf("a transcription-only assistant is ready without a model: %v", err)
+	}
+
+	// Turning either option on needs the model.
+	for name, p := range map[string]meetingdom.SettingsPatch{
+		"suggestions": {Mode: str(meetingdom.ModeOnDemand)},
+		"notes":       {SummaryTarget: str(meetingdom.SummaryChannelMessage)},
+	} {
+		if _, err := s.UpdateSettings(ctx, uuid.New(), repo.info.ID, p); !errors.Is(err, meetingdom.ErrModelRequired) {
+			t.Errorf("%s without a model: got %v", name, err)
+		}
+	}
+	if repo.settings.Mode != meetingdom.ModeNotesOnly || repo.settings.SummaryTarget != meetingdom.SummaryNone {
+		t.Errorf("a refused change must not be stored: %+v", repo.settings)
+	}
+	repo.info.LLMProvider, repo.info.LLMModel, repo.info.LLMKeySecret = "openai", "gpt", "enc:k"
+	if _, err := s.UpdateSettings(ctx, uuid.New(), repo.info.ID, meetingdom.SettingsPatch{Mode: str(meetingdom.ModeOnDemand), SummaryTarget: str(meetingdom.SummaryChannelMessage)}); err != nil {
+		t.Errorf("with a model both can be turned on: %v", err)
+	}
+
+	// An agent that already has an option on but lost its model cannot be invited.
+	repo.info.LLMKeySecret = ""
+	repo.sessions = map[uuid.UUID]*meetingdom.AgentSession{}
+	if _, err := s.Invite(ctx, uuid.New(), uuid.New(), repo.info.ID, requester); !errors.Is(err, meetingdom.ErrAssistantNotConfigured) {
+		t.Errorf("notes on without a model: got %v", err)
+	}
+}
+
+func TestNeedsModelFollowsTheDefaults(t *testing.T) {
+	s, _, _, _ := setup()
+	str := func(v string) *string { return &v }
+	if s.NeedsModel(meetingdom.SettingsPatch{}) {
+		t.Error("a new agent is transcription only")
+	}
+	if !s.NeedsModel(meetingdom.SettingsPatch{Mode: str(meetingdom.ModeAutoSuggest)}) || !s.NeedsModel(meetingdom.SettingsPatch{SummaryTarget: str(meetingdom.SummaryChannelMessage)}) {
+		t.Error("suggestions or notes need the model")
+	}
+	if s.NeedsModel(meetingdom.SettingsPatch{Mode: str(meetingdom.ModeNotesOnly), SummaryTarget: str(meetingdom.SummaryNone)}) {
+		t.Error("both off needs none")
+	}
+}
+
+func TestValidateListening(t *testing.T) {
+	s, _, _, _ := setup()
+	str := func(v string) *string { return &v }
+	ok := meetingdom.SettingsPatch{STTProvider: str("openai"), STTModel: str("whisper-1"), STTAPIKey: str("k")}
+	if err := s.ValidateListening(ok); err != nil {
+		t.Fatalf("a complete setup: %v", err)
+	}
+	if err := s.ValidateListening(meetingdom.SettingsPatch{STTProvider: str("openai"), STTModel: str("w"), STTBaseURL: str("http://w/v1")}); err != nil {
+		t.Errorf("an endpoint replaces the key: %v", err)
+	}
+	for name, p := range map[string]meetingdom.SettingsPatch{
+		"empty":         {},
+		"no provider":   {STTModel: str("w"), STTAPIKey: str("k")},
+		"bad provider":  {STTProvider: str("nope"), STTModel: str("w"), STTAPIKey: str("k")},
+		"no model":      {STTProvider: str("openai"), STTAPIKey: str("k")},
+		"no key or url": {STTProvider: str("openai"), STTModel: str("w")},
+		"blank model":   {STTProvider: str("openai"), STTModel: str("  "), STTAPIKey: str("k")},
+	} {
+		if err := s.ValidateListening(p); !errors.Is(err, meetingdom.ErrSettingsInvalid) {
+			t.Errorf("%s: got %v", name, err)
+		}
 	}
 }
 
