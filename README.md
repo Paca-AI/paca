@@ -156,6 +156,14 @@ Plan  →  Act  →  Check  →  Adapt
 
 ---
 
+## What's New in v0.22.0
+
+- **Unified documentation and files** — documents and uploaded files now live together in one drive-style tree, with folders, rename, move, size reporting and concurrent multi-part uploads. Deleting a folder restores its whole subtree, and file changes show up live for everyone in the project or workspace.
+- **Note view** — a new view type that holds a single document, so a board view can double as a notepad. Notes can be listed, written and deleted over MCP.
+- **Signed-in devices** — see every device signed in to your account and revoke any of them; sessions now extend on use and expire cleanly.
+
+---
+
 ## What's New in v0.21.0
 
 - **Real-time collaborative document editing** — several people (and agents) can edit the same document at once and see each other's changes live.
