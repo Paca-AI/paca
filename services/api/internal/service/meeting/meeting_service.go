@@ -556,7 +556,9 @@ func (s *Service) AppendTranscript(ctx context.Context, secret string, sessionID
 			continue
 		}
 		if len(seg.Text) > maxSegmentLen {
-			seg.Text = seg.Text[:maxSegmentLen]
+			// Cut on a character boundary: a split rune is invalid UTF-8 and
+			// would fail the whole batch insert.
+			seg.Text = strings.ToValidUTF8(seg.Text[:maxSegmentLen], "")
 		}
 		if in, err := s.repo.WasCallParticipant(ctx, sess.CallSessionID, seg.SpeakerID); err != nil {
 			return err
@@ -698,9 +700,8 @@ func (s *Service) GetProposal(ctx context.Context, projectID, id uuid.UUID) (*me
 
 // ListProposals implements meetingdom.Service.
 func (s *Service) ListProposals(ctx context.Context, projectID uuid.UUID, channelID, target *uuid.UUID) ([]*meetingdom.Proposal, error) {
-	if _, err := s.repo.ExpireProposals(ctx); err != nil {
-		slog.Warn("meeting: expire proposals", "err", err)
-	}
+	// Expiry is the sweep's job (SweepExpired) and mine() on touch; a list stays
+	// a read. Pending proposals past their time are filtered out here.
 	return s.repo.ListProposals(ctx, projectID, channelID, target, 100)
 }
 

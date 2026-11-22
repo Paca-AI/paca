@@ -581,6 +581,7 @@ func (r *MeetingRepository) ListProposals(ctx context.Context, projectID uuid.UU
 		WHERE p.project_id = $1::uuid
 		  AND ($2::uuid IS NULL OR p.channel_id = $2::uuid)
 		  AND ($3::uuid IS NULL OR p.target_account_id = $3::uuid)
+		  AND NOT (p.status = 'pending' AND p.expires_at < NOW())
 		ORDER BY p.created_at DESC LIMIT $4`, projectID.String(), uuidStrPtr(channelID), uuidStrPtr(target), limit)
 	if err != nil {
 		return nil, fmt.Errorf("meeting: list proposals: %w", err)
@@ -600,7 +601,8 @@ func (r *MeetingRepository) TransitionProposal(ctx context.Context, id uuid.UUID
 	res, err := r.db.ExecContext(ctx, `UPDATE agent_proposals SET status = $3,
 		resolved_by = COALESCE($4::uuid, resolved_by),
 		result = CASE WHEN $5::text = '{}' THEN result ELSE $5::jsonb END, updated_at = NOW()
-		WHERE id = $1::uuid AND status IN (SELECT jsonb_array_elements_text($2::jsonb))`,
+		WHERE id = $1::uuid AND status IN (SELECT jsonb_array_elements_text($2::jsonb))
+		  AND ($4::uuid IS NULL OR resolved_by IS NULL OR resolved_by = $4::uuid)`,
 		id.String(), jsonList(from), to, uuidStrPtr(by), string(result))
 	if err != nil {
 		return false, fmt.Errorf("meeting: transition proposal: %w", err)
