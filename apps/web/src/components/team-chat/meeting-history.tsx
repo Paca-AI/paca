@@ -306,7 +306,7 @@ export function MeetingHistoryButton({
 											rec={r}
 										/>
 									))}
-								{assistants ? (
+								{hasTranscript || current.ended_at === null ? (
 									<TranscriptView
 										projectId={projectId}
 										channelId={channelId}

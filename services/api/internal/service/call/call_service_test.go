@@ -421,6 +421,31 @@ func TestStopRecordingWhenLiveKitLostIt(t *testing.T) {
 	}
 }
 
+func TestSecondStopKeepsAFinishingRecording(t *testing.T) {
+	ctx := t.Context()
+	repo, room := &fakeRepo{}, &fakeRoom{enabled: true}
+	s, _, _ := recordingService(repo, room, true)
+	rec, _ := s.StartRecording(ctx, uuid.New(), uuid.New(), uuid.New())
+	if err := s.StopRecording(ctx, uuid.New(), rec.ChannelID); err != nil {
+		t.Fatal(err)
+	}
+	// LiveKit still has the egress: a second press must not fail the row.
+	if err := s.StopRecording(ctx, uuid.New(), rec.ChannelID); err != nil {
+		t.Fatal(err)
+	}
+	if repo.recs[rec.ID].Status != calldom.RecordingStopping {
+		t.Fatalf("status %s", repo.recs[rec.ID].Status)
+	}
+	// LiveKit lost it: the row is closed so the call can be recorded again.
+	room.stopErr = livekit.ErrNotFound
+	if err := s.StopRecording(ctx, uuid.New(), rec.ChannelID); err != nil {
+		t.Fatal(err)
+	}
+	if repo.recs[rec.ID].Status != calldom.RecordingFailed {
+		t.Errorf("status %s", repo.recs[rec.ID].Status)
+	}
+}
+
 func egressEvent(status, filename string, size int64) *livekit.WebhookEvent {
 	ev := &livekit.WebhookEvent{Event: livekit.EventEgressUpdated, EgressInfo: &livekit.EgressInfo{EgressID: "EG_1", Status: status}}
 	if filename != "" {

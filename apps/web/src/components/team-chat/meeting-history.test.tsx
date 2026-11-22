@@ -214,9 +214,7 @@ describe("MeetingHistoryButton", () => {
 		expect(
 			await screen.findByRole("button", { name: "Play recording (2 min)" }),
 		).toBeInTheDocument();
-		expect(
-			await screen.findByText("Nothing has been said yet."),
-		).toBeInTheDocument();
+		expect(screen.queryByText("Nothing has been said yet.")).toBeNull();
 	});
 
 	it("still plays a recording when the assistant is off", async () => {

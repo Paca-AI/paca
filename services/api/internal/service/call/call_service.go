@@ -345,15 +345,20 @@ func (s *Service) StopRecording(ctx context.Context, projectID, channelID uuid.U
 		return nil
 	}
 	if rec.Status == calldom.RecordingStopping {
-		// Stop was already sent and its egress_ended webhook never arrived (an
-		// API restart past LiveKit's retry window). Pressing Stop again closes
-		// the row so the call can be recorded again; a file that did finish is
-		// still lost to the row, but is never half-recorded forever.
-		if err := s.room.StopRecording(ctx, channelID.String(), rec.EgressID); err != nil && !errors.Is(err, livekit.ErrNotFound) {
-			slog.Warn("calls: stop stuck recording", "recording_id", rec.ID, "err", err)
+		// Stop was already sent. If LiveKit still knows the egress it is
+		// finalising and its egress_ended webhook will close the row, so a
+		// second press changes nothing. Only an egress LiveKit has lost (the
+		// webhook can then never arrive) is closed here, so the call can be
+		// recorded again.
+		err := s.room.StopRecording(ctx, channelID.String(), rec.EgressID)
+		if errors.Is(err, livekit.ErrNotFound) {
+			_ = s.repo.FailRecording(ctx, rec.ID, "the recording did not finish")
+			s.announce(ctx, channelID)
+			return nil
 		}
-		_ = s.repo.FailRecording(ctx, rec.ID, "the recording did not finish")
-		s.announce(ctx, channelID)
+		if err != nil {
+			slog.Warn("calls: stop a stopping recording", "recording_id", rec.ID, "err", err)
+		}
 		return nil
 	}
 	if err := s.room.StopRecording(ctx, channelID.String(), rec.EgressID); err != nil {
