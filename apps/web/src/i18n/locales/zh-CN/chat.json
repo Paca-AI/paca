@@ -270,7 +270,15 @@
 		"removeParticipant": "将 {{name}} 移出通话",
 		"voiceRow": "{{count}} 人在语音中",
 		"backToCall": "返回通话",
-		"ended": "通话已结束。你可以关闭此标签页。"
+		"ended": "通话已结束。你可以关闭此标签页。",
+		"audio": {
+			"settings": "麦克风处理",
+			"heading": "音频处理",
+			"echoCancellation": "回声消除",
+			"noiseSuppression": "噪声抑制",
+			"autoGainControl": "自动增益控制",
+			"hint": "使用耳机效果最佳。更改立即生效。"
+		}
 	},
 	"assistant": {
 		"sectionLabel": "会议助手",

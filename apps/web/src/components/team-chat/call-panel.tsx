@@ -12,6 +12,7 @@ import {
 	MonitorOff,
 	MoreVertical,
 	PhoneOff,
+	SlidersHorizontal,
 	Video,
 	VideoOff,
 } from "lucide-react";
@@ -20,8 +21,11 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
+	DropdownMenuCheckboxItem,
 	DropdownMenuContent,
+	DropdownMenuGroup,
 	DropdownMenuItem,
+	DropdownMenuLabel,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { callKeys, muteParticipant, removeParticipant } from "@/lib/call-api";
@@ -304,6 +308,7 @@ export function CallPanel({
 				>
 					{lp.isMicrophoneEnabled ? <Mic /> : <MicOff />}
 				</Button>
+				<AudioSettingsMenu />
 				<Button
 					size="icon"
 					variant="secondary"
@@ -356,5 +361,48 @@ export function CallPanel({
 				</>
 			) : null}
 		</section>
+	);
+}
+
+/** Echo cancellation, noise suppression and auto gain for the microphone. */
+function AudioSettingsMenu() {
+	const { t } = useTranslation("chat");
+	const { audioProcessing, setAudioProcessing } = useCall();
+	const items = [
+		["echoCancellation", t("call.audio.echoCancellation")],
+		["noiseSuppression", t("call.audio.noiseSuppression")],
+		["autoGainControl", t("call.audio.autoGainControl")],
+	] as const;
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger
+				render={
+					<Button
+						size="icon"
+						variant="secondary"
+						aria-label={t("call.audio.settings")}
+					/>
+				}
+			>
+				<SlidersHorizontal />
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="center" className="w-64">
+				<DropdownMenuGroup>
+					<DropdownMenuLabel>{t("call.audio.heading")}</DropdownMenuLabel>
+					{items.map(([key, label]) => (
+						<DropdownMenuCheckboxItem
+							key={key}
+							checked={audioProcessing[key]}
+							onCheckedChange={(on) => setAudioProcessing({ [key]: on })}
+						>
+							{label}
+						</DropdownMenuCheckboxItem>
+					))}
+					<p className="px-2 py-1.5 text-xs text-muted-foreground">
+						{t("call.audio.hint")}
+					</p>
+				</DropdownMenuGroup>
+			</DropdownMenuContent>
+		</DropdownMenu>
 	);
 }

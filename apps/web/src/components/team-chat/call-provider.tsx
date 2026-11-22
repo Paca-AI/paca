@@ -1,5 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { ParticipantKind, Room, RoomEvent } from "livekit-client";
+import {
+	LocalAudioTrack,
+	ParticipantKind,
+	Room,
+	RoomEvent,
+	Track,
+} from "livekit-client";
 import {
 	createContext,
 	type ReactNode,
@@ -11,6 +17,12 @@ import {
 	useState,
 } from "react";
 import { callKeys, joinCall } from "@/lib/call-api";
+import {
+	type AudioProcessing,
+	captureOptions,
+	loadAudioProcessing,
+	saveAudioProcessing,
+} from "@/lib/call-audio";
 import { DM_SCOPE } from "@/lib/chat-api";
 import { type ChatErrorKey, chatErrorKey } from "@/lib/chat-errors";
 
@@ -70,6 +82,10 @@ interface CallContextValue {
 	reportResolved: (proposalId: string, status: string) => void;
 	join: (target: CallTarget) => Promise<void>;
 	leave: () => void;
+	/** Echo cancellation, noise suppression and auto gain for the microphone. */
+	audioProcessing: AudioProcessing;
+	/** Changes them, and applies the change to a microphone that is already on. */
+	setAudioProcessing: (change: Partial<AudioProcessing>) => void;
 	toggleMic: () => void;
 	toggleCamera: () => void;
 	toggleScreen: () => void;
@@ -91,6 +107,8 @@ const NO_CALL: CallContextValue = {
 	reportResolved: () => undefined,
 	join: async () => undefined,
 	leave: () => undefined,
+	audioProcessing: loadAudioProcessing(),
+	setAudioProcessing: () => undefined,
 	toggleMic: () => undefined,
 	toggleCamera: () => undefined,
 	toggleScreen: () => undefined,
@@ -128,6 +146,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
 	const [captions, setCaptions] = useState<Caption[]>([]);
 	const [arrivals, setArrivals] = useState<string[]>([]);
 	const captionId = useRef(0);
+	const [audioProcessing, setAudioProcessingState] =
+		useState(loadAudioProcessing);
+	const audioRef = useRef(audioProcessing);
+	audioRef.current = audioProcessing;
 	const roomRef = useRef<Room | null>(null);
 	const [room, setRoom] = useState<Room | null>(null);
 
@@ -177,7 +199,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
 			setError(null);
 			setStatus("connecting");
 			setTarget(next);
-			const r = new Room({ adaptiveStream: true, dynacast: true });
+			const r = new Room({
+				adaptiveStream: true,
+				dynacast: true,
+				audioCaptureDefaults: captureOptions(audioRef.current),
+			});
 			roomRef.current = r;
 			const bump = () => setVersion((v) => v + 1);
 			for (const ev of ROOM_EVENTS) r.on(ev, bump);
@@ -303,6 +329,26 @@ export function CallProvider({ children }: { children: ReactNode }) {
 		};
 	}, []);
 
+	const setAudioProcessing = useCallback((change: Partial<AudioProcessing>) => {
+		const next = { ...audioRef.current, ...change };
+		audioRef.current = next;
+		setAudioProcessingState(next);
+		saveAudioProcessing(next);
+		const r = roomRef.current;
+		if (!r) return;
+		// Re-enabled microphones use the room defaults; a live microphone is
+		// restarted so the change is heard now.
+		r.options.audioCaptureDefaults = captureOptions(next);
+		const track = r.localParticipant.getTrackPublication(
+			Track.Source.Microphone,
+		)?.track;
+		if (track instanceof LocalAudioTrack) {
+			track
+				.restartTrack(captureOptions(next))
+				.catch(() => setMediaBlocked(true));
+		}
+	}, []);
+
 	const toggle = useCallback((kind: "mic" | "camera" | "screen") => {
 		const lp = roomRef.current?.localParticipant;
 		if (!lp) return;
@@ -335,6 +381,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
 			reportResolved,
 			join,
 			leave,
+			audioProcessing,
+			setAudioProcessing,
 			toggleMic: () => toggle("mic"),
 			toggleCamera: () => toggle("camera"),
 			toggleScreen: () => toggle("screen"),
@@ -350,6 +398,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
 			arrivals,
 			suggest,
 			reportResolved,
+			audioProcessing,
+			setAudioProcessing,
 			join,
 			leave,
 			toggle,

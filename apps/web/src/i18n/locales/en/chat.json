@@ -270,7 +270,15 @@
 		"removeParticipant": "Remove {{name}} from the call",
 		"voiceRow": "{{count}} in voice",
 		"backToCall": "Back to call",
-		"ended": "Call ended. You can close this tab."
+		"ended": "Call ended. You can close this tab.",
+		"audio": {
+			"settings": "Microphone processing",
+			"heading": "Audio processing",
+			"echoCancellation": "Echo cancellation",
+			"noiseSuppression": "Noise suppression",
+			"autoGainControl": "Automatic gain control",
+			"hint": "Headphones give the best results. Changes apply right away."
+		}
 	},
 	"assistant": {
 		"sectionLabel": "Meeting assistant",

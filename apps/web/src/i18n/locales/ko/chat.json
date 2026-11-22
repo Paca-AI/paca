@@ -270,7 +270,15 @@
 		"removeParticipant": "{{name}}님을 통화에서 내보내기",
 		"voiceRow": "음성 {{count}}명",
 		"backToCall": "통화로 돌아가기",
-		"ended": "통화가 종료되었습니다. 이 탭을 닫아도 됩니다."
+		"ended": "통화가 종료되었습니다. 이 탭을 닫아도 됩니다.",
+		"audio": {
+			"settings": "마이크 처리",
+			"heading": "오디오 처리",
+			"echoCancellation": "에코 제거",
+			"noiseSuppression": "노이즈 억제",
+			"autoGainControl": "자동 게인 제어",
+			"hint": "헤드폰을 사용하면 가장 좋습니다. 변경 사항은 즉시 적용됩니다."
+		}
 	},
 	"assistant": {
 		"sectionLabel": "회의 어시스턴트",
