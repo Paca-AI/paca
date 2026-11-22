@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -431,6 +432,16 @@ func TestAppendTranscript(t *testing.T) {
 	}
 	if len(repo.segments) != 1 {
 		t.Errorf("a participant who left must still be attributed, stored %d", len(repo.segments))
+	}
+	// A multi-byte rune split by the length cap must not leave invalid UTF-8,
+	// which Postgres would reject for the whole batch.
+	repo.segments = nil
+	long := strings.Repeat("a", maxSegmentLen-1) + "€"
+	if err := s.AppendTranscript(ctx, secret, sess.ID, []meetingdom.SegmentInput{{SpeakerID: requester, Text: long}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.segments) != 1 || !utf8.ValidString(repo.segments[0].Text) || len(repo.segments[0].Text) > maxSegmentLen {
+		t.Errorf("stored text must be valid UTF-8 within the cap: %d segments", len(repo.segments))
 	}
 	if err := s.AppendTranscript(ctx, "nope", sess.ID, nil); !errors.Is(err, meetingdom.ErrWorkerUnauthorized) {
 		t.Errorf("got %v", err)

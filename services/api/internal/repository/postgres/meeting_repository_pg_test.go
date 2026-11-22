@@ -233,8 +233,10 @@ func TestMeetingRepository_Proposals(t *testing.T) {
 	if len(mine) != 1 || mine[0].ID != p.ID {
 		t.Errorf("mine %+v", mine)
 	}
-	if all, _ := m.repo.ListProposals(ctx, m.project, &m.channel, nil, 10); len(all) != 2 {
-		t.Errorf("channel %d", len(all))
+	// old is pending but past its time, so the list hides it before the sweeper
+	// marks it expired.
+	if all, _ := m.repo.ListProposals(ctx, m.project, &m.channel, nil, 10); len(all) != 1 || all[0].ID != p.ID {
+		t.Errorf("channel %+v", all)
 	}
 
 	ok, err := m.repo.TransitionProposal(ctx, p.ID, []string{meetingdom.StatusPending}, meetingdom.StatusClaimed, &m.alice, nil)
