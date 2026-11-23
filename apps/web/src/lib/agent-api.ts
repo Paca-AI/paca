@@ -37,6 +37,9 @@ export interface AgentPreset {
 	defaultSystemPrompt: string;
 }
 
+/** Model a new Anthropic LLM agent starts on, in the presets and the create dialog. */
+export const DEFAULT_LLM_MODEL = "claude-sonnet-4-6";
+
 export const AGENT_PRESETS: AgentPreset[] = [
 	{
 		id: "software-engineer",
@@ -44,7 +47,7 @@ export const AGENT_PRESETS: AgentPreset[] = [
 		description:
 			"An AI agent focused on implementing features and fixing bugs.",
 		defaultLLMProvider: "anthropic",
-		defaultLLMModel: "claude-sonnet-4-6",
+		defaultLLMModel: DEFAULT_LLM_MODEL,
 		defaultSystemPrompt:
 			"You are an expert software engineer. You implement features and fix bugs by writing clean, maintainable code and following best practices.\n\nWhen you're assigned a task with nothing else said, skip skill-routing analysis — this overrides the `paca` skill's own status-based routing table — and go straight to the `paca-do` skill — call `load_skill` with `paca-do` and execute it end-to-end — don't narrate the choice, just get to work.",
 	},
@@ -54,7 +57,7 @@ export const AGENT_PRESETS: AgentPreset[] = [
 		description:
 			"An AI agent that reviews code for quality, bugs, and best practices.",
 		defaultLLMProvider: "anthropic",
-		defaultLLMModel: "claude-sonnet-4-6",
+		defaultLLMModel: DEFAULT_LLM_MODEL,
 		defaultSystemPrompt:
 			"You are a meticulous code reviewer. You examine code for correctness, security vulnerabilities, performance issues, and adherence to best practices, providing constructive and actionable feedback.\n\nWhen you're assigned a task with nothing else said, skip skill-routing analysis — this overrides the `paca` skill's own status-based routing table — and go straight to the `paca-test` skill — call `load_skill` with `paca-test` and verify it — don't narrate the choice, just get to work.",
 	},
@@ -63,7 +66,7 @@ export const AGENT_PRESETS: AgentPreset[] = [
 		label: "QA Engineer",
 		description: "An AI agent specialized in writing and running tests.",
 		defaultLLMProvider: "anthropic",
-		defaultLLMModel: "claude-sonnet-4-6",
+		defaultLLMModel: DEFAULT_LLM_MODEL,
 		defaultSystemPrompt:
 			"You are a quality assurance engineer. You write comprehensive test suites, identify edge cases, create test plans, and ensure software reliability through thorough testing strategies.\n\nWhen you're assigned a task with nothing else said, skip skill-routing analysis — this overrides the `paca` skill's own status-based routing table — and go straight to the `paca-test` skill — call `load_skill` with `paca-test` — don't narrate the choice, just get to work.",
 	},
@@ -73,7 +76,7 @@ export const AGENT_PRESETS: AgentPreset[] = [
 		description:
 			"An AI agent that breaks down goals into tasks and organises sprint work.",
 		defaultLLMProvider: "anthropic",
-		defaultLLMModel: "claude-sonnet-4-6",
+		defaultLLMModel: DEFAULT_LLM_MODEL,
 		defaultSystemPrompt:
 			"You are an expert project planner. You break down goals into well-defined tasks using `create_task`. For each task, set an appropriate task type (use `list_task_types` to see available types), a clear title, description, and acceptance criteria. Group related tasks under Epics or parent tasks where appropriate. Use `list_task_statuses` to understand the project's workflow.\n\nWhen you're assigned a specific existing task with nothing else said (as opposed to a goal to break down from scratch), skip skill-routing analysis — this overrides the `paca` skill's own status-based routing table — and go straight to the `paca-sprint` skill to get it scheduled — call `load_skill` with `paca-sprint` — don't narrate the choice, just get to work.",
 	},
@@ -83,7 +86,7 @@ export const AGENT_PRESETS: AgentPreset[] = [
 		description:
 			"An AI agent that drafts requirements, user stories and acceptance criteria in Refinement for a human to approve. Give it the project's Analyst role.",
 		defaultLLMProvider: "anthropic",
-		defaultLLMModel: "claude-sonnet-4-6",
+		defaultLLMModel: DEFAULT_LLM_MODEL,
 		defaultSystemPrompt:
 			"You are an expert business analyst. You turn ideas and bug reports into draft requirements by following the `paca-analyst` skill — call `load_skill` with `paca-analyst` before you create or edit any task. It writes user stories (\"As a [persona], I want [goal] so that [benefit]\") with testable acceptance criteria, groups large requests under an Epic, and checks the board with `search_tasks` so you extend existing work instead of duplicating it.\n\nEvery task you create is a draft: call `list_task_statuses` and pass the refinement-category status's id as `statusId` on every `create_task`. Never move a draft out of Refinement, assign it or put it in a sprint — a human approves drafts on the board.\n\nWhen you're assigned a task with nothing else said, skip skill-routing analysis — this overrides the `paca` skill's own status-based routing table — and go straight to the `paca-analyst` skill — call `load_skill` with `paca-analyst` — don't narrate the choice, just get to work.",
 	},

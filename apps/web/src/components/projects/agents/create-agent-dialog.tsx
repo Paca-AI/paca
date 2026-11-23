@@ -67,6 +67,7 @@ import {
 	type CLIProvider,
 	createAgent,
 	createGlobalAgent,
+	DEFAULT_LLM_MODEL,
 	generateAcpBridgeToken,
 	generateAgentMCPKey,
 	generateGlobalAcpBridgeToken,
@@ -209,7 +210,7 @@ export function CreateAgentDialog({
 	const [agentType, setAgentType] = useState<AgentType>("llm");
 	const [providerSelect, setProviderSelect] = useState("anthropic");
 	const [customProvider, setCustomProvider] = useState("");
-	const [modelSelect, setModelSelect] = useState("claude-sonnet-4-5-20250929");
+	const [modelSelect, setModelSelect] = useState(DEFAULT_LLM_MODEL);
 	const [customModel, setCustomModel] = useState("");
 	const [llmApiKey, setLlmApiKey] = useState("");
 	const [llmBaseUrl, setLlmBaseUrl] = useState(
@@ -266,7 +267,7 @@ export function CreateAgentDialog({
 		setAgentType("llm");
 		setProviderSelect("anthropic");
 		setCustomProvider("");
-		setModelSelect("claude-sonnet-4-5-20250929");
+		setModelSelect(DEFAULT_LLM_MODEL);
 		setCustomModel("");
 		setLlmApiKey("");
 		setLlmBaseUrl(llmModels.anthropic?.base_url ?? "");
