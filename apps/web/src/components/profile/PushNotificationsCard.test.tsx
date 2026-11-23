@@ -142,8 +142,21 @@ describe("PushNotificationsCard", () => {
 		expect(push.enable).not.toHaveBeenCalled();
 	});
 
+	it("registers a held subscription again when the server dropped it", async () => {
+		// The server deletes a subscription whose key stopped matching, leaving
+		// the browser holding one the server has no record of.
+		push.subscribed = true;
+		push.enable.mockResolvedValue("enabled");
+		renderWithQueries(<PushNotificationsCard />);
+		await waitFor(() => expect(push.enable).toHaveBeenCalledWith("KEY"));
+		expect(push.enable).toHaveBeenCalledTimes(1);
+	});
+
 	it("does not subscribe by itself when already subscribed", async () => {
 		push.subscribed = true;
+		http.get.mockResolvedValue({
+			data: { data: { ...settings, subscription_count: 1 } },
+		});
 		renderWithQueries(<PushNotificationsCard />);
 		const sw = await screen.findByRole("switch", {
 			name: "Notify this browser",
