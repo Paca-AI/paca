@@ -48,5 +48,8 @@ export default defineConfig({
 		environment: "jsdom",
 		globals: true,
 		setupFiles: "./src/test/setup.ts",
+		// Heavy userEvent flows (dialogs, pickers) can exceed the 5s default when
+		// CI runs the whole suite in parallel.
+		testTimeout: 15_000,
 	},
 });

@@ -517,7 +517,8 @@
 			"signIn": "Connexion",
 			"branding": "Identité visuelle",
 			"sso": "Authentification unique",
-			"security": "Sécurité de connexion"
+			"security": "Sécurité de connexion",
+			"notifications": "Livraison des notifications"
 		},
 		"security": {
 			"roles": {
@@ -550,6 +551,43 @@
 				"saveFailed": "Échec de l'enregistrement. Veuillez réessayer.",
 				"loadFailed": "Impossible de charger les paramètres de sécurité de connexion."
 			}
+		},
+		"notifications": {
+			"title": "Livraison des notifications",
+			"description": "Les notifications arrivent-elles : file de livraison, échecs, délai de livraison et ce que les tâches de fond ont abandonné. Actualisé toutes les 30 secondes.",
+			"refresh": "Actualiser",
+			"loadError": "Impossible de charger l'état des notifications.",
+			"status": {
+				"ok": "Sain",
+				"degraded": "Dégradé",
+				"failing": "En échec"
+			},
+			"channels": "Canaux de livraison",
+			"noDeliveries": "Aucune livraison pour le moment.",
+			"channelNames": {
+				"realtime": "Temps réel",
+				"push": "Push",
+				"email": "E-mail"
+			},
+			"columns": {
+				"channel": "Canal",
+				"pending": "En attente",
+				"overdue": "En retard",
+				"sent": "Envoyées (1 h)",
+				"failed": "Échouées (1 h)",
+				"p50": "Médiane",
+				"p95": "Les 5 % les plus lentes",
+				"stream": "Flux",
+				"unacked": "Non acquittées",
+				"oldestWait": "Attente max.",
+				"deadLetters": "Abandonnées (1 h / total)"
+			},
+			"noData": "—",
+			"noReason": "aucune raison enregistrée",
+			"errorLine": "{{channel}} : {{count}} échecs — {{error}}",
+			"streams": "Tâches de fond",
+			"deadCount": "{{recent}} / {{total}}",
+			"checkedAt": "Vérifié à {{time}}"
 		}
 	},
 	"serviceAccounts": {

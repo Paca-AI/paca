@@ -127,7 +127,45 @@
 	},
 	"preferences": {
 		"title": "Notifications",
-		"subtitle": "Choisissez comment être informé."
+		"subtitle": "Choisissez comment être informé.",
+		"push": {
+			"title": "Notifications push",
+			"description": "Recevez une notification du navigateur quand quelque chose requiert votre attention, même si Paca n'est pas ouvert.",
+			"unsupported": "Ce navigateur ne prend pas en charge les notifications push.",
+			"device": {
+				"label": "Me notifier sur ce navigateur",
+				"description": "Autorisez ce navigateur à afficher des notifications.",
+				"denied": "Les notifications sont bloquées pour ce site. Autorisez-les dans les paramètres du site de votre navigateur, puis réessayez."
+			},
+			"types": {
+				"title": "Me notifier pour",
+				"assigned": "Les tâches qui me sont assignées",
+				"mentioned": "Les mentions",
+				"question": "Les questions des agents",
+				"automation": "Les alertes d'automatisation"
+			},
+			"errors": {
+				"load": "Impossible de charger les paramètres push.",
+				"enable": "Impossible d'activer les notifications sur ce navigateur.",
+				"disable": "Impossible de désactiver les notifications sur ce navigateur.",
+				"save": "Impossible d'enregistrer votre préférence."
+			}
+		},
+		"dnd": {
+			"title": "Ne pas déranger",
+			"description": "Coupez les notifications push et le son de notification pendant un moment. Tout arrive quand même dans votre boîte et la cloche.",
+			"forOneHour": "Pendant 1 heure",
+			"forEightHours": "Pendant 8 heures",
+			"untilMorning": "Jusqu'à demain matin",
+			"untilOff": "Jusqu'à ce que je le désactive",
+			"turnOff": "Désactiver",
+			"onUntil": "Ne pas déranger est activé jusqu'à {{time}}.",
+			"onIndefinitely": "Ne pas déranger est activé jusqu'à ce que vous le désactiviez.",
+			"errors": {
+				"load": "Impossible de charger votre réglage Ne pas déranger.",
+				"save": "Impossible de modifier Ne pas déranger."
+			}
+		}
 	},
 	"security": {
 		"title": "Sécurité",

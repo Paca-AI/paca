@@ -84,7 +84,28 @@
 		},
 		"untitledConversation": "Conversación sin título",
 		"globalChat": "Chat global",
-		"untitledDocument": "Documento sin título"
+		"untitledDocument": "Documento sin título",
+		"markRead": "Marcar como leída",
+		"settings": "Ajustes de notificaciones",
+		"caughtUp": "Estás al día",
+		"loadError": "No se pudieron cargar tus notificaciones.",
+		"retry": "Reintentar",
+		"dndOn": "No molestar está activado",
+		"filter": {
+			"label": "Mostrar",
+			"all": "Todas",
+			"unread": "Sin leer"
+		},
+		"group": {
+			"today": "Hoy",
+			"yesterday": "Ayer",
+			"earlier": "Anteriores"
+		},
+		"push": {
+			"prompt": "Recibe avisos incluso con Paca cerrado.",
+			"enable": "Activar",
+			"dismiss": "Ahora no"
+		}
 	},
 	"userMenu": {
 		"signIn": "Iniciar sesión",

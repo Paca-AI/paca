@@ -61,9 +61,9 @@ func (h *DocumentHandler) WithDocAvatarService(svc attachmentdom.AvatarService) 
 	return h
 }
 
-// WithDocNotificationService configures dispatching a plugin event (no
-// in-app row) when a document's content is updated to newly @mention a
-// user (see notificationdom.Service.NotifyDocMentioned).
+// WithDocNotificationService configures notifying a user (in-app and by
+// plugin event) when a document's content is updated to newly @mention them
+// (see notificationdom.Service.NotifyDocMentioned).
 func (h *DocumentHandler) WithDocNotificationService(svc notificationdom.Service) *DocumentHandler {
 	h.notificationSvc = svc
 	return h

@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"net/url"
 	"os"
 	"strings"
@@ -44,7 +45,9 @@ func newIAMPGTestDB(t *testing.T) *sqlx.DB {
 	}
 	t.Cleanup(func() {
 		_ = db.Close()
-		_, _ = admin.ExecContext(t.Context(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
+		// Not t.Context(): that is already cancelled by the time cleanups run, which
+		// made this drop silently fail and leak a database per test.
+		_, _ = admin.ExecContext(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
 	})
 	if err := database.RunMigrationsFS(db.DB, migrations.FS); err != nil {
 		t.Fatalf("apply migrations: %v", err)

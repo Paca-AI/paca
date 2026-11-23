@@ -127,7 +127,45 @@
 	},
 	"preferences": {
 		"title": "알림",
-		"subtitle": "알림을 받는 방식을 선택하세요."
+		"subtitle": "알림을 받는 방식을 선택하세요.",
+		"push": {
+			"title": "푸시 알림",
+			"description": "Paca가 열려 있지 않아도 확인이 필요한 일이 생기면 브라우저 알림을 받습니다.",
+			"unsupported": "이 브라우저는 푸시 알림을 지원하지 않습니다.",
+			"device": {
+				"label": "이 브라우저에 알림",
+				"description": "이 브라우저에서 알림을 표시하도록 허용합니다.",
+				"denied": "이 사이트의 알림이 차단되어 있습니다. 브라우저의 사이트 설정에서 허용한 뒤 다시 시도하세요."
+			},
+			"types": {
+				"title": "알림 받을 항목",
+				"assigned": "내게 할당된 작업",
+				"mentioned": "멘션",
+				"question": "에이전트의 질문",
+				"automation": "자동화 알림"
+			},
+			"errors": {
+				"load": "푸시 설정을 불러오지 못했습니다.",
+				"enable": "이 브라우저의 알림을 켜지 못했습니다.",
+				"disable": "이 브라우저의 알림을 끄지 못했습니다.",
+				"save": "환경설정을 저장하지 못했습니다."
+			}
+		},
+		"dnd": {
+			"title": "방해 금지",
+			"description": "한동안 푸시 알림과 알림음을 끕니다. 받은 편지함과 벨에는 그대로 표시됩니다.",
+			"forOneHour": "1시간 동안",
+			"forEightHours": "8시간 동안",
+			"untilMorning": "내일 아침까지",
+			"untilOff": "끌 때까지",
+			"turnOff": "끄기",
+			"onUntil": "방해 금지가 {{time}}까지 켜져 있습니다.",
+			"onIndefinitely": "방해 금지가 끌 때까지 켜져 있습니다.",
+			"errors": {
+				"load": "방해 금지 설정을 불러오지 못했습니다.",
+				"save": "방해 금지를 변경하지 못했습니다."
+			}
+		}
 	},
 	"security": {
 		"title": "보안",

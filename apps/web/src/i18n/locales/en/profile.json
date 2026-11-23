@@ -127,7 +127,45 @@
 	},
 	"preferences": {
 		"title": "Notifications",
-		"subtitle": "Choose how you want to be notified."
+		"subtitle": "Choose how you want to be notified.",
+		"push": {
+			"title": "Push notifications",
+			"description": "Get a browser notification when something needs you, even when Paca isn't open.",
+			"unsupported": "This browser doesn't support push notifications.",
+			"device": {
+				"label": "Notify this browser",
+				"description": "Allow this browser to show notifications.",
+				"denied": "Notifications are blocked for this site. Allow them in your browser's site settings, then try again."
+			},
+			"types": {
+				"title": "Notify me about",
+				"assigned": "Tasks assigned to me",
+				"mentioned": "Mentions",
+				"question": "Questions from agents",
+				"automation": "Automation alerts"
+			},
+			"errors": {
+				"load": "Couldn't load push settings.",
+				"enable": "Couldn't turn on notifications for this browser.",
+				"disable": "Couldn't turn off notifications for this browser.",
+				"save": "Couldn't save your preference."
+			}
+		},
+		"dnd": {
+			"title": "Do Not Disturb",
+			"description": "Silence push notifications and the notification chime for a while. Everything still lands in your inbox and the bell.",
+			"forOneHour": "For 1 hour",
+			"forEightHours": "For 8 hours",
+			"untilMorning": "Until tomorrow morning",
+			"untilOff": "Until I turn it off",
+			"turnOff": "Turn off",
+			"onUntil": "Do Not Disturb is on until {{time}}.",
+			"onIndefinitely": "Do Not Disturb is on until you turn it off.",
+			"errors": {
+				"load": "Couldn't load your Do Not Disturb setting.",
+				"save": "Couldn't change Do Not Disturb."
+			}
+		}
 	},
 	"security": {
 		"title": "Security",

@@ -517,7 +517,8 @@
 			"signIn": "サインイン",
 			"branding": "ブランディング",
 			"sso": "シングルサインオン",
-			"security": "ログインセキュリティ"
+			"security": "ログインセキュリティ",
+			"notifications": "通知の配信"
 		},
 		"security": {
 			"roles": {
@@ -550,6 +551,43 @@
 				"saveFailed": "保存に失敗しました。もう一度お試しください。",
 				"loadFailed": "ログインセキュリティ設定を読み込めませんでした。"
 			}
+		},
+		"notifications": {
+			"title": "通知の配信",
+			"description": "通知が届いているかを確認します。配信の待ち行列、失敗、配信にかかる時間、バックグラウンド処理が断念したものを表示します。30秒ごとに更新されます。",
+			"refresh": "更新",
+			"loadError": "通知の状態を読み込めませんでした。",
+			"status": {
+				"ok": "正常",
+				"degraded": "低下",
+				"failing": "障害"
+			},
+			"channels": "配信チャネル",
+			"noDeliveries": "まだ配信はありません。",
+			"channelNames": {
+				"realtime": "リアルタイム",
+				"push": "プッシュ",
+				"email": "メール"
+			},
+			"columns": {
+				"channel": "チャネル",
+				"pending": "待機中",
+				"overdue": "遅延",
+				"sent": "送信済み (1時間)",
+				"failed": "失敗 (1時間)",
+				"p50": "中央値",
+				"p95": "遅い上位5%",
+				"stream": "ストリーム",
+				"unacked": "未確認",
+				"oldestWait": "最長待機",
+				"deadLetters": "断念 (1時間 / 合計)"
+			},
+			"noData": "—",
+			"noReason": "理由の記録なし",
+			"errorLine": "{{channel}}: {{count}} 件失敗 — {{error}}",
+			"streams": "バックグラウンド処理",
+			"deadCount": "{{recent}} / {{total}}",
+			"checkedAt": "{{time}} に確認"
 		}
 	},
 	"serviceAccounts": {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 	"time"
@@ -126,6 +127,7 @@ func (s *Svc) publishNotificationEvent(ctx context.Context, topic string, recipi
 	}
 	recipient, err := s.userRepo.FindByID(ctx, recipientAccountID)
 	if err != nil {
+		slog.WarnContext(ctx, "notification plugin event skipped: recipient lookup failed", "topic", topic, "recipient_account_id", recipientAccountID, "error", err)
 		return
 	}
 	recipientEmail := ""
@@ -141,7 +143,9 @@ func (s *Svc) publishNotificationEvent(ctx context.Context, topic string, recipi
 		"link_url":             linkURL,
 		"entity_title":         entityTitle,
 	}
-	_ = s.publisher.Append(ctx, events.StreamPluginEvents, topic, payload)
+	if err := s.publisher.Append(ctx, events.StreamPluginEvents, topic, payload); err != nil {
+		slog.WarnContext(ctx, "notification plugin event not published", "topic", topic, "recipient_account_id", recipientAccountID, "error", err)
+	}
 }
 
 // taskTitle resolves taskID's title for an event payload, returning "" when no
@@ -192,6 +196,32 @@ func (s *Svc) taskURL(projectID, taskID uuid.UUID) string {
 // docURL builds a direct link to a document.
 func (s *Svc) docURL(projectID, docID uuid.UUID) string {
 	return fmt.Sprintf("%s/projects/%s/docs/%s", strings.TrimRight(s.publicURL, "/"), projectID, docID)
+}
+
+// createRetryDelays are the waits before each retry of a failed notification
+// insert (so len+1 attempts in all). Short: the mention path runs inside the
+// HTTP request that posted the comment, so the total added latency on a
+// database failure stays under half a second. A var so tests can zero it.
+var createRetryDelays = []time.Duration{100 * time.Millisecond, 300 * time.Millisecond}
+
+// createWithRetry inserts n, retrying a few times so a transient database
+// error (a failover, a dropped connection, a lock timeout) does not lose a
+// notification that nothing else would ever recreate. Paths fed by a stream
+// don't use this: their consumer redelivers the entry instead.
+func (s *Svc) createWithRetry(ctx context.Context, n *notificationdom.Notification) error {
+	err := s.repo.Create(ctx, n)
+	for _, delay := range createRetryDelays {
+		if err == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(delay):
+		}
+		err = s.repo.Create(ctx, n)
+	}
+	return err
 }
 
 // --- Service methods --------------------------------------------------------
@@ -315,7 +345,9 @@ func (s *Svc) NotifyQuestion(ctx context.Context, in notificationdom.NotifyQuest
 }
 
 // NotifyMentioned parses @mentions from commentText and creates a notification
-// for each project member found, excluding the actor themselves.
+// for each project member found, excluding the actor themselves. A failure to
+// store one recipient's notification (after retries) does not stop the others;
+// the failures are returned joined, for the caller to log.
 // When MentionedUserID is provided in input, it is used directly instead of parsing.
 func (s *Svc) NotifyMentioned(ctx context.Context, in notificationdom.NotifyMentionedInput) error {
 	var mentionedUserIDs []uuid.UUID
@@ -361,6 +393,7 @@ func (s *Svc) NotifyMentioned(ctx context.Context, in notificationdom.NotifyMent
 	// notification created below.
 	taskTitle := s.taskTitle(ctx, in.TaskID)
 	seen := make(map[uuid.UUID]bool) // avoid duplicate notifications
+	var createErrs []error
 	for _, mentionedUserID := range mentionedUserIDs {
 		// Skip self-mention.
 		if mentionedUserID == in.ActorID {
@@ -388,13 +421,17 @@ func (s *Svc) NotifyMentioned(ctx context.Context, in notificationdom.NotifyMent
 			ProjectID:          in.ProjectID,
 			CreatedAt:          time.Now(),
 		}
-		if err := s.repo.Create(ctx, n); err != nil {
-			continue // best-effort; don't abort for one failure
+		if err := s.createWithRetry(ctx, n); err != nil {
+			// Don't abort the other recipients for one failure, but the mention
+			// is lost: say so, and report it to the caller.
+			slog.WarnContext(ctx, "mention notification not created", "recipient_account_id", mentionedUserID, "task_id", taskID, "error", err)
+			createErrs = append(createErrs, fmt.Errorf("notify %s: %w", mentionedUserID, err))
+			continue
 		}
 		s.publishCreated(ctx, n, mentionedUserID)
 		s.publishNotificationEvent(ctx, events.TopicNotificationMentioned, mentionedUserID, actorName, s.taskURL(in.ProjectID, taskID), taskTitle)
 	}
-	return nil
+	return errors.Join(createErrs...)
 }
 
 // NotifyDocCommentMentioned creates an in-app notification for a person
@@ -420,7 +457,7 @@ func (s *Svc) NotifyDocCommentMentioned(ctx context.Context, in notificationdom.
 		ProjectID:          in.ProjectID,
 		CreatedAt:          time.Now(),
 	}
-	if err := s.repo.Create(ctx, n); err != nil {
+	if err := s.createWithRetry(ctx, n); err != nil {
 		return err
 	}
 	s.publishCreated(ctx, n, in.MentionedUserID)
@@ -428,20 +465,17 @@ func (s *Svc) NotifyDocCommentMentioned(ctx context.Context, in notificationdom.
 	return nil
 }
 
-// NotifyDocMentioned publishes a notification.doc_mentioned plugin event for
-// a user newly @mentioned in a document's content. Unlike
-// NotifyAssigned/NotifyMentioned, this does not create an in-app
-// Notification row — the notifications table's task_id is a non-null FK, so
-// it cannot yet represent a doc-scoped target (see
-// docsvc.ActivitySvc.AddComment's doc-comment mention handling, which hits
-// the same constraint), so the plugin event stream is the only way this
-// reaches a subscribing plugin today. The caller is expected to have
-// already diffed old vs. new content so this is only called for genuinely
-// new mentions. mentionedUserID comes straight from client-supplied
-// BlockNote content (mentionpkg.ExtractTeamMentionsFromBlocks reads it
-// verbatim from a teamMention block's "id" prop), not from a server-side
-// picker restricted to project members — so, exactly like NotifyMentioned's
-// FindMember check, membership must be re-verified here before
+// NotifyDocMentioned notifies a user newly @mentioned in a document's content:
+// an in-app notification (pointing at the document) and a
+// notification.doc_mentioned plugin event. The in-app row is what makes the
+// mention reach someone who has no email plugin configured, or has opted out
+// of its emails. The caller is expected to have already diffed old vs. new
+// content so this is only called for genuinely new mentions.
+// mentionedUserID comes straight from client-supplied BlockNote content
+// (mentionpkg.ExtractTeamMentionsFromBlocks reads it verbatim from a
+// teamMention block's "id" prop), not from a server-side picker restricted to
+// project members — so, exactly like NotifyMentioned's FindMember check,
+// membership must be re-verified here before storing a notification or
 // resolving and publishing the mentioned user's name/email; otherwise any
 // editor could name an arbitrary user ID to leak that user's identity to a
 // subscribing plugin (and trigger it to email them) despite them having no
@@ -450,28 +484,76 @@ func (s *Svc) NotifyDocMentioned(ctx context.Context, mentionedUserID, actorID u
 	if mentionedUserID == actorID {
 		return
 	}
-	if _, err := s.memberRepo.FindMember(ctx, projectID, mentionedUserID); err != nil {
+	member, err := s.memberRepo.FindMember(ctx, projectID, mentionedUserID)
+	if err != nil {
 		return // mentioned user isn't a member of this project; nothing to notify
 	}
+	s.storeMentionNotification(ctx, member, &notificationdom.Notification{
+		ID:                 uuid.New(),
+		RecipientAccountID: mentionedUserID,
+		ActorMemberID:      s.actorMemberID(ctx, projectID, actorID),
+		Type:               notificationdom.NotificationTypeMentioned,
+		DocumentID:         &docID,
+		ProjectID:          projectID,
+		CreatedAt:          time.Now(),
+	})
 	actorName := s.resolveUserName(ctx, actorID)
 	s.publishNotificationEvent(ctx, events.TopicNotificationDocMentioned, mentionedUserID, actorName, s.docURL(projectID, docID), s.docTitle(ctx, docID))
 }
 
-// NotifyTaskDescriptionMentioned publishes a
-// notification.task_description_mentioned plugin event for a user newly
-// @mentioned in a task's description field (as opposed to a comment, which
-// NotifyMentioned already handles). See NotifyDocMentioned's doc comment for
-// why this doesn't create an in-app row and why project membership must be
-// re-verified against the client-supplied mention ID.
+// NotifyTaskDescriptionMentioned notifies a user newly @mentioned in a task's
+// description field (as opposed to a comment, which NotifyMentioned already
+// handles): an in-app notification pointing at the task, and a
+// notification.task_description_mentioned plugin event. See NotifyDocMentioned's
+// doc comment for why project membership must be re-verified against the
+// client-supplied mention ID.
 func (s *Svc) NotifyTaskDescriptionMentioned(ctx context.Context, mentionedUserID, actorID uuid.UUID, projectID, taskID uuid.UUID) {
 	if mentionedUserID == actorID {
 		return
 	}
-	if _, err := s.memberRepo.FindMember(ctx, projectID, mentionedUserID); err != nil {
+	member, err := s.memberRepo.FindMember(ctx, projectID, mentionedUserID)
+	if err != nil {
 		return // mentioned user isn't a member of this project; nothing to notify
 	}
+	s.storeMentionNotification(ctx, member, &notificationdom.Notification{
+		ID:                 uuid.New(),
+		RecipientAccountID: mentionedUserID,
+		ActorMemberID:      s.actorMemberID(ctx, projectID, actorID),
+		Type:               notificationdom.NotificationTypeMentioned,
+		TaskID:             &taskID,
+		ProjectID:          projectID,
+		CreatedAt:          time.Now(),
+	})
 	actorName := s.resolveUserName(ctx, actorID)
 	s.publishNotificationEvent(ctx, events.TopicNotificationTaskDescriptionMentioned, mentionedUserID, actorName, s.taskURL(projectID, taskID), s.taskTitle(ctx, taskID))
+}
+
+// actorMemberID resolves the acting account to its project membership for
+// attribution, or nil when it has none (the notification is then shown without
+// an actor, like NotifyAssigned's).
+func (s *Svc) actorMemberID(ctx context.Context, projectID, actorID uuid.UUID) *uuid.UUID {
+	actorMember, err := s.memberRepo.FindMember(ctx, projectID, actorID)
+	if err != nil {
+		return nil
+	}
+	id := actorMember.ID
+	return &id
+}
+
+// storeMentionNotification stores n for a mentioned member and announces it in
+// realtime. Best-effort and independent of the plugin event published next to
+// it: a failure here is logged and must not stop that event, and vice versa.
+// Agents and service accounts have no inbox (their ids are not users), so a
+// mention of one stores nothing.
+func (s *Svc) storeMentionNotification(ctx context.Context, member *projectdom.ProjectMember, n *notificationdom.Notification) {
+	if member.MemberType == "agent" || member.MemberType == "service_account" {
+		return
+	}
+	if err := s.createWithRetry(ctx, n); err != nil {
+		slog.WarnContext(ctx, "mention notification not created", "recipient_account_id", n.RecipientAccountID, "project_id", n.ProjectID, "error", err)
+		return
+	}
+	s.publishCreated(ctx, n, n.RecipientAccountID)
 }
 
 // ListNotifications returns up to limit notifications for the user, newest
@@ -509,25 +591,27 @@ func extractMentions(text string) map[string]struct{} {
 	return result
 }
 
-// publishCreated publishes a notification.created event to the realtime channel.
-// Errors are silently swallowed so messaging failures don't block the caller.
+// publishCreated publishes a notification.created event to the realtime
+// channel and, when that succeeded, marks the notification's realtime delivery
+// done so the dispatcher does not repeat it.
+//
+// A failure here is not lost: the delivery row created with the notification
+// stays pending, and the dispatcher retries it. Errors are therefore only
+// logged, so a messaging failure never blocks the caller.
 func (s *Svc) publishCreated(ctx context.Context, n *notificationdom.Notification, recipientAccountID uuid.UUID) {
 	if s.publisher == nil {
 		return
 	}
-	payload := map[string]any{
-		"id":                   n.ID,
-		"recipient_account_id": recipientAccountID,
-		"actor_member_id":      n.ActorMemberID,
-		"type":                 string(n.Type),
-		"task_id":              n.TaskID,
-		"conversation_id":      n.ConversationID,
-		"document_id":          n.DocumentID,
-		"project_id":           n.ProjectID,
-		"created_at":           n.CreatedAt,
-	}
-	_ = s.publisher.Publish(ctx, events.ChannelRealtime, map[string]any{
+	if err := s.publisher.Publish(ctx, events.ChannelRealtime, map[string]any{
 		"type":    events.TopicNotificationCreated,
-		"payload": payload,
-	})
+		"payload": notificationdom.RealtimeCreatedPayload(n),
+	}); err != nil {
+		slog.WarnContext(ctx, "notification realtime publish failed; the dispatcher will retry", "notification_id", n.ID, "type", string(n.Type), "recipient_account_id", recipientAccountID, "error", err)
+		return
+	}
+	if err := s.repo.MarkDelivered(ctx, n.ID, notificationdom.DeliveryChannelRealtime); err != nil {
+		// Worst case the dispatcher sends it once more: a duplicate chime, not
+		// a missed notification.
+		slog.WarnContext(ctx, "notification delivery not marked sent", "notification_id", n.ID, "error", err)
+	}
 }

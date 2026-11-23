@@ -194,14 +194,16 @@ func (s *ActivitySvc) handleMentions(ctx context.Context, in taskdom.AddCommentI
 		if s.notificationSvc == nil {
 			return
 		}
-		_ = s.notificationSvc.NotifyMentioned(ctx, notificationdom.NotifyMentionedInput{
+		if err := s.notificationSvc.NotifyMentioned(ctx, notificationdom.NotifyMentionedInput{
 			TaskID:          in.TaskID,
 			ProjectID:       in.ProjectID,
 			CommentText:     commentText,
 			ActorMemberID:   member.ID,
 			ActorID:         in.ActorID,
 			MentionedUserID: mentionedUserID,
-		})
+		}); err != nil {
+			slog.WarnContext(ctx, "comment mention notification failed", "error", err, "project_id", in.ProjectID, "task_id", in.TaskID)
+		}
 	}
 
 	// Fall back to plain-text parsing when no structured mentions exist, to

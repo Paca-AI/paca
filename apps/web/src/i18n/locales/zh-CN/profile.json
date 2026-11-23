@@ -127,7 +127,45 @@
 	},
 	"preferences": {
 		"title": "通知",
-		"subtitle": "选择接收通知的方式。"
+		"subtitle": "选择接收通知的方式。",
+		"push": {
+			"title": "推送通知",
+			"description": "即使未打开 Paca，有事需要你处理时也会收到浏览器通知。",
+			"unsupported": "此浏览器不支持推送通知。",
+			"device": {
+				"label": "在此浏览器中通知我",
+				"description": "允许此浏览器显示通知。",
+				"denied": "此网站的通知已被屏蔽。请在浏览器的网站设置中允许通知，然后重试。"
+			},
+			"types": {
+				"title": "通知我以下内容",
+				"assigned": "分配给我的任务",
+				"mentioned": "提及",
+				"question": "智能体的提问",
+				"automation": "自动化提醒"
+			},
+			"errors": {
+				"load": "无法加载推送设置。",
+				"enable": "无法为此浏览器开启通知。",
+				"disable": "无法为此浏览器关闭通知。",
+				"save": "无法保存你的偏好设置。"
+			}
+		},
+		"dnd": {
+			"title": "勿扰",
+			"description": "暂时关闭推送通知和提示音。所有内容仍会出现在收件箱和铃铛中。",
+			"forOneHour": "1 小时",
+			"forEightHours": "8 小时",
+			"untilMorning": "直到明天早上",
+			"untilOff": "直到我关闭",
+			"turnOff": "关闭",
+			"onUntil": "勿扰已开启，直到 {{time}}。",
+			"onIndefinitely": "勿扰已开启，直到你关闭为止。",
+			"errors": {
+				"load": "无法加载勿扰设置。",
+				"save": "无法更改勿扰设置。"
+			}
+		}
 	},
 	"security": {
 		"title": "安全",

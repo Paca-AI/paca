@@ -82,9 +82,9 @@ func WithTaskAvatarService(svc attachmentdom.AvatarService) TaskHandlerOption {
 	}
 }
 
-// WithTaskNotificationService configures dispatching a plugin event (no
-// in-app row) when a task's description is updated to newly @mention a
-// user (see notificationdom.Service.NotifyTaskDescriptionMentioned).
+// WithTaskNotificationService configures notifying a user (in-app and by
+// plugin event) when a task's description is updated to newly @mention them
+// (see notificationdom.Service.NotifyTaskDescriptionMentioned).
 func WithTaskNotificationService(svc notificationdom.Service) TaskHandlerOption {
 	return func(h *TaskHandler) {
 		h.notificationSvc = svc
@@ -1473,8 +1473,8 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Publish a plugin event for each user newly @mentioned in the
-		// description (no in-app row — see
+		// Notify each user newly @mentioned in the description (in-app and
+		// plugin event — see
 		// notificationSvc.NotifyTaskDescriptionMentioned's doc comment).
 		if h.notificationSvc != nil && req.Description.Set && req.Description.Value != nil {
 			for _, mentionedID := range newlyMentionedUserIDs(oldTask.Description, req.Description.Value) {

@@ -1,18 +1,19 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { KeyRound, Lock, Palette } from "lucide-react";
+import { Activity, KeyRound, Lock, Palette } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { BrandingSettings } from "@/components/admin/settings/BrandingSettings";
 import { LoginSecuritySettings } from "@/components/admin/settings/LoginSecuritySettings";
+import { NotificationHealthSettings } from "@/components/admin/settings/NotificationHealthSettings";
 import { SsoSettings } from "@/components/admin/settings/SsoSettings";
 import { myPermissionsQueryOptions } from "@/lib/admin-api";
 import { hasPermission } from "@/lib/permissions";
 import { brandingQueryOptions } from "@/lib/settings-api";
 import { cn } from "@/lib/utils";
 
-type Section = "branding" | "sso" | "security";
+type Section = "branding" | "notifications" | "sso" | "security";
 
-const SECTIONS: Section[] = ["branding", "sso", "security"];
+const SECTIONS: Section[] = ["branding", "notifications", "sso", "security"];
 
 export const Route = createFileRoute("/_authenticated/admin/settings/")({
 	validateSearch: (search: Record<string, unknown>): { section?: Section } => ({
@@ -25,10 +26,12 @@ export const Route = createFileRoute("/_authenticated/admin/settings/")({
 
 		const can = {
 			branding: hasPermission(permissions, "settings:write"),
+			// Operational diagnostics: gated like changing instance settings.
+			notifications: hasPermission(permissions, "settings:write"),
 			sso: hasPermission(permissions, "settings.sso:write"),
 			security: hasPermission(permissions, "settings.security:write"),
 		};
-		if (!can.branding && !can.sso && !can.security) {
+		if (!can.branding && !can.notifications && !can.sso && !can.security) {
 			throw redirect({ to: "/home" });
 		}
 		return { can };
@@ -39,7 +42,12 @@ export const Route = createFileRoute("/_authenticated/admin/settings/")({
 	component: SettingsPage,
 });
 
-const ICONS = { branding: Palette, sso: KeyRound, security: Lock } as const;
+const ICONS = {
+	branding: Palette,
+	notifications: Activity,
+	sso: KeyRound,
+	security: Lock,
+} as const;
 
 function SettingsPage() {
 	const { t } = useTranslation("admin");
@@ -53,7 +61,7 @@ function SettingsPage() {
 	const groups: { label: string; items: Section[] }[] = [
 		{
 			label: t("settings.nav.workspace"),
-			items: visible.filter((s) => s === "branding"),
+			items: visible.filter((s) => s === "branding" || s === "notifications"),
 		},
 		{
 			label: t("settings.nav.signIn"),
@@ -110,6 +118,7 @@ function SettingsPage() {
 
 				<main className="min-w-0 flex-1">
 					{active === "branding" ? <BrandingSettings /> : null}
+					{active === "notifications" ? <NotificationHealthSettings /> : null}
 					{active === "sso" ? <SsoSettings /> : null}
 					{active === "security" ? <LoginSecuritySettings /> : null}
 				</main>

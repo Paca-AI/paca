@@ -517,7 +517,8 @@
 			"signIn": "登录",
 			"branding": "品牌",
 			"sso": "单点登录",
-			"security": "登录安全"
+			"security": "登录安全",
+			"notifications": "通知投递"
 		},
 		"security": {
 			"roles": {
@@ -550,6 +551,43 @@
 				"saveFailed": "保存失败，请重试。",
 				"loadFailed": "无法加载登录安全设置。"
 			}
+		},
+		"notifications": {
+			"title": "通知投递",
+			"description": "通知是否正常送达：投递积压、失败、投递耗时，以及后台任务放弃的条目。每 30 秒刷新一次。",
+			"refresh": "刷新",
+			"loadError": "无法加载通知健康状态。",
+			"status": {
+				"ok": "正常",
+				"degraded": "降级",
+				"failing": "故障"
+			},
+			"channels": "投递渠道",
+			"noDeliveries": "暂无投递。",
+			"channelNames": {
+				"realtime": "实时",
+				"push": "推送",
+				"email": "邮件"
+			},
+			"columns": {
+				"channel": "渠道",
+				"pending": "等待中",
+				"overdue": "已逾期",
+				"sent": "已发送（1 小时）",
+				"failed": "失败（1 小时）",
+				"p50": "中位数",
+				"p95": "最慢的 5%",
+				"stream": "流",
+				"unacked": "未确认",
+				"oldestWait": "最长等待",
+				"deadLetters": "已放弃（1 小时 / 总计）"
+			},
+			"noData": "—",
+			"noReason": "未记录原因",
+			"errorLine": "{{channel}}：{{count}} 次失败 — {{error}}",
+			"streams": "后台任务",
+			"deadCount": "{{recent}} / {{total}}",
+			"checkedAt": "检查于 {{time}}"
 		}
 	},
 	"serviceAccounts": {

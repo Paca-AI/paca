@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
 	listNotificationsMock: vi.fn(),
 	markNotificationAsReadMock: vi.fn(),
 	markAllNotificationsAsReadMock: vi.fn(),
+	pushSettingsMock: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -27,6 +28,20 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("@/hooks/use-document-title", () => ({
 	useDocumentTitle: () => {},
 }));
+
+// The bell reads Do Not Disturb from the push settings the layout keeps warm.
+vi.mock("@/lib/push-api", async () => {
+	const actual =
+		await vi.importActual<typeof import("@/lib/push-api")>("@/lib/push-api");
+	return {
+		...actual,
+		isPushSupported: () => false,
+		pushSettingsQueryOptions: {
+			...actual.pushSettingsQueryOptions,
+			queryFn: mocks.pushSettingsMock,
+		},
+	};
+});
 
 vi.mock("@/lib/notification-api", async () => {
 	const actual = await vi.importActual<typeof import("@/lib/notification-api")>(
@@ -89,6 +104,12 @@ beforeEach(() => {
 	mocks.listNotificationsMock.mockReset();
 	mocks.markNotificationAsReadMock.mockReset().mockResolvedValue(undefined);
 	mocks.markAllNotificationsAsReadMock.mockReset().mockResolvedValue(undefined);
+	mocks.pushSettingsMock.mockReset().mockResolvedValue({
+		public_key: "K",
+		subscription_count: 0,
+		preferences: [],
+		do_not_disturb: { active: false, until: null, indefinite: false },
+	});
 });
 
 describe("NotificationBell", () => {
@@ -155,8 +176,12 @@ describe("NotificationBell", () => {
 			params: { conversationId: "conv-g" },
 		});
 
+		// Opening a notification closes the list; reopen it for the next one.
 		await userEvent.click(
-			screen.getByText(/asked you a question in Untitled conversation/),
+			screen.getByRole("button", { name: "Notifications" }),
+		);
+		await userEvent.click(
+			await screen.findByText(/asked you a question in Untitled conversation/),
 		);
 		expect(mocks.navigateMock).toHaveBeenLastCalledWith({
 			to: "/projects/$projectId/conversations/$conversationId",
@@ -263,5 +288,158 @@ describe("NotificationBell", () => {
 		await waitFor(() => {
 			expect(isNotificationSoundMuted()).toBe(false);
 		});
+	});
+
+	it("groups notifications by day under Today, Yesterday and Earlier", async () => {
+		const day = (daysAgo: number) => {
+			const d = new Date();
+			d.setHours(12, 0, 0, 0);
+			d.setDate(d.getDate() - daysAgo);
+			return d.toISOString();
+		};
+		mocks.listNotificationsMock.mockResolvedValue({
+			items: [
+				makeNotification({
+					id: "a",
+					task_title: "Fresh",
+					created_at: new Date().toISOString(),
+				}),
+				makeNotification({ id: "b", task_title: "Yday", created_at: day(1) }),
+				makeNotification({ id: "c", task_title: "Old", created_at: day(5) }),
+			],
+			page_size: 20,
+			next_cursor: null,
+			unread_count: 3,
+		});
+		await renderAndOpen();
+		expect(
+			await screen.findByRole("heading", { name: "Today" }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("heading", { name: "Yesterday" }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("heading", { name: "Earlier" }),
+		).toBeInTheDocument();
+	});
+
+	it("filters to unread and says so when you are caught up", async () => {
+		mocks.listNotificationsMock.mockResolvedValue({
+			items: [
+				makeNotification({ id: "u", task_title: "Unread one" }),
+				makeNotification({
+					id: "r",
+					task_title: "Read one",
+					read_at: "2026-01-02T00:00:00Z",
+				}),
+			],
+			page_size: 20,
+			next_cursor: null,
+			unread_count: 1,
+		});
+		await renderAndOpen();
+		expect(await screen.findByText(/Read one/)).toBeInTheDocument();
+
+		await userEvent.click(screen.getByRole("button", { name: /^Unread/ }));
+		expect(screen.getByText(/Unread one/)).toBeInTheDocument();
+		expect(screen.queryByText(/Read one/)).not.toBeInTheDocument();
+	});
+
+	it("says you are caught up when nothing is unread", async () => {
+		mocks.listNotificationsMock.mockResolvedValue({
+			items: [makeNotification({ read_at: "2026-01-02T00:00:00Z" })],
+			page_size: 20,
+			next_cursor: null,
+			unread_count: 0,
+		});
+		await renderAndOpen();
+		await screen.findByText(/Ship the thing/);
+		await userEvent.click(screen.getByRole("button", { name: /^Unread/ }));
+		expect(screen.getByText("You're all caught up")).toBeInTheDocument();
+	});
+
+	it("marks one notification read without opening it", async () => {
+		mocks.listNotificationsMock.mockResolvedValue({
+			items: [makeNotification({ id: "n-7" })],
+			page_size: 20,
+			next_cursor: null,
+			unread_count: 1,
+		});
+		await renderAndOpen();
+		await userEvent.click(
+			await screen.findByRole("button", { name: "Mark as read" }),
+		);
+		await waitFor(() =>
+			expect(mocks.markNotificationAsReadMock).toHaveBeenCalled(),
+		);
+		expect(mocks.markNotificationAsReadMock.mock.calls[0][0]).toBe("n-7");
+		expect(mocks.navigateMock).not.toHaveBeenCalled();
+	});
+
+	it("closes the list when a notification is opened", async () => {
+		mocks.listNotificationsMock.mockResolvedValue({
+			items: [makeNotification()],
+			page_size: 20,
+			next_cursor: null,
+			unread_count: 1,
+		});
+		await renderAndOpen();
+		await userEvent.click(await screen.findByText(/assigned you to task #42/));
+		await waitFor(() =>
+			expect(
+				screen.queryByText(/assigned you to task #42/),
+			).not.toBeInTheDocument(),
+		);
+	});
+
+	it("offers a retry when the list cannot be loaded", async () => {
+		mocks.listNotificationsMock.mockRejectedValueOnce(new Error("boom"));
+		mocks.listNotificationsMock.mockResolvedValue({
+			items: [makeNotification()],
+			page_size: 20,
+			next_cursor: null,
+			unread_count: 1,
+		});
+		await renderAndOpen();
+		expect(
+			await screen.findByText("Couldn't load your notifications."),
+		).toBeInTheDocument();
+		await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+		expect(
+			await screen.findByText(/assigned you to task #42/),
+		).toBeInTheDocument();
+	});
+
+	it("opens the notification settings", async () => {
+		mocks.listNotificationsMock.mockResolvedValue({
+			items: [],
+			page_size: 20,
+			next_cursor: null,
+			unread_count: 0,
+		});
+		await renderAndOpen();
+		await userEvent.click(
+			await screen.findByRole("button", { name: "Notification settings" }),
+		);
+		expect(mocks.navigateMock).toHaveBeenCalledWith({
+			to: "/account/preferences",
+		});
+	});
+
+	it("shows when Do Not Disturb is on", async () => {
+		mocks.pushSettingsMock.mockResolvedValue({
+			public_key: "K",
+			subscription_count: 0,
+			preferences: [],
+			do_not_disturb: { active: true, until: null, indefinite: true },
+		});
+		mocks.listNotificationsMock.mockResolvedValue({
+			items: [],
+			page_size: 20,
+			next_cursor: null,
+			unread_count: 0,
+		});
+		await renderAndOpen();
+		expect(await screen.findByText("Do Not Disturb is on")).toBeInTheDocument();
 	});
 });

@@ -517,7 +517,8 @@
 			"signIn": "Sign-in",
 			"branding": "Branding",
 			"sso": "Single sign-on",
-			"security": "Login security"
+			"security": "Login security",
+			"notifications": "Notification delivery"
 		},
 		"security": {
 			"roles": {
@@ -550,6 +551,43 @@
 				"saveFailed": "Failed to save. Please try again.",
 				"loadFailed": "Couldn't load the login security settings."
 			}
+		},
+		"notifications": {
+			"title": "Notification delivery",
+			"description": "Whether notifications are getting through: the delivery backlog, failures, how long delivery takes, and what the background workers gave up on. Refreshes every 30 seconds.",
+			"refresh": "Refresh",
+			"loadError": "Couldn't load notification health.",
+			"status": {
+				"ok": "Healthy",
+				"degraded": "Degraded",
+				"failing": "Failing"
+			},
+			"channels": "Delivery channels",
+			"noDeliveries": "No deliveries yet.",
+			"channelNames": {
+				"realtime": "Realtime",
+				"push": "Push",
+				"email": "Email"
+			},
+			"columns": {
+				"channel": "Channel",
+				"pending": "Waiting",
+				"overdue": "Overdue",
+				"sent": "Sent (1h)",
+				"failed": "Failed (1h)",
+				"p50": "Median",
+				"p95": "Slowest 5%",
+				"stream": "Stream",
+				"unacked": "Unacknowledged",
+				"oldestWait": "Oldest wait",
+				"deadLetters": "Given up on (1h / total)"
+			},
+			"noData": "—",
+			"noReason": "no reason recorded",
+			"errorLine": "{{channel}}: {{count}} failed — {{error}}",
+			"streams": "Background workers",
+			"deadCount": "{{recent}} / {{total}}",
+			"checkedAt": "Checked at {{time}}"
 		}
 	},
 	"serviceAccounts": {

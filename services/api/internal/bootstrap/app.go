@@ -40,8 +40,10 @@ import (
 	gitsvc "github.com/Paca-AI/api/internal/service/git"
 	mfasvc "github.com/Paca-AI/api/internal/service/mfa"
 	notificationsvc "github.com/Paca-AI/api/internal/service/notification"
+	notificationhealthsvc "github.com/Paca-AI/api/internal/service/notificationhealth"
 	pluginsvc "github.com/Paca-AI/api/internal/service/plugin"
 	projectsvc "github.com/Paca-AI/api/internal/service/project"
+	pushsvc "github.com/Paca-AI/api/internal/service/push"
 	rolesvc "github.com/Paca-AI/api/internal/service/role"
 	serviceaccountsvc "github.com/Paca-AI/api/internal/service/serviceaccount"
 	settingssvc "github.com/Paca-AI/api/internal/service/settings"
@@ -68,6 +70,8 @@ type App struct {
 	publisher              *messaging.Publisher
 	activityConsumer       *worker.ActivityConsumer
 	notificationConsumer   *worker.NotificationConsumer
+	deliveryDispatcher     *worker.NotificationDeliveryDispatcher
+	pushDispatcher         *worker.NotificationDeliveryDispatcher
 	pluginEventConsumer    *worker.PluginEventConsumer
 	environmentConsumer    *worker.EnvironmentCommandConsumer
 	projectExportConsumer  *worker.ProjectExportConsumer
@@ -290,6 +294,17 @@ func New(cfg *config.Config) (*App, error) {
 	activityService := tasksvc.NewActivityService(activityLog, taskRepo, projectRepo).
 		WithNotificationService(notificationService).
 		WithAgentTrigger(triggerGate)
+	// Retries realtime announcements the creating request could not make. Only
+	// meaningful with a publisher; without Valkey there is no realtime channel.
+	var deliveryDispatcher *worker.NotificationDeliveryDispatcher
+	if publisher != nil {
+		deliveryDispatcher = worker.NewNotificationDeliveryDispatcher(notificationRepo, publisher, log)
+	}
+	// Web Push: subscriptions, per-type preferences and the push dispatcher.
+	// The VAPID key pair is generated on first use and stored encrypted when
+	// ENCRYPTION_KEY is set.
+	pushService := pushsvc.New(pgRepo.NewPushRepository(db), cfg.Server.PublicURL).WithEncryptor(encryptor)
+	pushDispatcher := worker.NewNotificationPushDispatcher(notificationRepo, pushService, log)
 	notificationConsumer := worker.NewNotificationConsumer(redisClient, notificationService, log, projectRepo, triggerGate).
 		WithActivityRecorder(activityService)
 	activityConsumer := worker.NewActivityConsumer(redisClient, pgRepo.NewActivityRepository(db), projectRepo, log)
@@ -667,6 +682,8 @@ func New(cfg *config.Config) (*App, error) {
 		File:               handler.NewFileHandler(fileService, projectService, authorizer).WithListScoper(authorizer),
 		FileAreas:          fileRepo,
 		Notification:       handler.NewNotificationHandler(notificationService, handler.WithNotificationAvatarService(attachmentService)),
+		Push:               handler.NewPushHandler(pushService),
+		NotificationHealth: handler.NewNotificationHealthHandler(notificationhealthsvc.New(notificationRepo, worker.NewStreamInspector(redisClient))),
 		APIKey:             handler.NewAPIKeyHandler(apiKeyService),
 		ServiceAccount:     handler.NewServiceAccountHandler(serviceAccountService, apiKeyService).WithAvatarService(attachmentService),
 		Skills:             handler.NewSkillsHandler(pluginService, pluginStore),
@@ -695,7 +712,7 @@ func New(cfg *config.Config) (*App, error) {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, notificationConsumer: notificationConsumer, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, projectExportConsumer: projectExportConsumer, automationConsumer: automationConsumer, taskAutofillConsumer: taskAutofillConsumer, taskAutoAssignConsumer: taskAutoAssignConsumer, agentQueueConsumer: agentQueueConsumer, questionConsumer: questionConsumer, dueDateScheduler: dueDateScheduler, fileTrashPurger: fileTrashPurger, cronScheduler: cronScheduler, changeReconciler: changeReconciler, docHashBackfill: docHashBackfill, waitScheduler: waitScheduler, gitRouter: gitRouter, log: log}, nil
+	return &App{server: srv, publisher: publisher, activityConsumer: activityConsumer, notificationConsumer: notificationConsumer, deliveryDispatcher: deliveryDispatcher, pushDispatcher: pushDispatcher, pluginEventConsumer: pluginEventConsumer, environmentConsumer: environmentConsumer, projectExportConsumer: projectExportConsumer, automationConsumer: automationConsumer, taskAutofillConsumer: taskAutofillConsumer, taskAutoAssignConsumer: taskAutoAssignConsumer, agentQueueConsumer: agentQueueConsumer, questionConsumer: questionConsumer, dueDateScheduler: dueDateScheduler, fileTrashPurger: fileTrashPurger, cronScheduler: cronScheduler, changeReconciler: changeReconciler, docHashBackfill: docHashBackfill, waitScheduler: waitScheduler, gitRouter: gitRouter, log: log}, nil
 }
 
 // platformActionsReader lists a user's or agent's effective platform-level
@@ -731,6 +748,12 @@ func (a *App) Run() error {
 	a.log.Info("starting server", "addr", a.server.Addr)
 	a.activityConsumer.Start(context.Background())
 	a.notificationConsumer.Start(context.Background())
+	if a.deliveryDispatcher != nil {
+		a.deliveryDispatcher.Start(context.Background())
+	}
+	if a.pushDispatcher != nil {
+		a.pushDispatcher.Start(context.Background())
+	}
 	a.pluginEventConsumer.Start(context.Background())
 	a.environmentConsumer.Start(context.Background())
 	a.projectExportConsumer.Start(context.Background())
@@ -758,6 +781,12 @@ func (a *App) Shutdown(ctx context.Context) error {
 	a.log.Info("shutting down server")
 	a.activityConsumer.Stop()
 	a.notificationConsumer.Stop()
+	if a.deliveryDispatcher != nil {
+		a.deliveryDispatcher.Stop()
+	}
+	if a.pushDispatcher != nil {
+		a.pushDispatcher.Stop()
+	}
 	a.pluginEventConsumer.Stop()
 	a.environmentConsumer.Stop()
 	a.projectExportConsumer.Stop()

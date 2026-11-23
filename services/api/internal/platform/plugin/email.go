@@ -93,34 +93,39 @@ func (r *Runtime) registerEmailFunction(b wazero.HostModuleBuilder, p plugindom.
 				m.Memory().WriteUint32Le(uint32(stack[2]), uint32(ptrLen[0]))
 				m.Memory().WriteUint32Le(uint32(stack[3]), uint32(ptrLen[1]))
 			}
-			writeErr := func(msg string) {
-				writeBack(writeJSONResult(m, map[string]string{"error": msg}))
+			// writeErr reports a failure to the plugin and, when the send is part
+			// of handling an event, to the event dispatcher (see sendOutcomes).
+			writeErr := func(err error) {
+				recordSendFailure(ctx, err)
+				writeBack(writeJSONResult(m, map[string]string{"error": err.Error()}))
 			}
+			// bad is a failure of the request itself, which retrying cannot fix.
+			bad := func(msg string) { writeErr(&permanentSendError{msg: msg}) }
 
 			if !hasPermission(p.Manifest.Permissions, "email.send") {
-				writeErr("send_email: plugin manifest does not declare the email.send permission")
+				bad("send_email: plugin manifest does not declare the email.send permission")
 				return
 			}
 
 			reqBytes, err := readFromMemory(m, stack[0], stack[1])
 			if err != nil {
-				writeErr("send_email: read request: " + err.Error())
+				bad("send_email: read request: " + err.Error())
 				return
 			}
 			var req smtpSendRequest
 			if err := json.Unmarshal(reqBytes, &req); err != nil {
-				writeErr("send_email: decode request: " + err.Error())
+				bad("send_email: decode request: " + err.Error())
 				return
 			}
 			if err := req.validate(); err != nil {
-				writeErr("send_email: " + err.Error())
+				bad("send_email: " + err.Error())
 				return
 			}
 
 			sendCtx, cancel := context.WithTimeout(ctx, smtpDialTimeout)
 			defer cancel()
 			if err := dialAndSendSMTP(sendCtx, req); err != nil {
-				writeErr(err.Error())
+				writeErr(err)
 				return
 			}
 			writeBack(writeJSONResult(m, map[string]string{"error": ""}))

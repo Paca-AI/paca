@@ -44,6 +44,7 @@ type QuestionNotificationConsumer struct {
 	notificationSvc notificationdom.Service
 	log             *slog.Logger
 	consumerName    string
+	reclaim         *streamReclaimer
 	stopCh          chan struct{}
 	doneCh          chan struct{}
 }
@@ -54,13 +55,15 @@ func NewQuestionNotificationConsumer(client *redis.Client, repo questionConversa
 	if err != nil || hostname == "" {
 		hostname = uuid.New().String()
 	}
+	consumerName := fmt.Sprintf("%s.%s", questionConsumerGroup, hostname)
 	return &QuestionNotificationConsumer{
 		client:          client,
 		repo:            repo,
 		memberRepo:      memberRepo,
 		notificationSvc: notificationSvc,
 		log:             log,
-		consumerName:    fmt.Sprintf("%s.%s", questionConsumerGroup, hostname),
+		consumerName:    consumerName,
+		reclaim:         newStreamReclaimer(client, log, events.StreamAgentEvents, questionConsumerGroup, consumerName),
 		stopCh:          make(chan struct{}),
 		doneCh:          make(chan struct{}),
 	}
@@ -103,6 +106,9 @@ func (c *QuestionNotificationConsumer) run() {
 			c.log.Info("question notification consumer: stopping")
 			return
 		default:
+		}
+		if c.reclaim.due(time.Now()) {
+			c.reclaim.run(context.Background(), c.handle)
 		}
 		if err := c.read(">", questionReadBlock); err != nil {
 			if strings.Contains(err.Error(), "NOGROUP") {
@@ -172,7 +178,7 @@ func (c *QuestionNotificationConsumer) handle(msg redis.XMessage) {
 	conv, err := c.repo.FindConversationByID(ctx, convID)
 	if err != nil {
 		c.log.Error("question notification consumer: find conversation", "conversation_id", convID, "err", err)
-		return // not acked — retried via the pending list on restart
+		return // not acked — the reclaimer redelivers it, then dead-letters it if it keeps failing
 	}
 
 	var recipient uuid.UUID
@@ -191,7 +197,10 @@ func (c *QuestionNotificationConsumer) handle(msg redis.XMessage) {
 			AgentID:            conv.AgentID,
 			RecipientAccountID: recipient,
 		}); err != nil {
+			// Not acked: the reclaimer redelivers it and dead-letters it if it keeps
+			// failing, instead of dropping a question the owner never hears about.
 			c.log.Error("question notification consumer: notify", "conversation_id", convID, "err", err)
+			return
 		}
 	}
 	c.ack(ctx, msg.ID)

@@ -16,8 +16,9 @@ import (
 )
 
 type fakeNotificationRepo struct {
-	mu   sync.RWMutex
-	data map[uuid.UUID]*notificationdom.Notification
+	mu        sync.RWMutex
+	data      map[uuid.UUID]*notificationdom.Notification
+	delivered []uuid.UUID // ids passed to MarkDelivered
 }
 
 func newFakeNotificationRepo() *fakeNotificationRepo {
@@ -115,6 +116,13 @@ func (r *fakeNotificationRepo) MarkAllAsRead(_ context.Context, userID uuid.UUID
 			n.ReadAt = &now
 		}
 	}
+	return nil
+}
+
+func (r *fakeNotificationRepo) MarkDelivered(_ context.Context, id uuid.UUID, _ notificationdom.DeliveryChannel) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.delivered = append(r.delivered, id)
 	return nil
 }
 
@@ -782,6 +790,7 @@ func TestNotifyMentioned_CaseInsensitiveMatch(t *testing.T) {
 }
 
 func TestNotifyMentioned_RepoCreateErrorBestEffort(t *testing.T) {
+	noRetryDelay(t)
 	ctx := context.Background()
 	failingRepo := &errCreateRepo{newFakeNotificationRepo()}
 	members := newFakeMemberRepo()
@@ -803,8 +812,8 @@ func TestNotifyMentioned_RepoCreateErrorBestEffort(t *testing.T) {
 		ActorMemberID: actorMemberID,
 		ActorID:       actorAccountID,
 	})
-	if err != nil {
-		t.Fatalf("expected nil error (best-effort), got %v", err)
+	if err == nil {
+		t.Fatal("expected the failed insert to be reported to the caller")
 	}
 }
 

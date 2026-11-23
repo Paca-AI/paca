@@ -84,7 +84,28 @@
 		},
 		"untitledConversation": "未命名对话",
 		"globalChat": "全局聊天",
-		"untitledDocument": "未命名文档"
+		"untitledDocument": "未命名文档",
+		"markRead": "标为已读",
+		"settings": "通知设置",
+		"caughtUp": "你已看完所有通知",
+		"loadError": "无法加载通知。",
+		"retry": "重试",
+		"dndOn": "勿扰已开启",
+		"filter": {
+			"label": "显示",
+			"all": "全部",
+			"unread": "未读"
+		},
+		"group": {
+			"today": "今天",
+			"yesterday": "昨天",
+			"earlier": "更早"
+		},
+		"push": {
+			"prompt": "即使关闭 Paca 也能收到通知。",
+			"enable": "开启",
+			"dismiss": "暂不"
+		}
 	},
 	"userMenu": {
 		"signIn": "登录",

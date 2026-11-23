@@ -84,7 +84,28 @@
 		},
 		"untitledConversation": "Cuộc trò chuyện chưa đặt tên",
 		"globalChat": "Trò chuyện chung",
-		"untitledDocument": "Tài liệu chưa đặt tên"
+		"untitledDocument": "Tài liệu chưa đặt tên",
+		"markRead": "Đánh dấu đã đọc",
+		"settings": "Cài đặt thông báo",
+		"caughtUp": "Bạn đã xem hết",
+		"loadError": "Không thể tải thông báo của bạn.",
+		"retry": "Thử lại",
+		"dndOn": "Chế độ Không làm phiền đang bật",
+		"filter": {
+			"label": "Hiển thị",
+			"all": "Tất cả",
+			"unread": "Chưa đọc"
+		},
+		"group": {
+			"today": "Hôm nay",
+			"yesterday": "Hôm qua",
+			"earlier": "Trước đó"
+		},
+		"push": {
+			"prompt": "Nhận thông báo ngay cả khi đã đóng Paca.",
+			"enable": "Bật",
+			"dismiss": "Để sau"
+		}
 	},
 	"userMenu": {
 		"signIn": "Đăng nhập",
