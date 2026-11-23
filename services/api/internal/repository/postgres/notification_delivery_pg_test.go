@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"errors"
-	"sync"
 	"testing"
 	"time"
 
@@ -39,7 +38,7 @@ func (f *deliveryFx) notify(t *testing.T) *notificationdom.Notification {
 	return n
 }
 
-// makeDue pulls the notification's delivery forward so ClaimDue sees it.
+// makeDue pulls the notification's delivery forward so LeaseDue sees it.
 func (f *deliveryFx) makeDue(t *testing.T, id uuid.UUID) {
 	t.Helper()
 	pgExec(t, f.db, `UPDATE notification_deliveries SET next_attempt_at = NOW() - interval '1 second' WHERE notification_id = $1`, id)
@@ -60,6 +59,15 @@ func (f *deliveryFx) delivery(t *testing.T, id uuid.UUID) deliveryRow {
 	return d
 }
 
+func (f *deliveryFx) lease(t *testing.T, channel notificationdom.DeliveryChannel, now time.Time, limit int) []notificationdom.PendingDelivery {
+	t.Helper()
+	got, err := f.repo.LeaseDue(context.Background(), channel, now, limit, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
 func TestCreateNotification_AlsoCreatesPendingRealtimeDelivery(t *testing.T) {
 	f := newDeliveryFx(t)
 	n := f.notify(t)
@@ -69,10 +77,8 @@ func TestCreateNotification_AlsoCreatesPendingRealtimeDelivery(t *testing.T) {
 		t.Fatalf("new delivery = %+v, want pending with 0 attempts", d)
 	}
 	// Not due yet: the creating request's own publish gets first go.
-	got, err := f.repo.ClaimDue(context.Background(), notificationdom.DeliveryChannelRealtime, time.Now(), 10,
-		func([]notificationdom.PendingDelivery) []notificationdom.DeliveryOutcome { return nil })
-	if err != nil || got != 0 {
-		t.Fatalf("ClaimDue before the grace = %d, %v; want 0, nil", got, err)
+	if got := f.lease(t, notificationdom.DeliveryChannelRealtime, time.Now(), 10); len(got) != 0 {
+		t.Fatalf("LeaseDue before the grace = %d deliveries; want 0", len(got))
 	}
 }
 
@@ -87,39 +93,37 @@ func TestMarkDelivered_PreventsRedelivery(t *testing.T) {
 	if d := f.delivery(t, n.ID); d.Status != "sent" {
 		t.Fatalf("status = %q, want sent", d.Status)
 	}
-	got, _ := f.repo.ClaimDue(context.Background(), notificationdom.DeliveryChannelRealtime, time.Now(), 10,
-		func([]notificationdom.PendingDelivery) []notificationdom.DeliveryOutcome { return nil })
-	if got != 0 {
-		t.Fatalf("a sent delivery must not be claimed again, claimed %d", got)
+	if got := f.lease(t, notificationdom.DeliveryChannelRealtime, time.Now(), 10); len(got) != 0 {
+		t.Fatalf("a sent delivery must not be leased again, got %d", len(got))
 	}
 }
 
-func TestClaimDue_AppliesSuccessRetryAndFailureOutcomes(t *testing.T) {
+func TestRecordOutcomes_AppliesSuccessRetryAndFailure(t *testing.T) {
 	f := newDeliveryFx(t)
 	ctx := context.Background()
 	ok, retry, dead := f.notify(t), f.notify(t), f.notify(t)
 	for _, n := range []*notificationdom.Notification{ok, retry, dead} {
 		f.makeDue(t, n.ID)
 	}
-	retryAt := time.Now().Add(time.Hour).UTC().Truncate(time.Microsecond)
+	retryAt := time.Now().Add(2 * time.Hour).UTC().Truncate(time.Microsecond)
 
-	got, err := f.repo.ClaimDue(ctx, notificationdom.DeliveryChannelRealtime, time.Now(), 10,
-		func(p []notificationdom.PendingDelivery) []notificationdom.DeliveryOutcome {
-			var out []notificationdom.DeliveryOutcome
-			for _, d := range p {
-				switch d.Notification.ID {
-				case ok.ID:
-					out = append(out, notificationdom.DeliveryOutcome{ID: d.ID})
-				case retry.ID:
-					out = append(out, notificationdom.DeliveryOutcome{ID: d.ID, Err: errors.New("valkey down"), NextAttemptAt: retryAt})
-				case dead.ID:
-					out = append(out, notificationdom.DeliveryOutcome{ID: d.ID, Err: errors.New("expired"), Failed: true, NextAttemptAt: time.Now()})
-				}
-			}
-			return out
-		})
-	if err != nil || got != 3 {
-		t.Fatalf("ClaimDue = %d, %v; want 3, nil", got, err)
+	leased := f.lease(t, notificationdom.DeliveryChannelRealtime, time.Now(), 10)
+	if len(leased) != 3 {
+		t.Fatalf("leased %d deliveries, want 3", len(leased))
+	}
+	var outcomes []notificationdom.DeliveryOutcome
+	for _, d := range leased {
+		switch d.Notification.ID {
+		case ok.ID:
+			outcomes = append(outcomes, notificationdom.DeliveryOutcome{ID: d.ID})
+		case retry.ID:
+			outcomes = append(outcomes, notificationdom.DeliveryOutcome{ID: d.ID, Err: errors.New("valkey down"), NextAttemptAt: retryAt})
+		case dead.ID:
+			outcomes = append(outcomes, notificationdom.DeliveryOutcome{ID: d.ID, Err: errors.New("expired"), Failed: true, NextAttemptAt: time.Now()})
+		}
+	}
+	if err := f.repo.RecordOutcomes(ctx, outcomes); err != nil {
+		t.Fatal(err)
 	}
 
 	if d := f.delivery(t, ok.ID); d.Status != "sent" || d.Attempts != 1 {
@@ -132,65 +136,67 @@ func TestClaimDue_AppliesSuccessRetryAndFailureOutcomes(t *testing.T) {
 		t.Fatalf("failure outcome stored as %+v", d)
 	}
 	// The retried one is not due again until its backoff passes.
-	again, _ := f.repo.ClaimDue(ctx, notificationdom.DeliveryChannelRealtime, time.Now(), 10,
-		func([]notificationdom.PendingDelivery) []notificationdom.DeliveryOutcome { return nil })
-	if again != 0 {
-		t.Fatalf("nothing should be due, claimed %d", again)
+	if again := f.lease(t, notificationdom.DeliveryChannelRealtime, time.Now(), 10); len(again) != 0 {
+		t.Fatalf("nothing should be due, leased %d", len(again))
+	}
+	if err := f.repo.RecordOutcomes(ctx, nil); err != nil {
+		t.Fatalf("recording nothing must be a no-op, got %v", err)
 	}
 }
 
-func TestClaimDue_ReplicasClaimDifferentRows(t *testing.T) {
+func TestLeaseDue_HidesLeasedRowsFromOtherReplicasWithoutHoldingALock(t *testing.T) {
 	f := newDeliveryFx(t)
 	const total = 6
 	for i := 0; i < total; i++ {
 		f.makeDue(t, f.notify(t).ID)
 	}
+	ctx := context.Background()
 
-	// The first claimer holds its rows (its transaction is open) while the
-	// second claims; SKIP LOCKED must hand the second only what is left.
-	holding, release := make(chan struct{}), make(chan struct{})
-	var wg sync.WaitGroup
-	var firstIDs []uuid.UUID
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		_, err := f.repo.ClaimDue(context.Background(), notificationdom.DeliveryChannelRealtime, time.Now(), 3,
-			func(p []notificationdom.PendingDelivery) []notificationdom.DeliveryOutcome {
-				for _, d := range p {
-					firstIDs = append(firstIDs, d.ID)
-				}
-				close(holding)
-				<-release
-				return nil
-			})
-		if err != nil {
-			t.Error(err)
-		}
-	}()
-	<-holding
-
-	var secondIDs []uuid.UUID
-	if _, err := f.repo.ClaimDue(context.Background(), notificationdom.DeliveryChannelRealtime, time.Now(), 10,
-		func(p []notificationdom.PendingDelivery) []notificationdom.DeliveryOutcome {
-			for _, d := range p {
-				secondIDs = append(secondIDs, d.ID)
-			}
-			return nil
-		}); err != nil {
+	first, err := f.repo.LeaseDue(ctx, notificationdom.DeliveryChannelRealtime, time.Now(), 3, time.Hour)
+	if err != nil {
 		t.Fatal(err)
 	}
-	close(release)
-	wg.Wait()
+	// The first replica is still "sending". Its transaction is already over, so
+	// no lock stands in the second one's way and no connection is pinned; the
+	// lease alone keeps the two apart.
+	var pinned int
+	if err := f.db.GetContext(ctx, &pinned, `SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() AND state = 'idle in transaction'`); err != nil || pinned != 0 {
+		t.Fatalf("idle-in-transaction connections = %d (%v); a lease must not hold a transaction open while sending", pinned, err)
+	}
+	second, err := f.repo.LeaseDue(ctx, notificationdom.DeliveryChannelRealtime, time.Now(), 10, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	if len(firstIDs) != 3 || len(secondIDs) != total-3 {
-		t.Fatalf("claims = %d and %d, want 3 and %d", len(firstIDs), len(secondIDs), total-3)
+	if len(first) != 3 || len(second) != total-3 {
+		t.Fatalf("leases = %d and %d, want 3 and %d", len(first), len(second), total-3)
 	}
 	seen := map[uuid.UUID]bool{}
-	for _, id := range append(firstIDs, secondIDs...) {
-		if seen[id] {
-			t.Fatalf("delivery %s was claimed by both replicas", id)
+	for _, d := range append(first, second...) {
+		if seen[d.ID] {
+			t.Fatalf("delivery %s was leased twice", d.ID)
 		}
-		seen[id] = true
+		seen[d.ID] = true
+	}
+}
+
+func TestLeaseDue_AnExpiredLeaseMakesTheDeliveryDueAgain(t *testing.T) {
+	f := newDeliveryFx(t)
+	n := f.notify(t)
+	f.makeDue(t, n.ID)
+	ctx := context.Background()
+
+	if got, err := f.repo.LeaseDue(ctx, notificationdom.DeliveryChannelRealtime, time.Now(), 10, time.Minute); err != nil || len(got) != 1 {
+		t.Fatalf("first lease = %d, %v; want 1", len(got), err)
+	}
+	if got := f.lease(t, notificationdom.DeliveryChannelRealtime, time.Now(), 10); len(got) != 0 {
+		t.Fatalf("a leased delivery must not be handed out again while the lease holds, got %d", len(got))
+	}
+	// The sender died: the lease runs out and another replica takes over, with
+	// no attempt spent.
+	got := f.lease(t, notificationdom.DeliveryChannelRealtime, time.Now().Add(2*time.Minute), 10)
+	if len(got) != 1 || got[0].Attempts != 0 {
+		t.Fatalf("after the lease = %+v; want the same delivery with 0 attempts", got)
 	}
 }
 

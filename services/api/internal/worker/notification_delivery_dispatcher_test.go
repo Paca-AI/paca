@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,9 +21,13 @@ type fakeDeliveryRepo struct {
 	prunes   int
 }
 
-func (r *fakeDeliveryRepo) ClaimDue(_ context.Context, _ notificationdom.DeliveryChannel, _ time.Time, _ int, deliver func([]notificationdom.PendingDelivery) []notificationdom.DeliveryOutcome) (int, error) {
-	r.outcomes = append(r.outcomes, deliver(r.due)...)
-	return len(r.due), nil
+func (r *fakeDeliveryRepo) LeaseDue(context.Context, notificationdom.DeliveryChannel, time.Time, int, time.Duration) ([]notificationdom.PendingDelivery, error) {
+	return r.due, nil
+}
+
+func (r *fakeDeliveryRepo) RecordOutcomes(_ context.Context, o []notificationdom.DeliveryOutcome) error {
+	r.outcomes = append(r.outcomes, o...)
+	return nil
 }
 
 func (r *fakeDeliveryRepo) Prune(context.Context, time.Time, time.Time) (int64, error) {
@@ -205,5 +210,99 @@ func TestDispatcher_CountsWhatItDid(t *testing.T) {
 	}
 	if d.expired != 1 {
 		t.Fatalf("expired = %d, want 1", d.expired)
+	}
+}
+
+// blockingSender holds every send until released, recording how many ran at once.
+type blockingSender struct {
+	mu      sync.Mutex
+	running int
+	peak    int
+	release chan struct{}
+}
+
+func (b *blockingSender) Send(ctx context.Context, _ *notificationdom.Notification) error {
+	b.mu.Lock()
+	b.running++
+	b.peak = max(b.peak, b.running)
+	b.mu.Unlock()
+	defer func() { b.mu.Lock(); b.running--; b.mu.Unlock() }()
+	select {
+	case <-b.release:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func TestPushDispatcher_SendsFromAPoolNotOneByOne(t *testing.T) {
+	now := time.Now()
+	var due []notificationdom.PendingDelivery
+	for i := 0; i < 20; i++ {
+		due = append(due, dueDelivery(0, now.Add(-time.Minute)))
+	}
+	repo := &fakeDeliveryRepo{due: due}
+	sender := &blockingSender{release: make(chan struct{})}
+	d := NewNotificationPushDispatcher(repo, sender, discardLogger())
+	d.now = func() time.Time { return now }
+
+	done := make(chan struct{})
+	go func() {
+		_, _ = d.Tick(context.Background())
+		close(done)
+	}()
+	// Wait until the pool is full, then let everything finish.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		sender.mu.Lock()
+		full := sender.running >= pushConcurrency
+		sender.mu.Unlock()
+		if full {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	close(sender.release)
+	<-done
+
+	if sender.peak != pushConcurrency {
+		t.Fatalf("peak concurrency = %d, want %d: a slow push service must not serialise the batch", sender.peak, pushConcurrency)
+	}
+	if len(repo.outcomes) != 20 {
+		t.Fatalf("recorded %d outcomes, want 20", len(repo.outcomes))
+	}
+}
+
+func TestDispatcher_ShutdownAbandonsSendsInFlightWithoutSpendingAttempts(t *testing.T) {
+	now := time.Now()
+	repo := &fakeDeliveryRepo{due: []notificationdom.PendingDelivery{dueDelivery(0, now.Add(-time.Minute)), dueDelivery(0, now.Add(-time.Minute))}}
+	sender := &blockingSender{release: make(chan struct{})}
+	d := NewNotificationPushDispatcher(repo, sender, discardLogger())
+	d.now = func() time.Time { return now }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		_, _ = d.Tick(ctx)
+		close(done)
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		sender.mu.Lock()
+		n := sender.running
+		sender.mu.Unlock()
+		if n == 2 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	cancel() // shutdown
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a slow send held shutdown up: Tick must return once its context is cancelled")
+	}
+	if len(repo.outcomes) != 0 {
+		t.Fatalf("abandoned sends recorded %d outcomes; they must stay leased and untouched, not cost an attempt", len(repo.outcomes))
 	}
 }

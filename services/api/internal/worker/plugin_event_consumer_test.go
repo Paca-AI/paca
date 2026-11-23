@@ -162,3 +162,57 @@ func TestPluginEventConsumer_RetryStateIsClearedWhenOnlyAPermanentFailureRemains
 		t.Fatalf("retry state should be cleared, found %v", keys)
 	}
 }
+
+func TestPluginEventConsumer_DeadLetterWriteFailureLeavesTheEntryPending(t *testing.T) {
+	f := newPluginEventFx(t,
+		[]plugindom.EventDelivery{
+			{Plugin: "com.paca.smtp", Err: errors.New("535 bad credentials"), Retryable: false},
+			{Plugin: "com.paca.webhook"},
+		},
+		// The redelivery runs only the plugin whose failure could not be recorded.
+		[]plugindom.EventDelivery{{Plugin: "com.paca.smtp", Err: errors.New("535 bad credentials"), Retryable: false}},
+	)
+	// A dead-letter stream that cannot be written to (the wrong type of key).
+	if err := f.client.Set(context.Background(), events.StreamPluginEvents+".dead", "not a stream", 0).Err(); err != nil {
+		t.Fatal(err)
+	}
+	f.add(t)
+	msg := f.read(t, ">")
+
+	f.c.handle(msg)
+	if n := f.pending(t); n != 1 {
+		t.Fatalf("a failure that could not be recorded must not be acked, %d pending", n)
+	}
+	f.c.handle(msg)
+	if got := f.em.only[1]; len(got) != 1 || got[0] != "com.paca.smtp" {
+		t.Fatalf("the redelivery must run only the plugin that was not recorded, got only=%v (the webhook plugin already handled it)", got)
+	}
+	if n := f.pending(t); n != 1 {
+		t.Fatalf("still unrecorded, so still pending: %d", n)
+	}
+}
+
+func TestPluginEventConsumer_FailedAckKeepsTheRetrySet(t *testing.T) {
+	f := newPluginEventFx(t,
+		[]plugindom.EventDelivery{{Plugin: "com.paca.smtp", Err: errors.New("timeout"), Retryable: true}, {Plugin: "com.paca.webhook"}},
+		[]plugindom.EventDelivery{{Plugin: "com.paca.smtp"}},
+	)
+	f.add(t)
+	msg := f.read(t, ">")
+	f.c.handle(msg) // saves {smtp} and leaves the entry pending
+
+	// The ack can now no longer work: the stream key is not a stream any more.
+	ctx := context.Background()
+	if err := f.client.Del(ctx, events.StreamPluginEvents).Err(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.client.Set(ctx, events.StreamPluginEvents, "x", 0).Err(); err != nil {
+		t.Fatal(err)
+	}
+	f.c.handle(msg) // the retry succeeds, but acknowledging it fails
+
+	keys, _ := f.client.Keys(ctx, pluginRetryKeyPrefix+"*").Result()
+	if len(keys) != 1 {
+		t.Fatalf("retry keys = %v; the set must survive a failed ack, or the redelivery would run every plugin again", keys)
+	}
+}

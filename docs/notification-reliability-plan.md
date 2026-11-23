@@ -70,7 +70,7 @@ Goal: a user always receives a notification. The `notifications` row is the sour
 
 #### Phase 2 as built
 
-- T2.1–T2.4 done: migration `000097` (`notification_deliveries`, one migration with the Web Push and Do Not Disturb tables below), notification + realtime delivery inserted in one transaction, `NotificationDeliveryDispatcher` (claims with `FOR UPDATE SKIP LOCKED`, backoff 15s doubling to 5min, 8 attempts, expires after 15min, prunes sent after 3d and failed after 30d). The creating request still publishes immediately and marks the delivery sent; the first dispatcher look is 30s later.
+- T2.1–T2.4 done: migration `000097` (`notification_deliveries`, one migration with the Web Push and Do Not Disturb tables below), notification + realtime delivery inserted in one transaction, `NotificationDeliveryDispatcher` (leases due rows with `FOR UPDATE SKIP LOCKED` in a short transaction, sends outside it, then records the outcomes; backoff 15s doubling to 5min, 8 attempts, expires after 15min, prunes sent after 3d and failed after 30d). The creating request still publishes immediately and marks the delivery sent; the first dispatcher look is 30s later.
 - T2.5 (per-user `seq`) **not built, by decision**: the outbox repairs "API never handed it to Valkey"; Pub/Sub loss after Valkey accepts it is covered by Phase 0's refetch on reconnect and the 60s poll. A `seq` would only shave latency off that case. Revisit if the sync protocol grows a per-user feed.
 - Only the `realtime` channel is dispatched. `email` and `push` are accepted by the schema but no dispatcher sends them (Phase 3 / 5).
 

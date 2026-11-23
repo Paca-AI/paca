@@ -65,3 +65,14 @@ func TestStreamInspector_ReportsPendingAndDeadLetters(t *testing.T) {
 }
 
 func formatID(ms int64) string { return strconv.FormatInt(ms, 10) + "-0" }
+
+func TestStreamInspector_ReportsValkeyFailuresInsteadOfReadingAsEmpty(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+	mr.Close() // Valkey goes away
+
+	if _, err := NewStreamInspector(client).StreamHealth(context.Background(), time.Now()); err == nil {
+		t.Fatal("an unreachable Valkey must be an error, not a stream with nothing pending: the admin page would say ok")
+	}
+}

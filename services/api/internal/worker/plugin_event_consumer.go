@@ -227,14 +227,22 @@ func (c *PluginEventConsumer) handle(msg redis.XMessage) {
 		// A retry would fail the same way. Keep a durable record next to the
 		// other dead letters, and move on.
 		c.log.Error("plugin event consumer: plugin could not handle event; not retrying", "id", msg.ID, "topic", eventType, "plugin", d.Plugin, "err", d.Err)
-		c.reclaim.recordDead(ctx, msg, d.Plugin+": "+d.Err.Error())
+		if err := c.reclaim.recordDead(ctx, msg, d.Plugin+": "+d.Err.Error()); err != nil {
+			// Without the record the failure would leave no trace, so keep the
+			// entry pending and run this plugin again — only this one, which is
+			// what the saved retry set below names — until it can be recorded.
+			retry = append(retry, d.Plugin)
+		}
 	}
 
 	if len(retry) == 0 {
-		if len(only) > 0 {
+		// Ack first, then forget who to retry. Deleting the set before an ack
+		// that then fails would leave the entry pending with an empty set, and
+		// its redelivery would run every plugin again, including the ones that
+		// already sent their email or called their webhook.
+		if c.ackOK(ctx, msg.ID) && len(only) > 0 {
 			_ = c.client.Del(ctx, retryKey).Err()
 		}
-		c.ack(ctx, msg.ID)
 		return
 	}
 
@@ -248,7 +256,11 @@ func (c *PluginEventConsumer) handle(msg redis.XMessage) {
 	pipe.Expire(ctx, retryKey, pluginRetryKeyTTL)
 	if _, err := pipe.Exec(ctx); err != nil {
 		c.log.Error("plugin event consumer: could not save retry state; giving up on retry", "id", msg.ID, "err", err)
-		c.reclaim.recordDead(ctx, msg, "retry state not saved: "+err.Error())
+		if recErr := c.reclaim.recordDead(ctx, msg, "retry state not saved: "+err.Error()); recErr != nil {
+			// Neither retried nor recorded: leave it pending rather than lose it.
+			c.log.Error("plugin event consumer: could not record the dead entry either; leaving it pending", "id", msg.ID, "err", recErr)
+			return
+		}
 		c.ack(ctx, msg.ID)
 	}
 }
@@ -262,7 +274,14 @@ func stringsToAny(in []string) []any {
 }
 
 func (c *PluginEventConsumer) ack(ctx context.Context, id string) {
+	_ = c.ackOK(ctx, id)
+}
+
+// ackOK acknowledges the entry and reports whether that worked.
+func (c *PluginEventConsumer) ackOK(ctx context.Context, id string) bool {
 	if err := c.client.XAck(ctx, events.StreamPluginEvents, pluginEventConsumerGroup, id).Err(); err != nil {
 		c.log.Warn("plugin event consumer: xack failed", "id", id, "err", err)
+		return false
 	}
+	return true
 }

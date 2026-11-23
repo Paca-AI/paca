@@ -155,17 +155,36 @@ export async function enablePush(
 	if (permission !== "granted") return "dismissed";
 
 	const reg = await registration();
-	// A subscription made against another key (the server's key never changes
-	// today, but if it did) would silently stop working: start clean.
-	const existing = await reg.pushManager.getSubscription();
-	const subscription =
-		existing ??
-		(await reg.pushManager.subscribe({
-			userVisibleOnly: true,
-			applicationServerKey: urlBase64ToUint8Array(publicKey),
-		}));
+	const key = urlBase64ToUint8Array(publicKey);
+	let subscription = await reg.pushManager.getSubscription();
+	// A subscription is bound to the key it was made against. If the server's key
+	// has changed since (a restored database, a rotated key), the old one can never
+	// be signed for again and would stay silently dead: drop it and subscribe anew.
+	if (
+		subscription &&
+		!sameKey(subscription.options?.applicationServerKey, key)
+	) {
+		await subscription.unsubscribe();
+		subscription = null;
+	}
+	subscription ??= await reg.pushManager.subscribe({
+		userVisibleOnly: true,
+		applicationServerKey: key,
+	});
 	await sendSubscription(subscription);
 	return "enabled";
+}
+
+/** Whether a subscription's recorded key is the given one. A browser that does
+ *  not expose the key (it is null or absent) cannot be told apart, so it is
+ *  trusted rather than resubscribed on every visit. */
+function sameKey(
+	recorded: ArrayBuffer | null | undefined,
+	key: Uint8Array,
+): boolean {
+	if (!recorded) return true;
+	const bytes = new Uint8Array(recorded);
+	return bytes.length === key.length && bytes.every((b, i) => b === key[i]);
 }
 
 /** Unsubscribes this browser and tells the server to forget it. */

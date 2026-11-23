@@ -50,7 +50,7 @@ func (r *fakePushRepo) DeleteSubscription(_ context.Context, acct uuid.UUID, end
 	defer r.mu.Unlock()
 	kept := r.subs[:0]
 	for _, s := range r.subs {
-		if !(s.AccountID == acct && s.Endpoint == endpoint) {
+		if s.AccountID != acct || s.Endpoint != endpoint {
 			kept = append(kept, s)
 		}
 	}
@@ -269,6 +269,17 @@ func TestSend_OneSuccessOutweighsAnotherDevicesTransientFailure(t *testing.T) {
 	svc.send = (&sendScript{statuses: map[string]int{"https://push.example/down": 503, "https://push.example/ok": 201}}).send
 	if err := svc.Send(context.Background(), notificationFor(acct)); err != nil {
 		t.Fatalf("Send = %v; delivered to one device, so a retry would only duplicate it", err)
+	}
+}
+
+func TestSend_KeyMismatchDeletesTheSubscription(t *testing.T) {
+	svc, repo, acct := serviceWithSubs(t, "https://push.example/stale")
+	svc.send = (&sendScript{statuses: map[string]int{"https://push.example/stale": 403}}).send
+	if err := svc.Send(context.Background(), notificationFor(acct)); err != nil {
+		t.Fatalf("a 403 cannot succeed on retry, got %v", err)
+	}
+	if len(repo.deleted) != 1 || repo.deleted[0] != "https://push.example/stale" {
+		t.Fatalf("a subscription the push service rejects for our key must be forgotten, deleted = %v", repo.deleted)
 	}
 }
 

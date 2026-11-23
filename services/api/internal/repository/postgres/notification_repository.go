@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -276,13 +277,14 @@ func optionalUUID(s *string) *uuid.UUID {
 	return &id
 }
 
-// ClaimDue locks due pending deliveries of channel (FOR UPDATE SKIP LOCKED, so
-// replicas claim different rows), hands them to deliver and stores its
-// outcomes, all in one transaction. The transaction stays open while deliver
-// runs, which is what keeps another replica off the same rows; deliver must
-// therefore be quick (a Valkey publish, not an HTTP call).
-func (r *NotificationRepository) ClaimDue(ctx context.Context, channel notificationdom.DeliveryChannel, now time.Time, limit int, deliver func([]notificationdom.PendingDelivery) []notificationdom.DeliveryOutcome) (int, error) {
-	claimed := 0
+// LeaseDue locks due pending deliveries of channel (FOR UPDATE SKIP LOCKED, so
+// replicas take different rows) and leases them by moving their next attempt to
+// now+lease, all in one short transaction. The locks are released at commit, so
+// the caller can do slow work with the result — a push is an outbound HTTPS
+// call — without holding a connection or a row lock. Another replica sees the
+// rows as not due until the lease runs out.
+func (r *NotificationRepository) LeaseDue(ctx context.Context, channel notificationdom.DeliveryChannel, now time.Time, limit int, lease time.Duration) ([]notificationdom.PendingDelivery, error) {
+	var pending []notificationdom.PendingDelivery
 	err := WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
 		var rows []pendingDeliveryRow
 		if err := tx.SelectContext(ctx, &rows, `
@@ -303,12 +305,13 @@ func (r *NotificationRepository) ClaimDue(ctx context.Context, channel notificat
 			ORDER BY d.next_attempt_at
 			LIMIT $3
 			FOR UPDATE OF d SKIP LOCKED`, string(channel), now, limit); err != nil {
-			return fmt.Errorf("claim: %w", err)
+			return fmt.Errorf("lease: %w", err)
 		}
 		if len(rows) == 0 {
 			return nil
 		}
-		pending := make([]notificationdom.PendingDelivery, 0, len(rows))
+		pending = make([]notificationdom.PendingDelivery, 0, len(rows))
+		ids := make([]string, 0, len(rows))
 		for _, row := range rows {
 			id, err := uuid.Parse(row.ID)
 			if err != nil {
@@ -351,18 +354,37 @@ func (r *NotificationRepository) ClaimDue(ctx context.Context, channel notificat
 			pending = append(pending, notificationdom.PendingDelivery{
 				ID: id, Channel: notificationdom.DeliveryChannel(row.Channel), Attempts: row.Attempts, Notification: n,
 			})
+			ids = append(ids, id.String())
 		}
-		claimed = len(pending)
+		_, err := tx.ExecContext(ctx, `
+			UPDATE notification_deliveries
+			SET next_attempt_at = $2, updated_at = NOW()
+			WHERE id = ANY($1::uuid[])`, pgStringArray(ids), now.Add(lease))
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return pending, nil
+}
 
-		for _, o := range deliver(pending) {
+// RecordOutcomes stores what became of leased deliveries, in one transaction.
+func (r *NotificationRepository) RecordOutcomes(ctx context.Context, outcomes []notificationdom.DeliveryOutcome) error {
+	if len(outcomes) == 0 {
+		return nil
+	}
+	return WithTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		for _, o := range outcomes {
 			if err := applyDeliveryOutcome(ctx, tx, o); err != nil {
 				return err
 			}
 		}
 		return nil
 	})
-	return claimed, err
 }
+
+// pgStringArray renders ids as a Postgres array literal for ANY($n::uuid[]).
+func pgStringArray(ids []string) string { return "{" + strings.Join(ids, ",") + "}" }
 
 func applyDeliveryOutcome(ctx context.Context, tx *sqlx.Tx, o notificationdom.DeliveryOutcome) error {
 	if o.Err == nil {

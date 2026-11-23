@@ -253,12 +253,16 @@ type DeliveryOutcome struct {
 
 // DeliveryRepository is the dispatcher's view of the delivery outbox.
 type DeliveryRepository interface {
-	// ClaimDue locks up to limit pending deliveries of the channel that are due
-	// at now (replicas claim different rows), hands them to deliver, and stores
-	// the outcomes it returns, all in one transaction. When deliver returns no
-	// outcome for a claimed delivery it is left pending, unchanged. It returns
-	// how many deliveries it claimed.
-	ClaimDue(ctx context.Context, channel DeliveryChannel, now time.Time, limit int, deliver func([]PendingDelivery) []DeliveryOutcome) (int, error)
+	// LeaseDue takes up to limit pending deliveries of the channel that are due
+	// at now and leases them: in one short transaction it locks them (replicas
+	// take different rows), pushes their next attempt out to now+lease, and
+	// commits. No lock is held afterwards, so the caller may do slow work (an
+	// HTTP call) with the returned deliveries. A delivery whose outcome is never
+	// recorded (a crash, a shutdown) simply becomes due again when its lease
+	// runs out.
+	LeaseDue(ctx context.Context, channel DeliveryChannel, now time.Time, limit int, lease time.Duration) ([]PendingDelivery, error)
+	// RecordOutcomes stores what became of leased deliveries, in one transaction.
+	RecordOutcomes(ctx context.Context, outcomes []DeliveryOutcome) error
 	// Prune deletes finished deliveries: sent ones last updated before
 	// sentBefore, failed ones before failedBefore. Pending rows are never
 	// pruned.

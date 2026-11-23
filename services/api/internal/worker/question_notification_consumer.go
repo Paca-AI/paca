@@ -197,7 +197,10 @@ func (c *QuestionNotificationConsumer) handle(msg redis.XMessage) {
 			AgentID:            conv.AgentID,
 			RecipientAccountID: recipient,
 		}); err != nil {
+			// Not acked: the reclaimer redelivers it and dead-letters it if it keeps
+			// failing, instead of dropping a question the owner never hears about.
 			c.log.Error("question notification consumer: notify", "conversation_id", convID, "err", err)
+			return
 		}
 	}
 	c.ack(ctx, msg.ID)

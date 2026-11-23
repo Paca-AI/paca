@@ -34,8 +34,10 @@ const (
 )
 
 var (
+	// ErrInvalidSubscription is returned for a subscription the server will not store.
 	ErrInvalidSubscription = notificationdom.ErrInvalidSubscription
-	ErrInvalidPreference   = notificationdom.ErrInvalidPreference
+	// ErrInvalidPreference is returned for an unknown notification type or channel.
+	ErrInvalidPreference = notificationdom.ErrInvalidPreference
 )
 
 var _ notificationdom.PushService = (*Service)(nil)
@@ -267,6 +269,15 @@ func (s *Service) Send(ctx context.Context, n *notificationdom.Notification) err
 		switch {
 		case status >= 200 && status < 300:
 			delivered++
+		case status == http.StatusForbidden:
+			// The subscription was made against a different VAPID key than the one
+			// signing for it now (the key changed, or the database was restored): it
+			// can never succeed. Forget it; the browser resubscribes against the
+			// current key the next time the preferences page is opened.
+			slog.WarnContext(ctx, "push: subscription rejected for a key mismatch; deleting it", "notification_id", n.ID)
+			if delErr := s.repo.DeleteSubscriptionByEndpoint(ctx, sub.Endpoint); delErr != nil {
+				slog.WarnContext(ctx, "push: could not delete mismatched subscription", "error", delErr)
+			}
 		case status == http.StatusNotFound || status == http.StatusGone:
 			// The browser unsubscribed or the subscription expired.
 			if delErr := s.repo.DeleteSubscriptionByEndpoint(ctx, sub.Endpoint); delErr != nil {

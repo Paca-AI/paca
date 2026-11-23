@@ -157,7 +157,9 @@ func (r *streamReclaimer) deadLetter(ctx context.Context, msg redis.XMessage, de
 // recordDead copies an entry that is being given up on to the dead-letter
 // stream without touching its pending state; the caller acks it. Unlike
 // deadLetter it does not ack, so the caller keeps control of the entry's fate.
-func (r *streamReclaimer) recordDead(ctx context.Context, msg redis.XMessage, reason string) {
+// It returns an error when the record could not be written, and then the caller
+// must not ack: an entry given up on with no record is lost without a trace.
+func (r *streamReclaimer) recordDead(ctx context.Context, msg redis.XMessage, reason string) error {
 	values := make(map[string]any, len(msg.Values)+4)
 	for k, v := range msg.Values {
 		values[k] = v
@@ -173,5 +175,7 @@ func (r *streamReclaimer) recordDead(ctx context.Context, msg redis.XMessage, re
 		Values: values,
 	}).Err(); err != nil {
 		r.log.Warn("stream reclaim: could not record dead entry", "stream", r.stream, "id", msg.ID, "err", err)
+		return err
 	}
+	return nil
 }

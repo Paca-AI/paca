@@ -121,6 +121,46 @@ describe("enablePush", () => {
 		expect(Notification.requestPermission).not.toHaveBeenCalled();
 	});
 
+	it("replaces a subscription made against another server key", async () => {
+		const stale = {
+			...fakeSubscription("https://push.example/old"),
+			options: { applicationServerKey: new Uint8Array([9, 9, 9]).buffer },
+		};
+		const { pushManager, created } = installBrowser({
+			permission: "granted",
+			existing: stale,
+		});
+		http.post.mockResolvedValue({});
+
+		await enablePush("aGVsbG8_Pg");
+
+		expect(stale.unsubscribe).toHaveBeenCalled();
+		expect(pushManager.subscribe).toHaveBeenCalledTimes(1);
+		expect(http.post).toHaveBeenCalledWith(
+			"/users/me/push/subscriptions",
+			created.toJSON(),
+		);
+	});
+
+	it("keeps a subscription whose key is the server's", async () => {
+		const current = {
+			...fakeSubscription("https://push.example/current"),
+			options: {
+				applicationServerKey: urlBase64ToUint8Array("aGVsbG8_Pg").buffer,
+			},
+		};
+		const { pushManager } = installBrowser({
+			permission: "granted",
+			existing: current,
+		});
+		http.post.mockResolvedValue({});
+
+		await enablePush("aGVsbG8_Pg");
+
+		expect(current.unsubscribe).not.toHaveBeenCalled();
+		expect(pushManager.subscribe).not.toHaveBeenCalled();
+	});
+
 	it("reuses an existing browser subscription instead of creating another", async () => {
 		const existing = fakeSubscription("https://push.example/old");
 		const { pushManager } = installBrowser({

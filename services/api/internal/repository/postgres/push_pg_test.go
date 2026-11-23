@@ -43,15 +43,12 @@ func TestCreateNotification_PushDeliveryWhenSubscribedAndEnabled(t *testing.T) {
 		t.Fatalf("expected one push delivery, got %d", got)
 	}
 	// Due at once, unlike the realtime announcement.
-	claimed, err := f.repo.ClaimDue(context.Background(), notificationdom.DeliveryChannelPush, time.Now().Add(time.Second), 10,
-		func(p []notificationdom.PendingDelivery) []notificationdom.DeliveryOutcome {
-			if len(p) == 1 && p[0].Notification.Message != "hi" {
-				t.Errorf("claimed push delivery should carry display fields, message = %q", p[0].Notification.Message)
-			}
-			return nil
-		})
-	if err != nil || claimed != 1 {
-		t.Fatalf("ClaimDue(push) = %d, %v; want 1, nil", claimed, err)
+	leased := f.lease(t, notificationdom.DeliveryChannelPush, time.Now().Add(time.Second), 10)
+	if len(leased) != 1 {
+		t.Fatalf("LeaseDue(push) = %d deliveries; want 1", len(leased))
+	}
+	if leased[0].Notification.Message != "hi" {
+		t.Errorf("a leased push delivery should carry display fields, message = %q", leased[0].Notification.Message)
 	}
 }
 
