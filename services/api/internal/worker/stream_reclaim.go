@@ -46,6 +46,10 @@ type streamReclaimer struct {
 	batch         int64
 
 	lastRun time.Time
+
+	// readFailures counts, per entry id, the deliveries seen while XPENDING could
+	// not be read, so a persistent read failure cannot make an entry immortal.
+	readFailures map[string]int64
 }
 
 func newStreamReclaimer(client *redis.Client, log *slog.Logger, stream, group, consumer string) *streamReclaimer {
@@ -59,6 +63,7 @@ func newStreamReclaimer(client *redis.Client, log *slog.Logger, stream, group, c
 		minIdle:       reclaimMinIdle,
 		maxDeliveries: reclaimMaxDelivered,
 		batch:         reclaimBatch,
+		readFailures:  map[string]int64{},
 	}
 }
 
@@ -109,8 +114,9 @@ func (r *streamReclaimer) run(ctx context.Context, handle func(redis.XMessage)) 
 }
 
 // deliveries returns how many times the group has delivered id, counting the
-// claim that just happened. 0 when it cannot be read, which errs toward
-// retrying rather than dropping.
+// claim that just happened. When XPENDING cannot be read it falls back to a
+// local count of the claims this reclaimer has made of the entry, so the
+// dead-letter cap still holds.
 func (r *streamReclaimer) deliveries(ctx context.Context, id string) int64 {
 	pending, err := r.client.XPendingExt(ctx, &redis.XPendingExtArgs{
 		Stream: r.stream,
@@ -120,8 +126,13 @@ func (r *streamReclaimer) deliveries(ctx context.Context, id string) int64 {
 		Count:  1,
 	}).Result()
 	if err != nil || len(pending) == 0 {
-		return 0
+		if err != nil {
+			r.log.Error("stream reclaim: could not read delivery count; counting locally", "stream", r.stream, "id", id, "err", err)
+		}
+		r.readFailures[id]++
+		return r.readFailures[id]
 	}
+	delete(r.readFailures, id)
 	return pending[0].RetryCount
 }
 
@@ -130,6 +141,7 @@ func (r *streamReclaimer) deliveries(ctx context.Context, id string) int64 {
 // The copy is written first: if it fails the entry stays pending and is tried
 // again on the next run, so an entry is never dropped without a record.
 func (r *streamReclaimer) deadLetter(ctx context.Context, msg redis.XMessage, deliveries int64, reason string) {
+	delete(r.readFailures, msg.ID)
 	values := make(map[string]any, len(msg.Values)+5)
 	for k, v := range msg.Values {
 		values[k] = v

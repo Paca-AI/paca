@@ -182,3 +182,12 @@ The API has no metrics system (no Prometheus client, no `/metrics`), so Phase 6 
 - Scope of "always received": in-app only, plus email, or plus push?
 - Is realtime still a single replica?
 - Plugin contract change (T3.1) versus a core-owned email sender.
+
+#### Review follow-ups
+
+- A push dropped for Do Not Disturb marks its delivery `sent`, so the health page counts it as delivered, not as suppressed.
+- `POST /users/me/push/subscriptions` re-points an existing endpoint to the caller. This is intended (a browser that signs in as another user keeps one row); endpoints are unguessable URLs, so knowing one is the proof of holding it.
+- An account keeps at most 20 browser subscriptions; registering another deletes the oldest. Pushes to one notification's subscriptions are sent 4 at a time.
+- A 403 from a push service deletes the subscription (VAPID key mismatch) only when a https public URL is configured for the VAPID contact; with the `mailto:admin@paca.local` placeholder it is only logged, since the service may be rejecting the placeholder.
+- A stored VAPID private key that cannot be decrypted (`ENCRYPTION_KEY` rotated or removed) is an error, not a fallback to the ciphertext.
+- The stream reclaimer counts deliveries locally when `XPENDING` cannot be read, so the dead-letter cap still applies.

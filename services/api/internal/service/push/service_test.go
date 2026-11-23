@@ -3,6 +3,7 @@ package pushsvc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -48,6 +49,7 @@ func (r *fakePushRepo) UpsertSubscription(_ context.Context, s *notificationdom.
 func (r *fakePushRepo) DeleteSubscription(_ context.Context, acct uuid.UUID, endpoint string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.deleted = append(r.deleted, endpoint)
 	kept := r.subs[:0]
 	for _, s := range r.subs {
 		if s.AccountID != acct || s.Endpoint != endpoint {
@@ -199,11 +201,14 @@ func TestKeys_GeneratedOnceAndEncryptedAtRest(t *testing.T) {
 type sendScript struct {
 	statuses map[string]int // endpoint -> status
 	errs     map[string]error
+	mu       sync.Mutex
 	calls    []string
 }
 
 func (s *sendScript) send(_ context.Context, _ []byte, sub *webpush.Subscription, _ *webpush.Options) (*http.Response, error) {
+	s.mu.Lock()
 	s.calls = append(s.calls, sub.Endpoint)
+	s.mu.Unlock()
 	if err := s.errs[sub.Endpoint]; err != nil {
 		return nil, err
 	}
@@ -272,8 +277,40 @@ func TestSend_OneSuccessOutweighsAnotherDevicesTransientFailure(t *testing.T) {
 	}
 }
 
+func TestSend_ForbiddenWithPlaceholderContactKeepsTheSubscription(t *testing.T) {
+	svc, repo, acct := serviceWithSubs(t, "https://push.example/a")
+	svc.send = (&sendScript{statuses: map[string]int{"https://push.example/a": 403}}).send
+	if err := svc.Send(context.Background(), notificationFor(acct)); err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.deleted) != 0 {
+		t.Fatalf("a 403 under a placeholder contact is not proof of a stale subscription, deleted = %v", repo.deleted)
+	}
+}
+
+func TestSubscribe_EvictsOldestPastTheCap(t *testing.T) {
+	endpoints := make([]string, maxSubscriptionsPerAccount)
+	for i := range endpoints {
+		endpoints[i] = fmt.Sprintf("https://push.example/%d", i)
+	}
+	svc, repo, acct := serviceWithSubs(t, endpoints...)
+	in := validInput()
+	in.Endpoint = "https://push.example/new"
+	if err := svc.Subscribe(context.Background(), acct, in); err != nil {
+		t.Fatal(err)
+	}
+	n, _ := svc.SubscriptionCount(context.Background(), acct)
+	if n != maxSubscriptionsPerAccount {
+		t.Fatalf("count = %d, want %d", n, maxSubscriptionsPerAccount)
+	}
+	if len(repo.deleted) != 1 || repo.deleted[0] != endpoints[0] {
+		t.Fatalf("the oldest must be evicted, deleted = %v", repo.deleted)
+	}
+}
+
 func TestSend_KeyMismatchDeletesTheSubscription(t *testing.T) {
 	svc, repo, acct := serviceWithSubs(t, "https://push.example/stale")
+	svc.subscriberDefault = false
 	svc.send = (&sendScript{statuses: map[string]int{"https://push.example/stale": 403}}).send
 	if err := svc.Send(context.Background(), notificationFor(acct)); err != nil {
 		t.Fatalf("a 403 cannot succeed on retry, got %v", err)
@@ -412,5 +449,24 @@ func TestSend_NothingIsPushedDuringDoNotDisturb(t *testing.T) {
 	}
 	if len(script.calls) != 1 {
 		t.Fatalf("sent %d pushes after DND ended, want 1", len(script.calls))
+	}
+}
+
+func TestKeys_UndecryptableStoredKeyIsAnError(t *testing.T) {
+	enc, err := secret.NewEncryptor([]byte(strings.Repeat("k", 32)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := newFakePushRepo()
+	if _, err := New(repo, "").WithEncryptor(enc).PublicKey(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// Same stored (encrypted) key, but no encryptor now: must fail, not sign with ciphertext.
+	if _, err := New(repo, "").PublicKey(context.Background()); err == nil {
+		t.Fatal("an encrypted key with no ENCRYPTION_KEY must be an error")
+	}
+	other, _ := secret.NewEncryptor([]byte(strings.Repeat("z", 32)))
+	if _, err := New(repo, "").WithEncryptor(other).PublicKey(context.Background()); err == nil {
+		t.Fatal("an encrypted key that does not decrypt must be an error")
 	}
 }

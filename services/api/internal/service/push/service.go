@@ -4,7 +4,9 @@ package pushsvc
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -26,6 +28,13 @@ const (
 	maxEndpointLen = 2048
 	maxKeyLen      = 256
 	maxUserAgent   = 512
+
+	// maxSubscriptionsPerAccount bounds the browsers one account can register, so
+	// a client cannot make every push fan out to an unbounded number of
+	// endpoints. Past it the oldest subscription is dropped.
+	maxSubscriptionsPerAccount = 20
+	// sendConcurrency bounds the parallel sends for one notification.
+	sendConcurrency = 4
 
 	// pushTTL is how long a push service holds a message for an offline device.
 	pushTTL = int((24 * time.Hour) / time.Second)
@@ -50,9 +59,13 @@ type Service struct {
 	repo       notificationdom.PushRepository
 	enc        *secret.Encryptor
 	subscriber string
-	client     *http.Client
-	send       sendFunc
-	now        func() time.Time
+	// subscriberDefault is set when no usable contact URL was configured and the
+	// placeholder is in use. Push services may reject a placeholder, so a 403 is
+	// then no evidence that a subscription is stale.
+	subscriberDefault bool
+	client            *http.Client
+	send              sendFunc
+	now               func() time.Time
 
 	mu      sync.Mutex
 	public  string
@@ -62,12 +75,16 @@ type Service struct {
 // New returns a Service. subscriber is the contact URL push services may use to
 // reach the operator (a https URL or mailto:); it is sent as the VAPID "sub".
 func New(repo notificationdom.PushRepository, subscriber string) *Service {
+	isDefault := false
 	if !strings.HasPrefix(subscriber, "https://") && !strings.HasPrefix(subscriber, "mailto:") {
 		subscriber = "mailto:admin@paca.local"
+		isDefault = true
+		slog.Warn("push: no https public URL configured; using a placeholder VAPID contact, which some push services reject")
 	}
 	return &Service{
-		repo:       repo,
-		subscriber: subscriber,
+		repo:              repo,
+		subscriber:        subscriber,
+		subscriberDefault: isDefault,
 		// Endpoints are client-supplied URLs, so every send goes through the SSRF
 		// guard: a subscription naming an internal address is never dialled.
 		client: netguard.NewSafeHTTPClient(sendTimeout),
@@ -110,13 +127,36 @@ func (s *Service) keys(ctx context.Context) (public, private string, err error) 
 			return "", "", err
 		}
 	}
-	if s.enc != nil {
-		if plain, decErr := s.enc.Decrypt(priv); decErr == nil {
-			priv = plain
-		}
+	if priv, err = s.plainPrivateKey(priv); err != nil {
+		return "", "", err
 	}
 	s.public, s.private = pub, priv
 	return pub, priv, nil
+}
+
+// plainPrivateKey returns the usable private key for a stored value. A value
+// that is a raw VAPID key is used as-is (stored before an encryptor was
+// configured); anything else must decrypt, so a rotated or missing
+// ENCRYPTION_KEY is reported instead of signing with ciphertext.
+func (s *Service) plainPrivateKey(stored string) (string, error) {
+	if isRawVAPIDKey(stored) {
+		return stored, nil
+	}
+	if s.enc == nil {
+		return "", errors.New("push: stored VAPID private key is encrypted but ENCRYPTION_KEY is not configured")
+	}
+	plain, err := s.enc.Decrypt(stored)
+	if err != nil {
+		return "", fmt.Errorf("push: cannot decrypt stored VAPID private key (was ENCRYPTION_KEY changed?): %w", err)
+	}
+	return plain, nil
+}
+
+// isRawVAPIDKey reports whether v is an unencrypted P-256 private key: 32 bytes
+// in base64url, which is what webpush.GenerateVAPIDKeys produces.
+func isRawVAPIDKey(v string) bool {
+	b, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(v, "="))
+	return err == nil && len(b) == 32
 }
 
 // PublicKey returns the VAPID public key a browser subscribes against.
@@ -148,9 +188,33 @@ func (s *Service) Subscribe(ctx context.Context, accountID uuid.UUID, in notific
 	if len(ua) > maxUserAgent {
 		ua = ua[:maxUserAgent]
 	}
+	if err := s.evictOldest(ctx, accountID, in.Endpoint); err != nil {
+		return err
+	}
 	return s.repo.UpsertSubscription(ctx, &notificationdom.PushSubscription{
 		ID: uuid.New(), AccountID: accountID, Endpoint: in.Endpoint, P256dh: in.P256dh, Auth: in.Auth, UserAgent: ua,
 	})
+}
+
+// evictOldest makes room for a new subscription: when the account already has
+// the maximum and endpoint is not one of them, the oldest are deleted.
+func (s *Service) evictOldest(ctx context.Context, accountID uuid.UUID, endpoint string) error {
+	subs, err := s.repo.ListSubscriptions(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	for _, sub := range subs {
+		if sub.Endpoint == endpoint {
+			return nil // a refresh of an existing one
+		}
+	}
+	// ListSubscriptions is oldest first.
+	for i := 0; len(subs)-i >= maxSubscriptionsPerAccount; i++ {
+		if err := s.repo.DeleteSubscription(ctx, accountID, subs[i].Endpoint); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Unsubscribe removes the account's subscription with this endpoint.
@@ -251,24 +315,50 @@ func (s *Service) Send(ctx context.Context, n *notificationdom.Notification) err
 		return fmt.Errorf("push: marshal payload: %w", err)
 	}
 
+	type outcome struct {
+		status int
+		err    error
+	}
+	results := make([]outcome, len(subs))
+	sem := make(chan struct{}, sendConcurrency)
+	var wg sync.WaitGroup
+	for i, sub := range subs {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			resp, sendErr := s.send(ctx, payload, &webpush.Subscription{
+				Endpoint: sub.Endpoint, Keys: webpush.Keys{P256dh: sub.P256dh, Auth: sub.Auth},
+			}, &webpush.Options{
+				Subscriber: s.subscriber, VAPIDPublicKey: pub, VAPIDPrivateKey: priv,
+				TTL: pushTTL, Urgency: webpush.UrgencyNormal, HTTPClient: s.client,
+			})
+			if sendErr != nil {
+				results[i].err = sendErr
+				return
+			}
+			results[i].status = resp.StatusCode
+			_ = resp.Body.Close()
+		}()
+	}
+	wg.Wait()
+
 	delivered, transient := 0, error(nil)
-	for _, sub := range subs {
-		resp, sendErr := s.send(ctx, payload, &webpush.Subscription{
-			Endpoint: sub.Endpoint, Keys: webpush.Keys{P256dh: sub.P256dh, Auth: sub.Auth},
-		}, &webpush.Options{
-			Subscriber: s.subscriber, VAPIDPublicKey: pub, VAPIDPrivateKey: priv,
-			TTL: pushTTL, Urgency: webpush.UrgencyNormal, HTTPClient: s.client,
-		})
-		if sendErr != nil {
+	for i, sub := range subs {
+		if sendErr := results[i].err; sendErr != nil {
 			slog.WarnContext(ctx, "push send failed", "notification_id", n.ID, "error", sendErr)
 			transient = sendErr
 			continue
 		}
-		status := resp.StatusCode
-		_ = resp.Body.Close()
+		status := results[i].status
 		switch {
 		case status >= 200 && status < 300:
 			delivered++
+		case status == http.StatusForbidden && s.subscriberDefault:
+			// With a placeholder VAPID contact a 403 may be the push service
+			// rejecting that contact, not a stale subscription: keep it.
+			slog.WarnContext(ctx, "push service returned 403; configure a https public URL for the VAPID contact", "notification_id", n.ID)
 		case status == http.StatusForbidden:
 			// The subscription was made against a different VAPID key than the one
 			// signing for it now (the key changed, or the database was restored): it

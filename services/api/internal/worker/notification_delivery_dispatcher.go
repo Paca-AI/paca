@@ -100,6 +100,7 @@ type NotificationDeliveryDispatcher struct {
 	stopCh      chan struct{}
 	doneCh      chan struct{}
 	cancel      context.CancelFunc
+	stopOnce    sync.Once
 
 	// Counters since the last summary line (only the dispatcher's goroutine
 	// touches them, after a batch's sends have finished).
@@ -188,7 +189,7 @@ func (d *NotificationDeliveryDispatcher) Start(ctx context.Context) {
 // slow push service cannot hold up shutdown; their deliveries are left leased
 // and are picked up again when the lease runs out.
 func (d *NotificationDeliveryDispatcher) Stop() {
-	close(d.stopCh)
+	d.stopOnce.Do(func() { close(d.stopCh) })
 	if d.cancel != nil {
 		d.cancel()
 	}
