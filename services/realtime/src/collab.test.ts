@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { BlockNoteEditor } from "@blocknote/core";
 import { blocksToYDoc } from "@blocknote/core/yjs";
 import { Awareness, encodeAwarenessUpdate } from "y-protocols/awareness";
@@ -7,6 +7,7 @@ import type { AccessDecider } from "./access.ts";
 import {
 	COLLAB_FRAGMENT,
 	CollabHub,
+	DEPARTED_TTL_MS,
 	isEmpty,
 	MAX_ROOM_BYTES,
 	parseContentChange,
@@ -383,6 +384,7 @@ describe("CollabHub review fixes", () => {
 });
 
 describe("external writes (agent / REST) into a live room", () => {
+	afterEach(() => setSystemTime());
 	const ed = BlockNoteEditor.create();
 	const para = (id: string, text: string) => ({
 		id,
@@ -478,6 +480,33 @@ describe("external writes (agent / REST) into a live room", () => {
 			"doc.updated",
 			event(stored, [para("a", "alpha"), para("b", "bravo elsewhere")], "u2"),
 			{ collabSocket: "s9" },
+		);
+		expect(sent).toHaveLength(1);
+	});
+
+	test("ignores the late save of an editor whose socket already left the room", async () => {
+		// A save stalled on a bad link: by the time it lands the socket was
+		// dropped and replaced. It is still the editor's own content.
+		const { hub, sent } = await liveRoom();
+		hub.leaveAll("s2");
+		await hub.join("s3", { userId: "u2", rawToken: "t" }, ref);
+		sent.length = 0;
+		await hub.handleContentEvent(
+			"doc.updated",
+			event(stored, [para("a", "alpha"), para("b", "edited")], "u2"),
+			{ collabSocket: "s2" },
+		);
+		expect(sent).toHaveLength(0);
+	});
+
+	test("merges a save naming a socket that left long ago", async () => {
+		const { hub, sent } = await liveRoom();
+		hub.leaveAll("s2");
+		setSystemTime(new Date(Date.now() + DEPARTED_TTL_MS + 1));
+		await hub.handleContentEvent(
+			"doc.updated",
+			event(stored, [para("a", "alpha"), para("b", "bravo by agent")]),
+			{ collabSocket: "s2" },
 		);
 		expect(sent).toHaveLength(1);
 	});
