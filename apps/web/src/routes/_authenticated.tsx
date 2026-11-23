@@ -16,12 +16,15 @@ import {
 	SidebarProvider,
 	SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { useNotificationCatchUp } from "@/hooks/use-notification-catch-up";
 import { onTokenRefreshed } from "@/lib/api-client";
 import { isPasswordChangeRequired } from "@/lib/api-error";
 import { currentUserQueryOptions } from "@/lib/auth-api";
+import { isDoNotDisturbActive } from "@/lib/do-not-disturb";
 import { playNotificationSound } from "@/lib/notification-sound";
 import { SIDEBAR_PANE, usePaneWidth } from "@/lib/pane-width";
 import { PluginRegistryProvider } from "@/lib/plugins/registry";
+import { type PushSettings, pushSettingsQueryOptions } from "@/lib/push-api";
 import { ShortcutProvider } from "@/lib/shortcuts/provider";
 import {
 	connectSocket,
@@ -93,6 +96,13 @@ function AuthenticatedLayout() {
 	// (project pages already mount their own project-scoped AIChatFloat, see
 	// routes/_authenticated/projects/$projectId.tsx) or on the global
 	// Conversations page itself (see CONVERSATIONS_ROUTE_RE above).
+	// Keeps Do Not Disturb in the cache, so the chime below can honour it the
+	// moment a notification arrives.
+	useQuery({
+		...pushSettingsQueryOptions,
+		enabled: !!user,
+		staleTime: 5 * 60_000,
+	});
 	const showGlobalChat =
 		!!user &&
 		!PROJECT_ROUTE_RE.test(pathname) &&
@@ -106,6 +116,12 @@ function AuthenticatedLayout() {
 		const handleNotification = ({ type }: { type: string }) => {
 			if (type === "notification.created") {
 				queryClient.invalidateQueries({ queryKey: ["notifications"] });
+				// Do Not Disturb silences the chime; the bell still counts the
+				// notification.
+				const dnd = queryClient.getQueryData<PushSettings>(
+					pushSettingsQueryOptions.queryKey,
+				)?.do_not_disturb;
+				if (isDoNotDisturbActive(dnd)) return;
 				playNotificationSound();
 			}
 		};
@@ -142,6 +158,9 @@ function AuthenticatedLayout() {
 			disconnectSocket();
 		};
 	}, [queryClient, user]);
+
+	// After the effect above so the socket it connects already exists.
+	useNotificationCatchUp(!!user);
 
 	return (
 		<PluginRegistryProvider>

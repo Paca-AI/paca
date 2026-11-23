@@ -84,7 +84,28 @@
 		},
 		"untitledConversation": "Conversa sem título",
 		"globalChat": "Chat global",
-		"untitledDocument": "Documento sem título"
+		"untitledDocument": "Documento sem título",
+		"markRead": "Marcar como lida",
+		"settings": "Configurações de notificações",
+		"caughtUp": "Você está em dia",
+		"loadError": "Não foi possível carregar suas notificações.",
+		"retry": "Tentar novamente",
+		"dndOn": "Não perturbe está ativado",
+		"filter": {
+			"label": "Mostrar",
+			"all": "Todas",
+			"unread": "Não lidas"
+		},
+		"group": {
+			"today": "Hoje",
+			"yesterday": "Ontem",
+			"earlier": "Anteriores"
+		},
+		"push": {
+			"prompt": "Seja avisado mesmo com o Paca fechado.",
+			"enable": "Ativar",
+			"dismiss": "Agora não"
+		}
 	},
 	"userMenu": {
 		"signIn": "Entrar",

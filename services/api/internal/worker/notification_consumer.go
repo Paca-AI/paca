@@ -60,6 +60,7 @@ type NotificationConsumer struct {
 	activityRec     agentActivityRecorder
 	log             *slog.Logger
 	consumerName    string
+	reclaim         *streamReclaimer
 	stopCh          chan struct{}
 	doneCh          chan struct{}
 }
@@ -71,13 +72,15 @@ func NewNotificationConsumer(client *redis.Client, notificationSvc notificationd
 	if err != nil || hostname == "" {
 		hostname = uuid.New().String()
 	}
+	consumerName := fmt.Sprintf("%s.%s", notificationConsumerGroup, hostname)
 	return &NotificationConsumer{
 		client:          client,
 		notificationSvc: notificationSvc,
 		memberRepo:      memberRepo,
 		agentSvc:        agentSvc,
 		log:             log,
-		consumerName:    fmt.Sprintf("%s.%s", notificationConsumerGroup, hostname),
+		consumerName:    consumerName,
+		reclaim:         newStreamReclaimer(client, log, events.StreamTaskAssignments, notificationConsumerGroup, consumerName),
 		stopCh:          make(chan struct{}),
 		doneCh:          make(chan struct{}),
 	}
@@ -132,6 +135,12 @@ func (c *NotificationConsumer) run() {
 			c.log.Info("notification consumer: stopping")
 			return
 		default:
+		}
+
+		// Redeliver entries left unacked (a failed NotifyAssigned, or a pod that
+		// died mid-handle) and dead-letter the ones that keep failing.
+		if c.reclaim.due(time.Now()) {
+			c.reclaim.run(context.Background(), c.handle)
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), notificationReadBlock+time.Second)
@@ -380,7 +389,8 @@ func (c *NotificationConsumer) handle(msg redis.XMessage) {
 		ActorID:             actorID,
 	}); err != nil {
 		c.log.Error("notification consumer: NotifyAssigned failed", "id", msg.ID, "err", err)
-		// Do not ack — will be retried via processPending on next restart.
+		// Do not ack: the reclaimer redelivers it after reclaimMinIdle, and
+		// dead-letters it once it has failed reclaimMaxDelivered times.
 		return
 	}
 

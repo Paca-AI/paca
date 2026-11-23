@@ -84,7 +84,28 @@
 		},
 		"untitledConversation": "제목 없는 대화",
 		"globalChat": "글로벌 채팅",
-		"untitledDocument": "제목 없는 문서"
+		"untitledDocument": "제목 없는 문서",
+		"markRead": "읽음으로 표시",
+		"settings": "알림 설정",
+		"caughtUp": "모두 확인했습니다",
+		"loadError": "알림을 불러오지 못했습니다.",
+		"retry": "다시 시도",
+		"dndOn": "방해 금지가 켜져 있습니다",
+		"filter": {
+			"label": "보기",
+			"all": "전체",
+			"unread": "읽지 않음"
+		},
+		"group": {
+			"today": "오늘",
+			"yesterday": "어제",
+			"earlier": "이전"
+		},
+		"push": {
+			"prompt": "Paca를 닫아도 알림을 받아 보세요.",
+			"enable": "켜기",
+			"dismiss": "나중에"
+		}
 	},
 	"userMenu": {
 		"signIn": "로그인",

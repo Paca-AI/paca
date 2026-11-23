@@ -127,7 +127,45 @@
 	},
 	"preferences": {
 		"title": "Notificações",
-		"subtitle": "Escolha como quer ser notificado."
+		"subtitle": "Escolha como quer ser notificado.",
+		"push": {
+			"title": "Notificações push",
+			"description": "Receba uma notificação do navegador quando algo precisar de você, mesmo com o Paca fechado.",
+			"unsupported": "Este navegador não oferece suporte a notificações push.",
+			"device": {
+				"label": "Notificar neste navegador",
+				"description": "Permita que este navegador exiba notificações.",
+				"denied": "As notificações estão bloqueadas para este site. Permita-as nas configurações do site no seu navegador e tente novamente."
+			},
+			"types": {
+				"title": "Quero ser avisado sobre",
+				"assigned": "Tarefas atribuídas a mim",
+				"mentioned": "Menções",
+				"question": "Perguntas dos agentes",
+				"automation": "Alertas de automação"
+			},
+			"errors": {
+				"load": "Não foi possível carregar as configurações de push.",
+				"enable": "Não foi possível ativar as notificações neste navegador.",
+				"disable": "Não foi possível desativar as notificações neste navegador.",
+				"save": "Não foi possível salvar sua preferência."
+			}
+		},
+		"dnd": {
+			"title": "Não perturbe",
+			"description": "Silencie as notificações push e o som de aviso por um tempo. Tudo continua chegando na sua caixa de entrada e no sino.",
+			"forOneHour": "Por 1 hora",
+			"forEightHours": "Por 8 horas",
+			"untilMorning": "Até amanhã de manhã",
+			"untilOff": "Até eu desativar",
+			"turnOff": "Desativar",
+			"onUntil": "Não perturbe está ativado até {{time}}.",
+			"onIndefinitely": "Não perturbe está ativado até você desativar.",
+			"errors": {
+				"load": "Não foi possível carregar sua configuração de Não perturbe.",
+				"save": "Não foi possível alterar o Não perturbe."
+			}
+		}
 	},
 	"security": {
 		"title": "Segurança",

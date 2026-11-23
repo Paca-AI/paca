@@ -110,6 +110,10 @@ type Repository interface {
 	MarkAsRead(ctx context.Context, id, userID uuid.UUID) error
 	// MarkAllAsRead sets read_at on all unread notifications for userID.
 	MarkAllAsRead(ctx context.Context, userID uuid.UUID) error
+	// MarkDelivered records that the channel's delivery of a notification
+	// succeeded, so the dispatcher does not send it again. A delivery that is
+	// already finished, or does not exist, is left alone.
+	MarkDelivered(ctx context.Context, notificationID uuid.UUID, channel DeliveryChannel) error
 }
 
 // Service defines the notification use-cases exposed to callers.
@@ -129,14 +133,15 @@ type Service interface {
 	// @mentioned in a document comment. Does nothing for a self-mention or
 	// when the mentioned user is not a member of the project.
 	NotifyDocCommentMentioned(ctx context.Context, in NotifyDocCommentMentionedInput) error
-	// NotifyDocMentioned publishes a plugin event (no in-app row — see the
-	// implementation's doc comment) for a user newly @mentioned in a
-	// document's content. Does nothing if mentionedUserID == actorID.
+	// NotifyDocMentioned creates an in-app notification and publishes a plugin
+	// event for a user newly @mentioned in a document's content. Does nothing
+	// if mentionedUserID == actorID or the user is not a project member.
 	NotifyDocMentioned(ctx context.Context, mentionedUserID, actorID uuid.UUID, projectID, docID uuid.UUID)
-	// NotifyTaskDescriptionMentioned publishes a plugin event for a user
-	// newly @mentioned in a task's description (as opposed to a comment,
-	// which NotifyMentioned handles). Does nothing if mentionedUserID ==
-	// actorID.
+	// NotifyTaskDescriptionMentioned creates an in-app notification and
+	// publishes a plugin event for a user newly @mentioned in a task's
+	// description (as opposed to a comment, which NotifyMentioned handles).
+	// Does nothing if mentionedUserID == actorID or the user is not a project
+	// member.
 	NotifyTaskDescriptionMentioned(ctx context.Context, mentionedUserID, actorID uuid.UUID, projectID, taskID uuid.UUID)
 	// ListNotifications returns up to limit notifications for the authenticated
 	// user, keyset-paginated via cursorAfter — see Repository.ListForUser.
@@ -208,6 +213,73 @@ type NotifyMentionedInput struct {
 	// MentionedUserID is an optional direct reference to the mentioned user's ID.
 	// When provided, it takes precedence over username parsing from CommentText.
 	MentionedUserID *uuid.UUID
+}
+
+// DeliveryChannel names a way a notification reaches its recipient.
+type DeliveryChannel string
+
+const (
+	// DeliveryChannelRealtime is the Socket.IO push that updates an open
+	// client's bell and plays the chime.
+	DeliveryChannelRealtime DeliveryChannel = "realtime"
+	// DeliveryChannelPush is a Web Push to the recipient's browsers, which
+	// reaches them with no tab open. A delivery row exists only when the
+	// recipient has a subscription and has not switched the type off.
+	DeliveryChannelPush DeliveryChannel = "push"
+	// DeliveryChannelEmail is reserved; email still goes out as a plugin event.
+	DeliveryChannelEmail DeliveryChannel = "email"
+)
+
+// PendingDelivery is one due delivery together with the notification columns a
+// channel needs to build its message, including the display fields (actor,
+// task, document and conversation titles) a channel that renders text needs.
+type PendingDelivery struct {
+	ID           uuid.UUID
+	Channel      DeliveryChannel
+	Attempts     int
+	Notification Notification
+}
+
+// DeliveryOutcome is what the dispatcher decided for one claimed delivery.
+type DeliveryOutcome struct {
+	ID uuid.UUID
+	// Err is nil when the delivery succeeded.
+	Err error
+	// Failed means stop retrying (attempts exhausted or the delivery expired);
+	// otherwise a failed delivery is tried again at NextAttemptAt.
+	Failed        bool
+	NextAttemptAt time.Time
+}
+
+// DeliveryRepository is the dispatcher's view of the delivery outbox.
+type DeliveryRepository interface {
+	// ClaimDue locks up to limit pending deliveries of the channel that are due
+	// at now (replicas claim different rows), hands them to deliver, and stores
+	// the outcomes it returns, all in one transaction. When deliver returns no
+	// outcome for a claimed delivery it is left pending, unchanged. It returns
+	// how many deliveries it claimed.
+	ClaimDue(ctx context.Context, channel DeliveryChannel, now time.Time, limit int, deliver func([]PendingDelivery) []DeliveryOutcome) (int, error)
+	// Prune deletes finished deliveries: sent ones last updated before
+	// sentBefore, failed ones before failedBefore. Pending rows are never
+	// pruned.
+	Prune(ctx context.Context, sentBefore, failedBefore time.Time) (int64, error)
+}
+
+// RealtimeCreatedPayload is the body of the notification.created realtime
+// event for n. The notification service's immediate publish and the delivery
+// dispatcher's retry both use it, so a client cannot tell them apart.
+func RealtimeCreatedPayload(n *Notification) map[string]any {
+	return map[string]any{
+		"id":                   n.ID,
+		"recipient_account_id": n.RecipientAccountID,
+		"actor_member_id":      n.ActorMemberID,
+		"type":                 string(n.Type),
+		"task_id":              n.TaskID,
+		"conversation_id":      n.ConversationID,
+		"document_id":          n.DocumentID,
+		"project_id":           n.ProjectID,
+		"created_at":           n.CreatedAt,
+	}
 }
 
 // ErrNotificationNotFound is returned when a notification does not exist or

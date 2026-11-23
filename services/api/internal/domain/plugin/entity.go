@@ -656,3 +656,19 @@ func ManifestJSONUsesRequirePermissions(raw []byte) bool {
 	}
 	return false
 }
+
+// EventDelivery is how one plugin's handling of one event went, as far as the
+// host can observe it. A plugin returns nothing from HandleEvent, so the host
+// only knows about failures it sees itself: today, an outbound email the
+// plugin asked the host to send and the host could not.
+type EventDelivery struct {
+	// Plugin is the plugin's name.
+	Plugin string
+	// Err is nil when nothing the host observed went wrong.
+	Err error
+	// Retryable means running the plugin on the event again could succeed (a
+	// refused connection, a timeout, an SMTP 4xx). False for a failure a retry
+	// cannot fix (an SMTP 5xx such as rejected credentials, an invalid
+	// address, an oversized payload). Meaningless when Err is nil.
+	Retryable bool
+}

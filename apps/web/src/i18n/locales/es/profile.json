@@ -127,7 +127,45 @@
 	},
 	"preferences": {
 		"title": "Notificaciones",
-		"subtitle": "Elige cómo quieres recibir avisos."
+		"subtitle": "Elige cómo quieres recibir avisos.",
+		"push": {
+			"title": "Notificaciones push",
+			"description": "Recibe una notificación del navegador cuando algo requiera tu atención, incluso con Paca cerrado.",
+			"unsupported": "Este navegador no admite notificaciones push.",
+			"device": {
+				"label": "Notificar en este navegador",
+				"description": "Permite que este navegador muestre notificaciones.",
+				"denied": "Las notificaciones están bloqueadas para este sitio. Permítelas en la configuración del sitio de tu navegador y vuelve a intentarlo."
+			},
+			"types": {
+				"title": "Avisarme de",
+				"assigned": "Tareas asignadas a mí",
+				"mentioned": "Menciones",
+				"question": "Preguntas de agentes",
+				"automation": "Alertas de automatización"
+			},
+			"errors": {
+				"load": "No se pudo cargar la configuración de push.",
+				"enable": "No se pudieron activar las notificaciones en este navegador.",
+				"disable": "No se pudieron desactivar las notificaciones en este navegador.",
+				"save": "No se pudo guardar tu preferencia."
+			}
+		},
+		"dnd": {
+			"title": "No molestar",
+			"description": "Silencia las notificaciones push y el sonido de aviso durante un tiempo. Todo sigue llegando a tu bandeja y a la campana.",
+			"forOneHour": "Durante 1 hora",
+			"forEightHours": "Durante 8 horas",
+			"untilMorning": "Hasta mañana por la mañana",
+			"untilOff": "Hasta que lo desactive",
+			"turnOff": "Desactivar",
+			"onUntil": "No molestar está activado hasta {{time}}.",
+			"onIndefinitely": "No molestar está activado hasta que lo desactives.",
+			"errors": {
+				"load": "No se pudo cargar tu ajuste de No molestar.",
+				"save": "No se pudo cambiar No molestar."
+			}
+		}
 	},
 	"security": {
 		"title": "Seguridad",

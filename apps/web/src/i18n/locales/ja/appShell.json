@@ -84,7 +84,28 @@
 		},
 		"untitledConversation": "無題の会話",
 		"globalChat": "グローバルチャット",
-		"untitledDocument": "無題のドキュメント"
+		"untitledDocument": "無題のドキュメント",
+		"markRead": "既読にする",
+		"settings": "通知設定",
+		"caughtUp": "すべて確認済みです",
+		"loadError": "通知を読み込めませんでした。",
+		"retry": "再試行",
+		"dndOn": "おやすみモードがオンです",
+		"filter": {
+			"label": "表示",
+			"all": "すべて",
+			"unread": "未読"
+		},
+		"group": {
+			"today": "今日",
+			"yesterday": "昨日",
+			"earlier": "それ以前"
+		},
+		"push": {
+			"prompt": "Paca を閉じていても通知を受け取れます。",
+			"enable": "オンにする",
+			"dismiss": "今はしない"
+		}
 	},
 	"userMenu": {
 		"signIn": "サインイン",

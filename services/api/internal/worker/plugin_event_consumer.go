@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
+	plugindom "github.com/Paca-AI/api/internal/domain/plugin"
 	"github.com/Paca-AI/api/internal/events"
 )
 
@@ -19,14 +20,24 @@ const (
 	pluginEventConsumerGroup = "api.plugin_dispatcher"
 	pluginEventReadBlock     = 5 * time.Second
 	pluginEventReadCount     = 50
+
+	// pluginRetryKeyPrefix names the Valkey set holding, for one stream entry,
+	// the plugins whose handling failed in a way worth retrying. A redelivery
+	// of the entry runs only those plugins, so a plugin that already handled
+	// the event (sent its email, called its webhook) is not run twice.
+	pluginRetryKeyPrefix = "paca:plugin_event_retry:"
+	// pluginRetryKeyTTL outlives the longest a redelivery cycle can take
+	// (reclaimMaxDelivered x reclaimMinIdle, plus slack for a stalled reclaimer).
+	pluginRetryKeyTTL = time.Hour
 )
 
-// PluginEventEmitter dispatches a topic+payload to every loaded plugin that
-// has subscribed to it. Implemented by *plugin.Runtime; kept as a narrow
-// interface here to avoid a dependency from the worker package onto the
-// plugin platform package.
+// PluginEventEmitter dispatches a topic+payload to the loaded plugins that
+// have subscribed to it, and reports how each plugin's handling went. When only
+// is non-empty it dispatches to just those plugins. Implemented by
+// *plugin.Runtime; kept as a narrow interface here to avoid a dependency from
+// the worker package onto the plugin platform package.
 type PluginEventEmitter interface {
-	EmitEvent(ctx context.Context, topic string, payload any)
+	DeliverEvent(ctx context.Context, topic string, payload any, only []string) []plugindom.EventDelivery
 }
 
 // PluginEventConsumer reads every activity event (task activities, comments,
@@ -42,6 +53,7 @@ type PluginEventConsumer struct {
 	emitter      PluginEventEmitter
 	log          *slog.Logger
 	consumerName string // unique per instance, derived from hostname
+	reclaim      *streamReclaimer
 	stopCh       chan struct{}
 	doneCh       chan struct{}
 }
@@ -54,11 +66,13 @@ func NewPluginEventConsumer(client *redis.Client, emitter PluginEventEmitter, lo
 	if err != nil || hostname == "" {
 		hostname = uuid.New().String()
 	}
+	consumerName := fmt.Sprintf("%s.%s", pluginEventConsumerGroup, hostname)
 	return &PluginEventConsumer{
 		client:       client,
 		emitter:      emitter,
 		log:          log,
-		consumerName: fmt.Sprintf("%s.%s", pluginEventConsumerGroup, hostname),
+		consumerName: consumerName,
+		reclaim:      newStreamReclaimer(client, log, events.StreamPluginEvents, pluginEventConsumerGroup, consumerName),
 		stopCh:       make(chan struct{}),
 		doneCh:       make(chan struct{}),
 	}
@@ -108,6 +122,12 @@ func (c *PluginEventConsumer) run() {
 			c.log.Info("plugin event consumer: stopping")
 			return
 		default:
+		}
+
+		// Pick up entries a dead pod's consumer name left pending: that name
+		// is never read again, so its startup replay can't recover them.
+		if c.reclaim.due(time.Now()) {
+			c.reclaim.run(context.Background(), c.handle)
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), pluginEventReadBlock+time.Second)
@@ -183,9 +203,62 @@ func (c *PluginEventConsumer) handle(msg redis.XMessage) {
 	// JSON-encoded string. Passing it through as json.RawMessage lets
 	// Runtime.EmitEvent re-marshal it verbatim instead of double-encoding it.
 	raw, _ := msg.Values["payload"].(string)
-	c.emitter.EmitEvent(ctx, eventType, json.RawMessage(raw))
 
-	c.ack(ctx, msg.ID)
+	// A redelivery after a failed attempt runs only the plugins that failed.
+	retryKey := pluginRetryKeyPrefix + msg.ID
+	only, err := c.client.SMembers(ctx, retryKey).Result()
+	if err != nil {
+		// Running every plugin again could repeat what the others already did,
+		// so wait and try again rather than guess.
+		c.log.Error("plugin event consumer: could not read retry state; leaving entry pending", "id", msg.ID, "err", err)
+		return
+	}
+
+	var retry []string
+	for _, d := range c.emitter.DeliverEvent(ctx, eventType, json.RawMessage(raw), only) {
+		if d.Err == nil {
+			continue
+		}
+		if d.Retryable {
+			c.log.Warn("plugin event consumer: plugin could not handle event; will retry", "id", msg.ID, "topic", eventType, "plugin", d.Plugin, "err", d.Err)
+			retry = append(retry, d.Plugin)
+			continue
+		}
+		// A retry would fail the same way. Keep a durable record next to the
+		// other dead letters, and move on.
+		c.log.Error("plugin event consumer: plugin could not handle event; not retrying", "id", msg.ID, "topic", eventType, "plugin", d.Plugin, "err", d.Err)
+		c.reclaim.recordDead(ctx, msg, d.Plugin+": "+d.Err.Error())
+	}
+
+	if len(retry) == 0 {
+		if len(only) > 0 {
+			_ = c.client.Del(ctx, retryKey).Err()
+		}
+		c.ack(ctx, msg.ID)
+		return
+	}
+
+	// Remember who to retry, then leave the entry pending: the reclaimer
+	// redelivers it after reclaimMinIdle and dead-letters it once it has failed
+	// reclaimMaxDelivered times. If the state cannot be saved a retry could not
+	// be targeted, so give up on it instead of re-running every plugin.
+	pipe := c.client.TxPipeline()
+	pipe.Del(ctx, retryKey)
+	pipe.SAdd(ctx, retryKey, stringsToAny(retry)...)
+	pipe.Expire(ctx, retryKey, pluginRetryKeyTTL)
+	if _, err := pipe.Exec(ctx); err != nil {
+		c.log.Error("plugin event consumer: could not save retry state; giving up on retry", "id", msg.ID, "err", err)
+		c.reclaim.recordDead(ctx, msg, "retry state not saved: "+err.Error())
+		c.ack(ctx, msg.ID)
+	}
+}
+
+func stringsToAny(in []string) []any {
+	out := make([]any, len(in))
+	for i, s := range in {
+		out[i] = s
+	}
+	return out
 }
 
 func (c *PluginEventConsumer) ack(ctx context.Context, id string) {

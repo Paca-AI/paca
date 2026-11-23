@@ -127,7 +127,45 @@
 	},
 	"preferences": {
 		"title": "Thông báo",
-		"subtitle": "Chọn cách bạn muốn nhận thông báo."
+		"subtitle": "Chọn cách bạn muốn nhận thông báo.",
+		"push": {
+			"title": "Thông báo đẩy",
+			"description": "Nhận thông báo trên trình duyệt khi có việc cần bạn xử lý, ngay cả khi Paca không mở.",
+			"unsupported": "Trình duyệt này không hỗ trợ thông báo đẩy.",
+			"device": {
+				"label": "Thông báo trên trình duyệt này",
+				"description": "Cho phép trình duyệt này hiển thị thông báo.",
+				"denied": "Thông báo đang bị chặn cho trang này. Hãy cho phép trong cài đặt trang web của trình duyệt rồi thử lại."
+			},
+			"types": {
+				"title": "Thông báo cho tôi về",
+				"assigned": "Công việc được giao cho tôi",
+				"mentioned": "Lượt nhắc đến",
+				"question": "Câu hỏi từ tác tử",
+				"automation": "Cảnh báo tự động hóa"
+			},
+			"errors": {
+				"load": "Không thể tải cài đặt thông báo đẩy.",
+				"enable": "Không thể bật thông báo cho trình duyệt này.",
+				"disable": "Không thể tắt thông báo cho trình duyệt này.",
+				"save": "Không thể lưu tùy chọn của bạn."
+			}
+		},
+		"dnd": {
+			"title": "Không làm phiền",
+			"description": "Tắt tạm thời thông báo đẩy và âm báo. Mọi thứ vẫn xuất hiện trong hộp thư và chuông.",
+			"forOneHour": "Trong 1 giờ",
+			"forEightHours": "Trong 8 giờ",
+			"untilMorning": "Đến sáng mai",
+			"untilOff": "Đến khi tôi tắt",
+			"turnOff": "Tắt",
+			"onUntil": "Chế độ Không làm phiền đang bật đến {{time}}.",
+			"onIndefinitely": "Chế độ Không làm phiền đang bật cho đến khi bạn tắt.",
+			"errors": {
+				"load": "Không thể tải cài đặt Không làm phiền.",
+				"save": "Không thể thay đổi chế độ Không làm phiền."
+			}
+		}
 	},
 	"security": {
 		"title": "Bảo mật",

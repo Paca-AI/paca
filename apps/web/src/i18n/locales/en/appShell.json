@@ -84,7 +84,28 @@
 		},
 		"untitledConversation": "Untitled conversation",
 		"globalChat": "Global chat",
-		"untitledDocument": "Untitled document"
+		"untitledDocument": "Untitled document",
+		"markRead": "Mark as read",
+		"settings": "Notification settings",
+		"caughtUp": "You're all caught up",
+		"loadError": "Couldn't load your notifications.",
+		"retry": "Try again",
+		"dndOn": "Do Not Disturb is on",
+		"filter": {
+			"label": "Show",
+			"all": "All",
+			"unread": "Unread"
+		},
+		"group": {
+			"today": "Today",
+			"yesterday": "Yesterday",
+			"earlier": "Earlier"
+		},
+		"push": {
+			"prompt": "Get notified even when Paca is closed.",
+			"enable": "Turn on",
+			"dismiss": "Not now"
+		}
 	},
 	"userMenu": {
 		"signIn": "Sign in",

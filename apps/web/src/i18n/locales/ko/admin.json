@@ -517,7 +517,8 @@
 			"signIn": "로그인",
 			"branding": "브랜딩",
 			"sso": "싱글 사인온",
-			"security": "로그인 보안"
+			"security": "로그인 보안",
+			"notifications": "알림 전달"
 		},
 		"security": {
 			"roles": {
@@ -550,6 +551,43 @@
 				"saveFailed": "저장하지 못했습니다. 다시 시도하세요.",
 				"loadFailed": "로그인 보안 설정을 불러올 수 없습니다."
 			}
+		},
+		"notifications": {
+			"title": "알림 전달",
+			"description": "알림이 제대로 전달되는지 보여 줍니다. 전달 대기열, 실패, 전달 소요 시간, 백그라운드 작업이 포기한 항목을 확인하세요. 30초마다 갱신됩니다.",
+			"refresh": "새로고침",
+			"loadError": "알림 상태를 불러오지 못했습니다.",
+			"status": {
+				"ok": "정상",
+				"degraded": "성능 저하",
+				"failing": "장애"
+			},
+			"channels": "전달 채널",
+			"noDeliveries": "아직 전달 내역이 없습니다.",
+			"channelNames": {
+				"realtime": "실시간",
+				"push": "푸시",
+				"email": "이메일"
+			},
+			"columns": {
+				"channel": "채널",
+				"pending": "대기 중",
+				"overdue": "지연",
+				"sent": "전송됨 (1시간)",
+				"failed": "실패 (1시간)",
+				"p50": "중앙값",
+				"p95": "느린 5%",
+				"stream": "스트림",
+				"unacked": "미확인",
+				"oldestWait": "최장 대기",
+				"deadLetters": "포기됨 (1시간 / 전체)"
+			},
+			"noData": "—",
+			"noReason": "기록된 사유 없음",
+			"errorLine": "{{channel}}: {{count}}건 실패 — {{error}}",
+			"streams": "백그라운드 작업",
+			"deadCount": "{{recent}} / {{total}}",
+			"checkedAt": "{{time}}에 확인"
 		}
 	},
 	"serviceAccounts": {

@@ -517,7 +517,8 @@
 			"signIn": "Đăng nhập",
 			"branding": "Thương hiệu",
 			"sso": "Đăng nhập một lần (SSO)",
-			"security": "Bảo mật đăng nhập"
+			"security": "Bảo mật đăng nhập",
+			"notifications": "Gửi thông báo"
 		},
 		"security": {
 			"roles": {
@@ -550,6 +551,43 @@
 				"saveFailed": "Lưu thất bại. Vui lòng thử lại.",
 				"loadFailed": "Không thể tải cài đặt bảo mật đăng nhập."
 			}
+		},
+		"notifications": {
+			"title": "Gửi thông báo",
+			"description": "Thông báo có đang đến nơi không: hàng đợi gửi, lỗi, thời gian gửi và những gì tiến trình nền đã bỏ cuộc. Làm mới mỗi 30 giây.",
+			"refresh": "Làm mới",
+			"loadError": "Không thể tải tình trạng thông báo.",
+			"status": {
+				"ok": "Bình thường",
+				"degraded": "Suy giảm",
+				"failing": "Đang lỗi"
+			},
+			"channels": "Kênh gửi",
+			"noDeliveries": "Chưa có lượt gửi nào.",
+			"channelNames": {
+				"realtime": "Thời gian thực",
+				"push": "Đẩy",
+				"email": "Email"
+			},
+			"columns": {
+				"channel": "Kênh",
+				"pending": "Đang chờ",
+				"overdue": "Quá hạn",
+				"sent": "Đã gửi (1 giờ)",
+				"failed": "Lỗi (1 giờ)",
+				"p50": "Trung vị",
+				"p95": "5% chậm nhất",
+				"stream": "Luồng",
+				"unacked": "Chưa xác nhận",
+				"oldestWait": "Chờ lâu nhất",
+				"deadLetters": "Đã bỏ (1 giờ / tổng)"
+			},
+			"noData": "—",
+			"noReason": "không có lý do được ghi",
+			"errorLine": "{{channel}}: {{count}} lỗi — {{error}}",
+			"streams": "Tiến trình nền",
+			"deadCount": "{{recent}} / {{total}}",
+			"checkedAt": "Kiểm tra lúc {{time}}"
 		}
 	},
 	"serviceAccounts": {

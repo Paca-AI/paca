@@ -46,9 +46,12 @@ type Deps struct {
 	// /projects/{projectId}/files); optional.
 	File         *handler.FileHandler
 	Notification *handler.NotificationHandler
-	APIKey       *handler.APIKeyHandler
-	Plugin       *handler.PluginHandler
-	Skills       *handler.SkillsHandler
+	Push         *handler.PushHandler
+	// NotificationHealth serves the notification delivery health to admins; optional.
+	NotificationHealth *handler.NotificationHealthHandler
+	APIKey             *handler.APIKeyHandler
+	Plugin             *handler.PluginHandler
+	Skills             *handler.SkillsHandler
 	// PluginAssets streams plugin bundle files out of the plugin store; optional.
 	PluginAssets *handler.PluginAssetsHandler
 	Agent        *handler.AgentHandler
@@ -250,6 +253,15 @@ func New(deps Deps) http.Handler {
 						r.Patch("/me/notifications/{notificationId}/read", deps.Notification.MarkAsRead)
 						r.Post("/me/notifications/read-all", deps.Notification.MarkAllAsRead)
 					}
+
+					// Web Push and push preferences: the caller's own, JWT/cookie auth.
+					if deps.Push != nil {
+						r.Get("/me/push", deps.Push.Settings)
+						r.Post("/me/push/subscriptions", deps.Push.Subscribe)
+						r.Post("/me/push/subscriptions/delete", deps.Push.Unsubscribe)
+						r.Put("/me/push/preferences", deps.Push.SetPreference)
+						r.Put("/me/push/do-not-disturb", deps.Push.SetDoNotDisturb)
+					}
 				})
 			})
 
@@ -368,6 +380,12 @@ func New(deps Deps) http.Handler {
 				// generic avatar-upload client/component used for
 				// users/agents/projects (which always POSTs/DELETEs to
 				// "{basePath}/avatar/…").
+				// Notification delivery health: operational diagnostics, so held to the
+				// same bar as changing instance settings.
+				if deps.NotificationHealth != nil {
+					r.With(require.Global(iam.ActionSettingsWrite)).Get("/notifications/health", deps.NotificationHealth.Get)
+				}
+
 				if deps.Settings != nil {
 					write := require.Global(iam.ActionSettingsWrite)
 					r.With(write).Patch("/settings", deps.Settings.UpdateSettings)

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -521,10 +522,18 @@ func (r *Runtime) callExport(ctx context.Context, pluginName, exportName string,
 // for how a plugin instead fetches that kind of value on demand, gated by
 // its own manifest permission, only once it has decided it needs it.
 func (r *Runtime) EmitEvent(ctx context.Context, topic string, payload any) {
+	_ = r.DeliverEvent(ctx, topic, payload, nil)
+}
+
+// DeliverEvent is EmitEvent that reports how each plugin's handling went. When
+// only is non-empty the event goes to just the named plugins — how a retry
+// reaches the plugins that failed without re-running the ones that did not.
+// The result has one entry per plugin the event was dispatched to.
+func (r *Runtime) DeliverEvent(ctx context.Context, topic string, payload any, only []string) []plugindom.EventDelivery {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		r.log.Error("plugin: marshal event payload", "topic", topic, "error", err)
-		return
+		return nil
 	}
 
 	r.mu.RLock()
@@ -532,6 +541,9 @@ func (r *Runtime) EmitEvent(ctx context.Context, topic string, payload any) {
 	for _, inst := range r.plugins {
 		// Frontend-only plugins have no backend section and no subscriptions.
 		if inst.plugin.Manifest.Backend == nil {
+			continue
+		}
+		if len(only) > 0 && !slices.Contains(only, inst.plugin.Name) {
 			continue
 		}
 		for _, sub := range inst.plugin.Manifest.Backend.EventSubscriptions {
@@ -543,9 +555,15 @@ func (r *Runtime) EmitEvent(ctx context.Context, topic string, payload any) {
 	}
 	r.mu.RUnlock()
 
+	deliveries := make([]plugindom.EventDelivery, 0, len(instances))
 	for _, inst := range instances {
-		r.dispatchEvent(ctx, inst, topic, data)
+		d := plugindom.EventDelivery{Plugin: inst.plugin.Name}
+		if retryable, err := r.dispatchEvent(ctx, inst, topic, data); err != nil {
+			d.Err, d.Retryable = err, retryable
+		}
+		deliveries = append(deliveries, d)
 	}
+	return deliveries
 }
 
 // dispatchEvent invokes a single plugin instance's HandleEvent export. It
@@ -554,16 +572,22 @@ func (r *Runtime) EmitEvent(ctx context.Context, topic string, payload any) {
 // malloc invocations, and the allocator must be reset on every exit path so
 // a write the host rejects as out-of-bounds cannot leave the plugin's bump
 // allocator cursor permanently corrupted.
-func (r *Runtime) dispatchEvent(ctx context.Context, inst *pluginInstance, topic string, data []byte) {
+//
+// The error it returns is only what the host can see (see sendOutcomes): a
+// payload the host refused to hand over, or an outbound email that failed to
+// send. A plugin that fails in some other way returns nothing from HandleEvent
+// and is reported as having handled the event, exactly as before. retryable
+// says whether running the event again could do better.
+func (r *Runtime) dispatchEvent(ctx context.Context, inst *pluginInstance, topic string, data []byte) (retryable bool, err error) {
 	fn := inst.mod.ExportedFunction("HandleEvent")
 	if fn == nil {
-		return
+		return false, nil
 	}
 
 	if maxBytes := r.limits.MaxRequestBodyBytes; maxBytes > 0 && int64(len(data)) > maxBytes {
 		r.log.Warn("plugin: event payload exceeds size limit, dropping",
 			"name", inst.plugin.Name, "topic", topic, "size", len(data), "limit", maxBytes)
-		return
+		return false, fmt.Errorf("event payload of %d bytes exceeds the %d byte limit", len(data), maxBytes)
 	}
 
 	inst.mu.Lock()
@@ -578,20 +602,22 @@ func (r *Runtime) dispatchEvent(ctx context.Context, inst *pluginInstance, topic
 		cancel()
 	}()
 
-	ptrLen, err := writeToMemory(inst.mod, data)
-	if err != nil {
-		r.log.Error("plugin: write event payload", "name", inst.plugin.Name, "error", err)
-		return
+	ptrLen, werr := writeToMemory(inst.mod, data)
+	if werr != nil {
+		r.log.Error("plugin: write event payload", "name", inst.plugin.Name, "error", werr)
+		return false, werr
 	}
-	topicPtrLen, err := writeToMemory(inst.mod, []byte(topic))
-	if err != nil {
-		r.log.Error("plugin: write topic", "name", inst.plugin.Name, "error", err)
-		return
+	topicPtrLen, werr := writeToMemory(inst.mod, []byte(topic))
+	if werr != nil {
+		r.log.Error("plugin: write topic", "name", inst.plugin.Name, "error", werr)
+		return false, werr
 	}
 
-	callCtx, cancel := context.WithTimeout(ctx, r.limits.MaxCallDuration)
+	callCtx, outcomes := withSendOutcomes(ctx)
+	callCtx, cancel := context.WithTimeout(callCtx, r.limits.MaxCallDuration)
 	_, _ = fn.Call(callCtx, topicPtrLen[0], topicPtrLen[1], ptrLen[0], ptrLen[1])
 	cancel()
+	return outcomes.result()
 }
 
 // PluginRoutes returns the Gin-compatible route definitions for the named plugin.

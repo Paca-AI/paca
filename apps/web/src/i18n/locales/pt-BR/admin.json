@@ -517,7 +517,8 @@
 			"signIn": "Login",
 			"branding": "Identidade visual",
 			"sso": "Login único",
-			"security": "Segurança de login"
+			"security": "Segurança de login",
+			"notifications": "Entrega de notificações"
 		},
 		"security": {
 			"roles": {
@@ -550,6 +551,43 @@
 				"saveFailed": "Falha ao salvar. Tente novamente.",
 				"loadFailed": "Não foi possível carregar as configurações de segurança de login."
 			}
+		},
+		"notifications": {
+			"title": "Entrega de notificações",
+			"description": "Se as notificações estão chegando: a fila de entregas, as falhas, quanto tempo a entrega leva e o que os processos em segundo plano abandonaram. Atualiza a cada 30 segundos.",
+			"refresh": "Atualizar",
+			"loadError": "Não foi possível carregar a saúde das notificações.",
+			"status": {
+				"ok": "Saudável",
+				"degraded": "Degradado",
+				"failing": "Com falhas"
+			},
+			"channels": "Canais de entrega",
+			"noDeliveries": "Ainda não há entregas.",
+			"channelNames": {
+				"realtime": "Tempo real",
+				"push": "Push",
+				"email": "E-mail"
+			},
+			"columns": {
+				"channel": "Canal",
+				"pending": "Aguardando",
+				"overdue": "Atrasadas",
+				"sent": "Enviadas (1 h)",
+				"failed": "Falhas (1 h)",
+				"p50": "Mediana",
+				"p95": "5% mais lentas",
+				"stream": "Fluxo",
+				"unacked": "Sem confirmação",
+				"oldestWait": "Maior espera",
+				"deadLetters": "Abandonadas (1 h / total)"
+			},
+			"noData": "—",
+			"noReason": "sem motivo registrado",
+			"errorLine": "{{channel}}: {{count}} falhas — {{error}}",
+			"streams": "Processos em segundo plano",
+			"deadCount": "{{recent}} / {{total}}",
+			"checkedAt": "Verificado às {{time}}"
 		}
 	},
 	"serviceAccounts": {
