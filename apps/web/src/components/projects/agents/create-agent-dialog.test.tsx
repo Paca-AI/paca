@@ -238,6 +238,39 @@ beforeEach(() => {
 	agentApi.generateGlobalAgentMCPKey.mockResolvedValue({ token: "k" });
 });
 
+describe("CreateAgentDialog — default LLM model", () => {
+	// claude-sonnet-4-5-20250929 retires on the Anthropic API on 2026-11-30.
+	it("creates an LLM agent with the same default model as the presets", async () => {
+		const user = userEvent.setup();
+		agentApi.createGlobalAgent.mockResolvedValue({
+			id: "agent-1",
+			name: "Bot",
+			handle: "bot",
+			agent_type: "llm",
+		});
+		renderDialog();
+		await user.type(screen.getByLabelText(/^Name/), "Bot");
+		await user.click(button(/continue/i));
+		await user.type(
+			document.getElementById("agent-base-url") as HTMLElement,
+			"https://api.anthropic.com",
+		);
+		await user.type(
+			document.getElementById("agent-api-key") as HTMLElement,
+			"sk-ant-test",
+		);
+		await user.click(button(/create agent/i));
+
+		await waitFor(() => expect(agentApi.createGlobalAgent).toHaveBeenCalled());
+		expect(agentApi.createGlobalAgent).toHaveBeenCalledWith(
+			expect.objectContaining({
+				agent_type: "llm",
+				llm_model: "claude-sonnet-4-6",
+			}),
+		);
+	});
+});
+
 describe("CreateAgentDialog — steps by scope", () => {
 	it("gives a project agent the same three steps, with no role in the first", () => {
 		renderDialog({ projectId: "proj-1" });

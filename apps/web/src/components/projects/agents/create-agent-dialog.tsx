@@ -209,7 +209,7 @@ export function CreateAgentDialog({
 	const [agentType, setAgentType] = useState<AgentType>("llm");
 	const [providerSelect, setProviderSelect] = useState("anthropic");
 	const [customProvider, setCustomProvider] = useState("");
-	const [modelSelect, setModelSelect] = useState("claude-sonnet-4-5-20250929");
+	const [modelSelect, setModelSelect] = useState("claude-sonnet-4-6");
 	const [customModel, setCustomModel] = useState("");
 	const [llmApiKey, setLlmApiKey] = useState("");
 	const [llmBaseUrl, setLlmBaseUrl] = useState(
@@ -266,7 +266,7 @@ export function CreateAgentDialog({
 		setAgentType("llm");
 		setProviderSelect("anthropic");
 		setCustomProvider("");
-		setModelSelect("claude-sonnet-4-5-20250929");
+		setModelSelect("claude-sonnet-4-6");
 		setCustomModel("");
 		setLlmApiKey("");
 		setLlmBaseUrl(llmModels.anthropic?.base_url ?? "");
