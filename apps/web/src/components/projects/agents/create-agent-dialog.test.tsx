@@ -2,6 +2,7 @@ import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_LLM_MODEL } from "@/lib/agent-api";
 import { makeRole, renderWithQueries } from "@/test/render-with-queries";
 import { roleOption, toggleRole } from "@/test/role-select";
 import { CreateAgentDialog } from "./create-agent-dialog";
@@ -241,6 +242,7 @@ beforeEach(() => {
 describe("CreateAgentDialog — default LLM model", () => {
 	// claude-sonnet-4-5-20250929 retires on the Anthropic API on 2026-11-30.
 	it("creates an LLM agent with the same default model as the presets", async () => {
+		expect(DEFAULT_LLM_MODEL).not.toBe("claude-sonnet-4-5-20250929");
 		const user = userEvent.setup();
 		agentApi.createGlobalAgent.mockResolvedValue({
 			id: "agent-1",
@@ -252,20 +254,17 @@ describe("CreateAgentDialog — default LLM model", () => {
 		await user.type(screen.getByLabelText(/^Name/), "Bot");
 		await user.click(button(/continue/i));
 		await user.type(
-			document.getElementById("agent-base-url") as HTMLElement,
+			screen.getByLabelText(/base url/i),
 			"https://api.anthropic.com",
 		);
-		await user.type(
-			document.getElementById("agent-api-key") as HTMLElement,
-			"sk-ant-test",
-		);
+		await user.type(screen.getByLabelText(/^API Key/), "sk-ant-test");
 		await user.click(button(/create agent/i));
 
 		await waitFor(() => expect(agentApi.createGlobalAgent).toHaveBeenCalled());
 		expect(agentApi.createGlobalAgent).toHaveBeenCalledWith(
 			expect.objectContaining({
 				agent_type: "llm",
-				llm_model: "claude-sonnet-4-6",
+				llm_model: DEFAULT_LLM_MODEL,
 			}),
 		);
 	});
