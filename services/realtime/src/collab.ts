@@ -107,6 +107,10 @@ export const MAX_PENDING_UPDATES = 100;
 export const RATE_BURST = 200;
 export const RATE_PER_SEC = 100;
 const DESTROY_GRACE_MS = 30_000;
+// How long a socket that left a room is still recognised as an editor of it
+// when its save comes back (see Room.departed).
+export const DEPARTED_TTL_MS = 10 * 60_000;
+const MAX_DEPARTED = 50;
 // One account may hold this many rooms open at once, so a single user with a
 // project-wide write grant cannot use up the global cap for everyone else.
 export const MAX_ROOMS_PER_USER = 10;
@@ -233,6 +237,12 @@ interface Room {
 	awarenessOwners: Map<number, string>;
 	bytes: number;
 	destroyTimer?: ReturnType<typeof setTimeout>;
+	// Sockets that were members and left (a dropped or replaced connection),
+	// with when. A save the browser started just before that arrives after it
+	// still names the old socket: it is the editor's own content, not an
+	// outside write, and merging it would insert it a second time next to
+	// what the editor typed since.
+	departed: Map<string, number>;
 }
 
 export interface CollabTransport {
@@ -513,7 +523,9 @@ export class CollabHub {
 		// the room's, and merging it again could revive blocks deleted since.
 		// It is recognised by the socket that saved, not by the account: an
 		// agent writing with the same user's API key is someone else's write.
-		if (collabSocket && room.members.has(collabSocket)) return undefined;
+		if (collabSocket && this.isEditorSocket(room, collabSocket)) {
+			return undefined;
+		}
 		// Editor updates already received but still waiting on their access
 		// check have not reached the Y.Doc yet. Merging first would replace a
 		// block that such an update is about to edit, and the update would land
@@ -677,6 +689,7 @@ export class CollabHub {
 			seedTried: new Set(),
 			awarenessOwners: new Map(),
 			bytes: 0,
+			departed: new Map(),
 		};
 		this.rooms.set(name, room);
 		return room;
@@ -686,6 +699,7 @@ export class CollabHub {
 		const member = room.members.get(socketId);
 		if (!member) return;
 		room.members.delete(socketId);
+		this.markDeparted(room, socketId);
 		if (notify) this.transport.revoke(socketId, room.name);
 		if (room.seeder === socketId && !room.seeded) {
 			// Do not strand the room unseeded: hand the grant to someone else.
@@ -713,6 +727,24 @@ export class CollabHub {
 			}, DESTROY_GRACE_MS);
 			room.destroyTimer.unref?.();
 		}
+	}
+
+	private markDeparted(room: Room, socketId: string): void {
+		const now = Date.now();
+		room.departed.delete(socketId);
+		room.departed.set(socketId, now);
+		for (const [id, at] of room.departed) {
+			if (now - at > DEPARTED_TTL_MS || room.departed.size > MAX_DEPARTED) {
+				room.departed.delete(id);
+			} else break; // insertion order is age order
+		}
+	}
+
+	// isEditorSocket: the socket is, or recently was, a member of the room.
+	private isEditorSocket(room: Room, socketId: string): boolean {
+		if (room.members.has(socketId)) return true;
+		const at = room.departed.get(socketId);
+		return at !== undefined && Date.now() - at <= DEPARTED_TTL_MS;
 	}
 
 	private roomsOf(userId: string, except: string): number {
