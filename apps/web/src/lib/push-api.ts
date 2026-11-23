@@ -164,8 +164,12 @@ export async function enablePush(
 		subscription &&
 		!sameKey(subscription.options?.applicationServerKey, key)
 	) {
+		const stale = subscription.endpoint;
 		await subscription.unsubscribe();
 		subscription = null;
+		// Best effort: the server's row for it would otherwise linger until a
+		// send to it is rejected.
+		await removeSubscription(stale).catch(() => undefined);
 	}
 	subscription ??= await reg.pushManager.subscribe({
 		userVisibleOnly: true,

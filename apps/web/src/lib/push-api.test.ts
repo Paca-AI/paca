@@ -136,6 +136,11 @@ describe("enablePush", () => {
 
 		expect(stale.unsubscribe).toHaveBeenCalled();
 		expect(pushManager.subscribe).toHaveBeenCalledTimes(1);
+		// The server's row for the dead endpoint is dropped too.
+		expect(http.post).toHaveBeenCalledWith(
+			"/users/me/push/subscriptions/delete",
+			{ endpoint: "https://push.example/old" },
+		);
 		expect(http.post).toHaveBeenCalledWith(
 			"/users/me/push/subscriptions",
 			created.toJSON(),

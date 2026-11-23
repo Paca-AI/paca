@@ -79,18 +79,18 @@ export function PushNotificationsCard() {
 		},
 	});
 
-	// Push is on by default: once the card knows this browser has no
-	// subscription and the user never switched it off here, subscribe it. The
-	// same goes for a browser that holds a subscription the server no longer
-	// has (it deletes one whose key stopped matching): register it again.
-	// This runs once per visit, and only when permission has not been refused.
+	// Push is on by default: once the card knows this browser's state and the
+	// user never switched it off here, subscribe it. A browser that already holds
+	// a subscription is re-registered too, as an idempotent upsert: the server
+	// may have dropped its row (it deletes one whose key stopped matching), and
+	// the account-wide subscription count cannot say whether *this* browser is
+	// registered. This runs once per visit, and only when permission has not
+	// been refused.
 	const triedAuto = useRef(false);
 	const { mutate: toggle } = toggleDevice;
 	useEffect(() => {
 		if (triedAuto.current) return;
 		if (!supported || !settings.data || device.data === undefined) return;
-		const unregistered = device.data && settings.data.subscription_count === 0;
-		if (device.data && !unregistered) return;
 		triedAuto.current = true;
 		if (isPushOptedOut() || pushPermission() === "denied") return;
 		toggle({ on: true, auto: true });
