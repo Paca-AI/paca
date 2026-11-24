@@ -576,7 +576,7 @@ export function InteractionLayout({
 	const [renameOpen, setRenameOpen] = useState(false);
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	// Transient assignee quick filter driven by the avatar strip on the sprint
-	// board and Gantt. It narrows the view's own filters and is reset on a view switch.
+	// board, Gantt and table. It narrows the view's own filters and is reset on a view switch.
 	const [quickAssigneeIds, setQuickAssigneeIds] = useState<string[]>([]);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reset when the view changes
 	useEffect(() => {
@@ -2174,7 +2174,8 @@ export function InteractionLayout({
 				>
 					{context === "sprint" &&
 						(activeView?.layout === "Board" ||
-							activeView?.layout === "Gantt") && (
+							activeView?.layout === "Gantt" ||
+							activeView?.layout === "Table") && (
 							<AssigneeQuickFilter
 								projectId={projectId}
 								selectedIds={quickAssigneeIds}
