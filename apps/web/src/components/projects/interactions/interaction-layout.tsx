@@ -106,6 +106,7 @@ import {
 import { formatChord, isMacPlatform } from "@/lib/shortcuts/keymap";
 import { usePageShortcutStore } from "@/lib/shortcuts/page-shortcut-store";
 import { cn } from "@/lib/utils";
+import { AssigneeQuickFilter } from "./assignee-quick-filter";
 import { BoardView } from "./board-view";
 import type { DateUpdate } from "./gantt-scale";
 import { GanttView } from "./gantt-view";
@@ -574,6 +575,13 @@ export function InteractionLayout({
 	);
 	const [renameOpen, setRenameOpen] = useState(false);
 	const [settingsOpen, setSettingsOpen] = useState(false);
+	// Transient assignee quick filter driven by the avatar strip on the sprint
+	// board. It narrows the view's own filters and is reset on a view switch.
+	const [quickAssigneeIds, setQuickAssigneeIds] = useState<string[]>([]);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: reset when the view changes
+	useEffect(() => {
+		setQuickAssigneeIds([]);
+	}, [activeViewId]);
 	const activeViewConfig = previewConfig ?? activeView?.config;
 	// The Gantt view draws "blocks" links as arrows unless the view hides them.
 	const showGanttDependencies =
@@ -695,6 +703,11 @@ export function InteractionLayout({
 			assignee_ids = memberIds.length > 0 ? memberIds : undefined;
 			assignee_null = hasUnassigned || undefined;
 		}
+		// The avatar quick filter replaces the view's assignee filter while on.
+		if (quickAssigneeIds.length > 0) {
+			assignee_ids = quickAssigneeIds;
+			assignee_null = undefined;
+		}
 
 		let task_type_ids: string[] | undefined;
 		if (!activeViewConfig?.filters) {
@@ -788,6 +801,7 @@ export function InteractionLayout({
 		};
 	}, [
 		activeViewConfig?.filters,
+		quickAssigneeIds,
 		customFields,
 		defaultPageTaskTypeIds,
 		sprints,
@@ -2158,6 +2172,20 @@ export function InteractionLayout({
 						isNoteView && "hidden",
 					)}
 				>
+					{context === "sprint" && activeView?.layout === "Board" && (
+						<AssigneeQuickFilter
+							projectId={projectId}
+							selectedIds={quickAssigneeIds}
+							onToggle={(id) =>
+								setQuickAssigneeIds((prev) =>
+									prev.includes(id)
+										? prev.filter((x) => x !== id)
+										: [...prev, id],
+								)
+							}
+							onClear={() => setQuickAssigneeIds([])}
+						/>
+					)}
 					{searchOpen ? (
 						<div className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/15 px-3 py-1.5 focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/15 transition-all duration-150">
 							<Search className="size-3.5 text-muted-foreground/90 shrink-0" />

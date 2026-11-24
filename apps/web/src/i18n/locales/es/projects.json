@@ -2241,6 +2241,11 @@
 			"renameView": "Cambiar nombre de la vista",
 			"deleteView": "Eliminar vista",
 			"searchTasksPlaceholder": "Buscar tareas…",
+			"assigneeQuickFilter": {
+				"label": "Filtrar por asignado",
+				"filterBy": "Filtrar por {{name}}",
+				"clear": "Borrar"
+			},
 			"pluginNotAvailable": "Plugin no disponible",
 			"columnsTruncated": "Solo se muestran las primeras {{max}} columnas; algunas tareas no están en ninguna columna. Acota la vista con un filtro para ver el resto.",
 			"viewErrors": {

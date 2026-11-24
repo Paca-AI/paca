@@ -2241,6 +2241,11 @@
 			"renameView": "重命名视图",
 			"deleteView": "删除视图",
 			"searchTasksPlaceholder": "搜索任务…",
+			"assigneeQuickFilter": {
+				"label": "按负责人筛选",
+				"filterBy": "按 {{name}} 筛选",
+				"clear": "清除"
+			},
 			"pluginNotAvailable": "插件不可用",
 			"columnsTruncated": "仅显示前 {{max}} 列；部分任务不在任何列中。请使用筛选器缩小视图范围以查看其余任务。",
 			"viewErrors": {

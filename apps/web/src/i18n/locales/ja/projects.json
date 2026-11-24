@@ -2241,6 +2241,11 @@
 			"renameView": "ビュー名を変更",
 			"deleteView": "ビューを削除",
 			"searchTasksPlaceholder": "タスクを検索…",
+			"assigneeQuickFilter": {
+				"label": "担当者で絞り込み",
+				"filterBy": "{{name}} で絞り込み",
+				"clear": "クリア"
+			},
 			"pluginNotAvailable": "プラグインを利用できません",
 			"columnsTruncated": "最初の{{max}}列のみ表示されています。一部のタスクはどの列にも表示されません。フィルターで絞り込むと残りを確認できます。",
 			"viewErrors": {
