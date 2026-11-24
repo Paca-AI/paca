@@ -88,6 +88,16 @@ func TestResolveProviderEnv_AliasedToDifferentGooseProviderID(t *testing.T) {
 	}
 }
 
+// TestResolveProviderEnv_RuncrateRoutesThroughOpenAI confirms runcrate is
+// served by Goose's own openai client (an OpenAI-compatible API reached via
+// OPENAI_HOST), so it resolves to the openai provider id and key env var.
+func TestResolveProviderEnv_RuncrateRoutesThroughOpenAI(t *testing.T) {
+	provider, envVar := resolveProviderEnv("runcrate")
+	if provider != "openai" || envVar != "OPENAI_API_KEY" {
+		t.Errorf("got (%q, %q), want (openai, OPENAI_API_KEY)", provider, envVar)
+	}
+}
+
 // TestResolveProviderEnv_NewDirectProvidersResolveToThemselves covers
 // providers added alongside the same 1.50.1 bump whose Goose-registered id
 // already matches Paca's llm_provider value verbatim, so no gooseProviderID
