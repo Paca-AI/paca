@@ -2241,6 +2241,11 @@
 			"renameView": "Rename view",
 			"deleteView": "Delete view",
 			"searchTasksPlaceholder": "Search tasks…",
+			"assigneeQuickFilter": {
+				"label": "Filter by assignee",
+				"filterBy": "Filter by {{name}}",
+				"clear": "Clear"
+			},
 			"pluginNotAvailable": "Plugin not available",
 			"columnsTruncated": "Only the first {{max}} columns are shown; some tasks are not in any column. Narrow the view with a filter to see the rest.",
 			"viewErrors": {

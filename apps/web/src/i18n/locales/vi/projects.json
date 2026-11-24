@@ -2241,6 +2241,11 @@
 			"renameView": "Đổi tên chế độ xem",
 			"deleteView": "Xóa chế độ xem",
 			"searchTasksPlaceholder": "Tìm kiếm nhiệm vụ…",
+			"assigneeQuickFilter": {
+				"label": "Lọc theo người được giao",
+				"filterBy": "Lọc theo {{name}}",
+				"clear": "Xóa"
+			},
 			"pluginNotAvailable": "Plugin không khả dụng",
 			"columnsTruncated": "Chỉ hiển thị {{max}} cột đầu tiên; một số tác vụ không nằm trong cột nào. Hãy thu hẹp chế độ xem bằng bộ lọc để xem phần còn lại.",
 			"viewErrors": {

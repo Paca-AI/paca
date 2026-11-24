@@ -2241,6 +2241,11 @@
 			"renameView": "뷰 이름 변경",
 			"deleteView": "뷰 삭제",
 			"searchTasksPlaceholder": "작업 검색…",
+			"assigneeQuickFilter": {
+				"label": "담당자로 필터링",
+				"filterBy": "{{name}}(으)로 필터링",
+				"clear": "지우기"
+			},
 			"pluginNotAvailable": "플러그인을 사용할 수 없습니다",
 			"columnsTruncated": "처음 {{max}}개 열만 표시됩니다. 일부 작업은 어느 열에도 표시되지 않습니다. 필터로 보기를 좁혀 나머지를 확인하세요.",
 			"viewErrors": {
