@@ -576,7 +576,7 @@ export function InteractionLayout({
 	const [renameOpen, setRenameOpen] = useState(false);
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	// Transient assignee quick filter driven by the avatar strip on the sprint
-	// board. It narrows the view's own filters and is reset on a view switch.
+	// board and Gantt. It narrows the view's own filters and is reset on a view switch.
 	const [quickAssigneeIds, setQuickAssigneeIds] = useState<string[]>([]);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reset when the view changes
 	useEffect(() => {
@@ -2172,20 +2172,22 @@ export function InteractionLayout({
 						isNoteView && "hidden",
 					)}
 				>
-					{context === "sprint" && activeView?.layout === "Board" && (
-						<AssigneeQuickFilter
-							projectId={projectId}
-							selectedIds={quickAssigneeIds}
-							onToggle={(id) =>
-								setQuickAssigneeIds((prev) =>
-									prev.includes(id)
-										? prev.filter((x) => x !== id)
-										: [...prev, id],
-								)
-							}
-							onClear={() => setQuickAssigneeIds([])}
-						/>
-					)}
+					{context === "sprint" &&
+						(activeView?.layout === "Board" ||
+							activeView?.layout === "Gantt") && (
+							<AssigneeQuickFilter
+								projectId={projectId}
+								selectedIds={quickAssigneeIds}
+								onToggle={(id) =>
+									setQuickAssigneeIds((prev) =>
+										prev.includes(id)
+											? prev.filter((x) => x !== id)
+											: [...prev, id],
+									)
+								}
+								onClear={() => setQuickAssigneeIds([])}
+							/>
+						)}
 					{searchOpen ? (
 						<div className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/15 px-3 py-1.5 focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/15 transition-all duration-150">
 							<Search className="size-3.5 text-muted-foreground/90 shrink-0" />
