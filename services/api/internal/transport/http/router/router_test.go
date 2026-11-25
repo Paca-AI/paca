@@ -436,6 +436,25 @@ func TestProjectsRoute_WorkspaceStats_NotShadowedByProjectIDRoute(t *testing.T) 
 	}
 }
 
+// TestProjectsRoute_WorkspaceTrend_NotShadowedByProjectIDRoute is the same
+// guard for the sibling static route that feeds the home page's sparklines.
+func TestProjectsRoute_WorkspaceTrend_NotShadowedByProjectIDRoute(t *testing.T) {
+	r := newTestRouter(t)
+	tok := issueAccessTokenForRouterTests(t)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/projects/workspace-trend", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 from GetWorkspaceTrend, got %d (%s)", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "open_tasks") {
+		t.Fatalf("expected WorkspaceTrendResponse body, got %s", w.Body.String())
+	}
+}
+
 // TestProjectsRoute_GetByID_StillParsesProjectID is the counterpart check:
 // the {projectId} route must still receive and parse a real project ID after
 // the r.Group fix, rather than always falling through to the collection
