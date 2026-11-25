@@ -48,10 +48,16 @@
 			"evening": "좋은 저녁이에요",
 			"fallbackName": "회원님"
 		},
+		"summary": {
+			"noneAssigned": "할당된 작업이 없습니다",
+			"assigned_one": "나에게 할당된 작업 {{formatted}}개",
+			"assigned_other": "나에게 할당된 작업 {{formatted}}개",
+			"overdue_one": "기한 초과 {{count}}개",
+			"overdue_other": "기한 초과 {{count}}개",
+			"dueThisWeek_one": "이번 주 마감 {{count}}개",
+			"dueThisWeek_other": "이번 주 마감 {{count}}개"
+		},
 		"hero": {
-			"badge": "스크럼반 워크스페이스",
-			"subtitleWithProjects_one": "진행 중인 프로젝트가 {{count}}개 있습니다. 하던 작업을 이어서 진행하세요.",
-			"subtitleWithProjects_other": "진행 중인 프로젝트가 {{count}}개 있습니다. 하던 작업을 이어서 진행하세요.",
 			"subtitleEmpty": "워크스페이스가 준비되었습니다. 프로젝트를 만들고, 팀을 초대하고, 작업을 시작하세요.",
 			"newProject": "새 프로젝트"
 		},
@@ -63,7 +69,9 @@
 			},
 			"openTasks": {
 				"label": "열린 작업",
-				"sub": "모든 프로젝트 기준"
+				"sub": "모든 프로젝트 기준",
+				"subAssigned_one": "그중 {{formatted}}개가 내 작업",
+				"subAssigned_other": "그중 {{formatted}}개가 내 작업"
 			},
 			"teamMembers": {
 				"label": "팀 멤버",
@@ -72,8 +80,13 @@
 			"aiAgents": {
 				"label": "AI 에이전트",
 				"sub": "설정된 에이전트 없음",
-				"subActive": "{{count}}개 설정됨"
-			}
+				"subActive": "{{count}}개 설정됨",
+				"setUp": "설정하기"
+			},
+			"delta": "이번 주 {{value}}",
+			"noChange": "이번 주 변동 없음",
+			"trendLabel_one": "최근 {{count}}일간 {{label}}",
+			"trendLabel_other": "최근 {{count}}일간 {{label}}"
 		},
 		"myTasks": {
 			"title": "내 작업",
@@ -82,7 +95,21 @@
 			"emptyDescription": "현재 나에게 할당된 열린 작업이 없습니다.",
 			"loadError": "작업을 불러오지 못했습니다. 다시 시도해 주세요.",
 			"loadMore": "더 보기",
-			"loading": "불러오는 중…"
+			"loading": "불러오는 중…",
+			"filterLabel": "상태로 필터",
+			"filterAll": "전체"
+		},
+		"dueSoon": {
+			"title": "마감 임박",
+			"subtitle_one": "{{count}}일 이내에 마감되는 내 작업",
+			"subtitle_other": "{{count}}일 이내에 마감되는 내 작업",
+			"empty": "마감이 임박한 작업이 없습니다.",
+			"overdue_one": "{{count}}일 지남",
+			"overdue_other": "{{count}}일 지남",
+			"today": "오늘 마감",
+			"tomorrow": "내일 마감",
+			"inDays_one": "{{count}}일 후 마감",
+			"inDays_other": "{{count}}일 후 마감"
 		},
 		"waitingTasks": {
 			"title": "Waiting tasks",

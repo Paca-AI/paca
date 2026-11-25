@@ -790,7 +790,10 @@ export async function listSprintTasks(
 	});
 }
 
-export const ASSIGNED_TASKS_PAGE_SIZE = 10;
+// Large enough that one page usually holds everything assigned to a person:
+// the home page's status filter counts, "Due soon" card, and header summary
+// are all derived from the loaded pages. The server caps page_size at 100.
+export const ASSIGNED_TASKS_PAGE_SIZE = 50;
 
 /** Open tasks assigned to the current user across every project they belong
  *  to — backs the home page "My Tasks" widget. Cursor-paginated the same way

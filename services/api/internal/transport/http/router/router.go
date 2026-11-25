@@ -449,6 +449,7 @@ func New(deps Deps) http.Handler {
 				r.Use(httpmw.RequireFreshPassword())
 				r.Get("/projects", deps.Project.ListProjects)
 				r.Get("/projects/workspace-stats", deps.Project.GetWorkspaceStats)
+				r.Get("/projects/workspace-trend", deps.Project.GetWorkspaceTrend)
 				r.With(require.Global(iam.ActionProjectsCreate)).Post("/projects", deps.Project.CreateProject)
 				if deps.Task != nil {
 					r.With(require.TaskByKey(iam.ActionTasksRead)).Get("/tasks/by-key/{taskKey}", deps.Task.GetTaskByKey)

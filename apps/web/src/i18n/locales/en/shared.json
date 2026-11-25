@@ -48,10 +48,16 @@
 			"evening": "Good evening",
 			"fallbackName": "there"
 		},
+		"summary": {
+			"noneAssigned": "Nothing assigned to you",
+			"assigned_one": "{{formatted}} task assigned to you",
+			"assigned_other": "{{formatted}} tasks assigned to you",
+			"overdue_one": "{{count}} overdue",
+			"overdue_other": "{{count}} overdue",
+			"dueThisWeek_one": "{{count}} due this week",
+			"dueThisWeek_other": "{{count}} due this week"
+		},
 		"hero": {
-			"badge": "Scrumban workspace",
-			"subtitleWithProjects_one": "You have {{count}} active project. Pick up where you left off.",
-			"subtitleWithProjects_other": "You have {{count}} active projects. Pick up where you left off.",
 			"subtitleEmpty": "Your workspace is ready. Create a project, invite your team, and start shipping.",
 			"newProject": "New Project"
 		},
@@ -63,7 +69,9 @@
 			},
 			"openTasks": {
 				"label": "Open Tasks",
-				"sub": "Across all projects"
+				"sub": "Across all projects",
+				"subAssigned_one": "{{formatted}} assigned to you",
+				"subAssigned_other": "{{formatted}} assigned to you"
 			},
 			"teamMembers": {
 				"label": "Team Members",
@@ -72,8 +80,13 @@
 			"aiAgents": {
 				"label": "AI Agents",
 				"sub": "None configured",
-				"subActive": "{{count}} configured"
-			}
+				"subActive": "{{count}} configured",
+				"setUp": "Set up"
+			},
+			"delta": "{{value}} this week",
+			"noChange": "No change this week",
+			"trendLabel_one": "{{label}} over the last day",
+			"trendLabel_other": "{{label}} over the last {{count}} days"
 		},
 		"myTasks": {
 			"title": "My Tasks",
@@ -82,7 +95,21 @@
 			"emptyDescription": "No open tasks are assigned to you right now.",
 			"loadError": "Couldn't load your tasks. Please try again.",
 			"loadMore": "Load more",
-			"loading": "Loading…"
+			"loading": "Loading…",
+			"filterLabel": "Filter by status",
+			"filterAll": "All"
+		},
+		"dueSoon": {
+			"title": "Due soon",
+			"subtitle_one": "Your tasks due within the next day",
+			"subtitle_other": "Your tasks due within the next {{count}} days",
+			"empty": "Nothing of yours is due soon.",
+			"overdue_one": "{{count}} day overdue",
+			"overdue_other": "{{count}} days overdue",
+			"today": "Due today",
+			"tomorrow": "Due tomorrow",
+			"inDays_one": "Due in {{count}} day",
+			"inDays_other": "Due in {{count}} days"
 		},
 		"waitingTasks": {
 			"title": "Waiting tasks",

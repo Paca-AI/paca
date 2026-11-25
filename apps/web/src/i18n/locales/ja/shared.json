@@ -48,10 +48,16 @@
 			"evening": "こんばんは",
 			"fallbackName": "さん"
 		},
+		"summary": {
+			"noneAssigned": "割り当てられたタスクはありません",
+			"assigned_one": "あなたに割り当てられたタスク {{formatted}}件",
+			"assigned_other": "あなたに割り当てられたタスク {{formatted}}件",
+			"overdue_one": "期限切れ {{count}}件",
+			"overdue_other": "期限切れ {{count}}件",
+			"dueThisWeek_one": "今週期限 {{count}}件",
+			"dueThisWeek_other": "今週期限 {{count}}件"
+		},
 		"hero": {
-			"badge": "スクラムバン ワークスペース",
-			"subtitleWithProjects_one": "現在{{count}}件のアクティブなプロジェクトがあります。続きから始めましょう。",
-			"subtitleWithProjects_other": "現在{{count}}件のアクティブなプロジェクトがあります。続きから始めましょう。",
 			"subtitleEmpty": "ワークスペースの準備ができました。プロジェクトを作成し、チームを招待して、作業を始めましょう。",
 			"newProject": "新しいプロジェクト"
 		},
@@ -63,7 +69,9 @@
 			},
 			"openTasks": {
 				"label": "未完了タスク",
-				"sub": "全プロジェクト合計"
+				"sub": "全プロジェクト合計",
+				"subAssigned_one": "うち {{formatted}}件があなたの担当",
+				"subAssigned_other": "うち {{formatted}}件があなたの担当"
 			},
 			"teamMembers": {
 				"label": "チームメンバー",
@@ -72,8 +80,13 @@
 			"aiAgents": {
 				"label": "AIエージェント",
 				"sub": "未設定",
-				"subActive": "{{count}}件設定済み"
-			}
+				"subActive": "{{count}}件設定済み",
+				"setUp": "設定する"
+			},
+			"delta": "今週 {{value}}",
+			"noChange": "今週の変化なし",
+			"trendLabel_one": "過去{{count}}日間の{{label}}",
+			"trendLabel_other": "過去{{count}}日間の{{label}}"
 		},
 		"myTasks": {
 			"title": "自分のタスク",
@@ -82,7 +95,21 @@
 			"emptyDescription": "現在、割り当てられた未完了タスクはありません。",
 			"loadError": "タスクを読み込めませんでした。もう一度お試しください。",
 			"loadMore": "もっと読み込む",
-			"loading": "読み込み中…"
+			"loading": "読み込み中…",
+			"filterLabel": "ステータスで絞り込み",
+			"filterAll": "すべて"
+		},
+		"dueSoon": {
+			"title": "期限が近いタスク",
+			"subtitle_one": "{{count}}日以内に期限を迎えるあなたのタスク",
+			"subtitle_other": "{{count}}日以内に期限を迎えるあなたのタスク",
+			"empty": "期限が近いタスクはありません。",
+			"overdue_one": "{{count}}日超過",
+			"overdue_other": "{{count}}日超過",
+			"today": "今日が期限",
+			"tomorrow": "明日が期限",
+			"inDays_one": "{{count}}日後が期限",
+			"inDays_other": "{{count}}日後が期限"
 		},
 		"waitingTasks": {
 			"title": "Waiting tasks",

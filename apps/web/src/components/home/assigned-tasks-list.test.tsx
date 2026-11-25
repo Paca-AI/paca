@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
 	navigateMock: vi.fn(),
 	listAssignedTasksMock: vi.fn(),
 	listProjectsMock: vi.fn(),
+	listStatusesMock: vi.fn(),
 }));
 
 const defaultProjectsPage = {
@@ -78,7 +79,7 @@ vi.mock("@/lib/project-api", async () => {
 		}),
 		taskStatusesQueryOptions: (projectId: string) => ({
 			queryKey: ["test", "statuses", projectId],
-			queryFn: async () => [],
+			queryFn: () => mocks.listStatusesMock(projectId),
 		}),
 		taskTypesQueryOptions: (projectId: string) => ({
 			queryKey: ["test", "types", projectId],
@@ -135,6 +136,25 @@ function makeTask(overrides: Record<string, unknown> = {}) {
 	};
 }
 
+function makeStatus(
+	projectId: string,
+	id: string,
+	name: string,
+	category: string,
+	position: number,
+) {
+	return {
+		id,
+		project_id: projectId,
+		name,
+		category,
+		position,
+		color: null,
+		created_at: "2026-01-01T00:00:00Z",
+		updated_at: "2026-01-01T00:00:00Z",
+	};
+}
+
 function wrapper({ children }: { children: ReactNode }) {
 	const qc = new QueryClient({
 		defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -153,6 +173,8 @@ beforeEach(() => {
 	mocks.listAssignedTasksMock.mockReset();
 	mocks.listProjectsMock.mockReset();
 	mocks.listProjectsMock.mockResolvedValue(defaultProjectsPage);
+	mocks.listStatusesMock.mockReset();
+	mocks.listStatusesMock.mockResolvedValue([]);
 });
 
 describe("AssignedTasksList", () => {
@@ -288,5 +310,82 @@ describe("AssignedTasksList", () => {
 		// test).
 		await new Promise((resolve) => setTimeout(resolve, 200));
 		expect(calls).toBe(2);
+	});
+
+	it("filters by status name across projects and counts each tab", async () => {
+		mocks.listStatusesMock.mockImplementation(async (projectId: string) =>
+			projectId === "proj-a"
+				? [
+						makeStatus("proj-a", "a-todo", "To Do", "todo", 0),
+						makeStatus("proj-a", "a-blocked", "Blocked", "inprogress", 1),
+					]
+				: [makeStatus("proj-b", "b-blocked", "blocked ", "inprogress", 3)],
+		);
+		mocks.listAssignedTasksMock.mockResolvedValue({
+			items: [
+				makeTask({
+					id: "t1",
+					project_id: "proj-a",
+					title: "A todo",
+					status_id: "a-todo",
+				}),
+				makeTask({
+					id: "t2",
+					project_id: "proj-a",
+					title: "A blocked",
+					status_id: "a-blocked",
+				}),
+				makeTask({
+					id: "t3",
+					project_id: "proj-b",
+					title: "B blocked",
+					status_id: "b-blocked",
+				}),
+			],
+			page_size: 50,
+			next_cursor: null,
+		});
+
+		renderWidget();
+
+		// "Blocked" and "blocked " in two projects merge into one tab.
+		const blockedTab = await screen.findByRole("tab", { name: /Blocked\s*2/ });
+		const tabs = screen.getAllByRole("tab");
+		expect(tabs.map((tab) => tab.textContent)).toEqual([
+			"All3",
+			"To Do1",
+			"Blocked2",
+		]);
+		expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+
+		await userEvent.click(blockedTab);
+
+		expect(blockedTab).toHaveAttribute("aria-selected", "true");
+		expect(screen.queryByText("A todo")).not.toBeInTheDocument();
+		expect(screen.getByText("A blocked")).toBeInTheDocument();
+		expect(screen.getByText("B blocked")).toBeInTheDocument();
+	});
+
+	it("hides the filter tabs when every task shares one status", async () => {
+		mocks.listStatusesMock.mockResolvedValue([
+			makeStatus("proj-a", "a-todo", "To Do", "todo", 0),
+		]);
+		mocks.listAssignedTasksMock.mockResolvedValue({
+			items: [
+				makeTask({
+					id: "t1",
+					project_id: "proj-a",
+					title: "Only task",
+					status_id: "a-todo",
+				}),
+			],
+			page_size: 50,
+			next_cursor: null,
+		});
+
+		renderWidget();
+
+		expect(await screen.findByText("Only task")).toBeInTheDocument();
+		expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
 	});
 });

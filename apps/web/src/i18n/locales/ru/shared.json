@@ -48,12 +48,20 @@
 			"evening": "Добрый вечер",
 			"fallbackName": "привет"
 		},
+		"summary": {
+			"noneAssigned": "Вам не назначено задач",
+			"assigned_one": "{{formatted}} задача назначена вам",
+			"assigned_few": "{{formatted}} задачи назначены вам",
+			"assigned_many": "{{formatted}} задач назначено вам",
+			"assigned_other": "{{formatted}} задачи назначено вам",
+			"overdue_one": "{{count}} просрочена",
+			"overdue_few": "{{count}} просрочены",
+			"overdue_many": "{{count}} просрочено",
+			"overdue_other": "{{count}} просрочено",
+			"dueThisWeek_one": "{{count}} — срок на этой неделе",
+			"dueThisWeek_other": "{{count}} — срок на этой неделе"
+		},
 		"hero": {
-			"badge": "Рабочее пространство Scrumban",
-			"subtitleWithProjects_one": "У вас {{count}} активный проект. Продолжайте с того места, где остановились.",
-			"subtitleWithProjects_few": "У вас {{count}} активных проекта. Продолжайте с того места, где остановились.",
-			"subtitleWithProjects_many": "У вас {{count}} активных проектов. Продолжайте с того места, где остановились.",
-			"subtitleWithProjects_other": "У вас {{count}} активного проекта. Продолжайте с того места, где остановились.",
 			"subtitleEmpty": "Рабочее пространство готово. Создайте проект, пригласите команду и начинайте выпускать результат.",
 			"newProject": "Новый проект"
 		},
@@ -65,7 +73,11 @@
 			},
 			"openTasks": {
 				"label": "Открытые задачи",
-				"sub": "Во всех проектах"
+				"sub": "Во всех проектах",
+				"subAssigned_one": "{{formatted}} назначена вам",
+				"subAssigned_few": "{{formatted}} назначены вам",
+				"subAssigned_many": "{{formatted}} назначено вам",
+				"subAssigned_other": "{{formatted}} назначено вам"
 			},
 			"teamMembers": {
 				"label": "Участники команды",
@@ -74,8 +86,15 @@
 			"aiAgents": {
 				"label": "AI-агенты",
 				"sub": "Не настроены",
-				"subActive": "{{count}} настроенных"
-			}
+				"subActive": "{{count}} настроенных",
+				"setUp": "Настроить"
+			},
+			"delta": "{{value}} за неделю",
+			"noChange": "Без изменений за неделю",
+			"trendLabel_one": "{{label}} за последний {{count}} день",
+			"trendLabel_few": "{{label}} за последние {{count}} дня",
+			"trendLabel_many": "{{label}} за последние {{count}} дней",
+			"trendLabel_other": "{{label}} за последние {{count}} дня"
 		},
 		"myTasks": {
 			"title": "Мои задачи",
@@ -84,7 +103,27 @@
 			"emptyDescription": "Сейчас вам не назначено ни одной открытой задачи.",
 			"loadError": "Не удалось загрузить ваши задачи. Попробуйте ещё раз.",
 			"loadMore": "Загрузить ещё",
-			"loading": "Загрузка…"
+			"loading": "Загрузка…",
+			"filterLabel": "Фильтр по статусу",
+			"filterAll": "Все"
+		},
+		"dueSoon": {
+			"title": "Скоро срок",
+			"subtitle_one": "Ваши задачи со сроком в ближайший {{count}} день",
+			"subtitle_few": "Ваши задачи со сроком в ближайшие {{count}} дня",
+			"subtitle_many": "Ваши задачи со сроком в ближайшие {{count}} дней",
+			"subtitle_other": "Ваши задачи со сроком в ближайшие {{count}} дня",
+			"empty": "Ближайших сроков нет.",
+			"overdue_one": "Просрочено на {{count}} день",
+			"overdue_few": "Просрочено на {{count}} дня",
+			"overdue_many": "Просрочено на {{count}} дней",
+			"overdue_other": "Просрочено на {{count}} дня",
+			"today": "Срок сегодня",
+			"tomorrow": "Срок завтра",
+			"inDays_one": "Через {{count}} день",
+			"inDays_few": "Через {{count}} дня",
+			"inDays_many": "Через {{count}} дней",
+			"inDays_other": "Через {{count}} дня"
 		},
 		"waitingTasks": {
 			"title": "Waiting tasks",

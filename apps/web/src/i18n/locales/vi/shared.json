@@ -48,10 +48,16 @@
 			"evening": "Chào buổi tối",
 			"fallbackName": "bạn"
 		},
+		"summary": {
+			"noneAssigned": "Không có nhiệm vụ nào được giao cho bạn",
+			"assigned_one": "{{formatted}} nhiệm vụ được giao cho bạn",
+			"assigned_other": "{{formatted}} nhiệm vụ được giao cho bạn",
+			"overdue_one": "{{count}} quá hạn",
+			"overdue_other": "{{count}} quá hạn",
+			"dueThisWeek_one": "{{count}} đến hạn tuần này",
+			"dueThisWeek_other": "{{count}} đến hạn tuần này"
+		},
 		"hero": {
-			"badge": "Không gian làm việc Scrumban",
-			"subtitleWithProjects_one": "Bạn có {{count}} dự án đang hoạt động. Hãy tiếp tục từ nơi bạn đã dừng lại.",
-			"subtitleWithProjects_other": "Bạn có {{count}} dự án đang hoạt động. Hãy tiếp tục từ nơi bạn đã dừng lại.",
 			"subtitleEmpty": "Không gian làm việc của bạn đã sẵn sàng. Tạo một dự án, mời đội nhóm của bạn và bắt đầu triển khai.",
 			"newProject": "Dự án mới"
 		},
@@ -63,7 +69,9 @@
 			},
 			"openTasks": {
 				"label": "Nhiệm vụ đang mở",
-				"sub": "Trên tất cả dự án"
+				"sub": "Trên tất cả dự án",
+				"subAssigned_one": "{{formatted}} được giao cho bạn",
+				"subAssigned_other": "{{formatted}} được giao cho bạn"
 			},
 			"teamMembers": {
 				"label": "Thành viên đội nhóm",
@@ -72,8 +80,13 @@
 			"aiAgents": {
 				"label": "AI Agent",
 				"sub": "Chưa cấu hình",
-				"subActive": "{{count}} đã cấu hình"
-			}
+				"subActive": "{{count}} đã cấu hình",
+				"setUp": "Thiết lập"
+			},
+			"delta": "{{value}} tuần này",
+			"noChange": "Không thay đổi trong tuần",
+			"trendLabel_one": "{{label}} trong {{count}} ngày qua",
+			"trendLabel_other": "{{label}} trong {{count}} ngày qua"
 		},
 		"myTasks": {
 			"title": "Nhiệm vụ của tôi",
@@ -82,7 +95,21 @@
 			"emptyDescription": "Hiện không có nhiệm vụ đang mở nào được giao cho bạn.",
 			"loadError": "Không thể tải nhiệm vụ của bạn. Vui lòng thử lại.",
 			"loadMore": "Tải thêm",
-			"loading": "Đang tải…"
+			"loading": "Đang tải…",
+			"filterLabel": "Lọc theo trạng thái",
+			"filterAll": "Tất cả"
+		},
+		"dueSoon": {
+			"title": "Sắp đến hạn",
+			"subtitle_one": "Nhiệm vụ của bạn đến hạn trong {{count}} ngày tới",
+			"subtitle_other": "Nhiệm vụ của bạn đến hạn trong {{count}} ngày tới",
+			"empty": "Không có nhiệm vụ nào sắp đến hạn.",
+			"overdue_one": "Quá hạn {{count}} ngày",
+			"overdue_other": "Quá hạn {{count}} ngày",
+			"today": "Đến hạn hôm nay",
+			"tomorrow": "Đến hạn ngày mai",
+			"inDays_one": "Đến hạn sau {{count}} ngày",
+			"inDays_other": "Đến hạn sau {{count}} ngày"
 		},
 		"waitingTasks": {
 			"title": "Waiting tasks",

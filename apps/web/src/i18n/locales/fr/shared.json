@@ -48,10 +48,16 @@
 			"evening": "Bonsoir",
 			"fallbackName": "vous"
 		},
+		"summary": {
+			"noneAssigned": "Aucune tâche ne vous est assignée",
+			"assigned_one": "{{formatted}} tâche qui vous est assignée",
+			"assigned_other": "{{formatted}} tâches qui vous sont assignées",
+			"overdue_one": "{{count}} en retard",
+			"overdue_other": "{{count}} en retard",
+			"dueThisWeek_one": "{{count}} échéance cette semaine",
+			"dueThisWeek_other": "{{count}} échéances cette semaine"
+		},
 		"hero": {
-			"badge": "Espace de travail Scrumban",
-			"subtitleWithProjects_one": "Vous avez {{count}} projet actif. Reprenez là où vous vous étiez arrêté.",
-			"subtitleWithProjects_other": "Vous avez {{count}} projets actifs. Reprenez là où vous vous étiez arrêté.",
 			"subtitleEmpty": "Votre espace de travail est prêt. Créez un projet, invitez votre équipe et commencez à livrer.",
 			"newProject": "Nouveau projet"
 		},
@@ -63,7 +69,9 @@
 			},
 			"openTasks": {
 				"label": "Tâches ouvertes",
-				"sub": "Tous projets confondus"
+				"sub": "Tous projets confondus",
+				"subAssigned_one": "{{formatted}} vous est assignée",
+				"subAssigned_other": "{{formatted}} vous sont assignées"
 			},
 			"teamMembers": {
 				"label": "Membres de l'équipe",
@@ -72,8 +80,13 @@
 			"aiAgents": {
 				"label": "Agents IA",
 				"sub": "Aucun configuré",
-				"subActive": "{{count}} configurés"
-			}
+				"subActive": "{{count}} configurés",
+				"setUp": "Configurer"
+			},
+			"delta": "{{value}} cette semaine",
+			"noChange": "Aucun changement cette semaine",
+			"trendLabel_one": "{{label}} sur le dernier jour",
+			"trendLabel_other": "{{label}} sur les {{count}} derniers jours"
 		},
 		"myTasks": {
 			"title": "Mes tâches",
@@ -82,7 +95,21 @@
 			"emptyDescription": "Aucune tâche ouverte ne vous est actuellement assignée.",
 			"loadError": "Impossible de charger vos tâches. Veuillez réessayer.",
 			"loadMore": "Charger plus",
-			"loading": "Chargement…"
+			"loading": "Chargement…",
+			"filterLabel": "Filtrer par statut",
+			"filterAll": "Toutes"
+		},
+		"dueSoon": {
+			"title": "Échéances proches",
+			"subtitle_one": "Vos tâches à échéance dans le prochain jour",
+			"subtitle_other": "Vos tâches à échéance dans les {{count}} prochains jours",
+			"empty": "Aucune échéance proche.",
+			"overdue_one": "En retard de {{count}} jour",
+			"overdue_other": "En retard de {{count}} jours",
+			"today": "Échéance aujourd'hui",
+			"tomorrow": "Échéance demain",
+			"inDays_one": "Échéance dans {{count}} jour",
+			"inDays_other": "Échéance dans {{count}} jours"
 		},
 		"waitingTasks": {
 			"title": "Waiting tasks",

@@ -44,6 +44,18 @@ export interface WorkspaceStats {
 	ai_agent_count: number;
 }
 
+/** Daily history of the workspace counters, from GET
+ *  /projects/workspace-trend. dates are UTC calendar dates, oldest first; each
+ *  series holds the counter at the end of that day, so its last value is the
+ *  live count. A series is empty when the server can't provide it. */
+export interface WorkspaceTrend {
+	days: number;
+	dates: string[];
+	projects: number[];
+	open_tasks: number[];
+	team_members: number[];
+}
+
 export interface ProjectMember {
 	id: string;
 	project_id: string;
@@ -89,6 +101,13 @@ export async function getWorkspaceStats(): Promise<WorkspaceStats> {
 	const { data } = await apiClient.instance.get<
 		SuccessEnvelope<WorkspaceStats>
 	>("/projects/workspace-stats");
+	return data.data;
+}
+
+export async function getWorkspaceTrend(days: number): Promise<WorkspaceTrend> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<WorkspaceTrend>
+	>("/projects/workspace-trend", { params: { days } });
 	return data.data;
 }
 
@@ -560,6 +579,16 @@ export const workspaceStatsQueryOptions = () =>
 		queryKey: ["workspace-stats"],
 		queryFn: () => getWorkspaceStats(),
 		staleTime: 2 * 60 * 1000,
+	});
+
+export const WORKSPACE_TREND_DAYS = 30;
+
+// The series only gain a point per day, so a long staleTime is fine.
+export const workspaceTrendQueryOptions = (days = WORKSPACE_TREND_DAYS) =>
+	queryOptions({
+		queryKey: ["workspace-trend", days],
+		queryFn: () => getWorkspaceTrend(days),
+		staleTime: 10 * 60 * 1000,
 	});
 
 export const projectQueryOptions = (projectId: string) =>
