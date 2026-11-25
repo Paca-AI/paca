@@ -48,10 +48,16 @@
 			"evening": "晚上好",
 			"fallbackName": "你好"
 		},
+		"summary": {
+			"noneAssigned": "暂无分配给您的任务",
+			"assigned_one": "分配给您的任务 {{formatted}} 个",
+			"assigned_other": "分配给您的任务 {{formatted}} 个",
+			"overdue_one": "{{count}} 个已逾期",
+			"overdue_other": "{{count}} 个已逾期",
+			"dueThisWeek_one": "{{count}} 个本周到期",
+			"dueThisWeek_other": "{{count}} 个本周到期"
+		},
 		"hero": {
-			"badge": "Scrumban 工作区",
-			"subtitleWithProjects_one": "您有 {{count}} 个进行中的项目，继续上次的工作吧。",
-			"subtitleWithProjects_other": "您有 {{count}} 个进行中的项目，继续上次的工作吧。",
 			"subtitleEmpty": "您的工作区已就绪。创建一个项目、邀请您的团队，开始交付成果吧。",
 			"newProject": "新建项目"
 		},
@@ -63,7 +69,9 @@
 			},
 			"openTasks": {
 				"label": "未完成任务",
-				"sub": "覆盖所有项目"
+				"sub": "覆盖所有项目",
+				"subAssigned_one": "其中 {{formatted}} 个分配给您",
+				"subAssigned_other": "其中 {{formatted}} 个分配给您"
 			},
 			"teamMembers": {
 				"label": "团队成员",
@@ -72,8 +80,13 @@
 			"aiAgents": {
 				"label": "AI 智能体",
 				"sub": "尚未配置",
-				"subActive": "{{count}} 个已配置"
-			}
+				"subActive": "{{count}} 个已配置",
+				"setUp": "去设置"
+			},
+			"delta": "本周 {{value}}",
+			"noChange": "本周无变化",
+			"trendLabel_one": "过去 {{count}} 天的{{label}}",
+			"trendLabel_other": "过去 {{count}} 天的{{label}}"
 		},
 		"myTasks": {
 			"title": "我的任务",
@@ -82,7 +95,21 @@
 			"emptyDescription": "目前没有分配给你的未完成任务。",
 			"loadError": "无法加载你的任务，请重试。",
 			"loadMore": "加载更多",
-			"loading": "加载中…"
+			"loading": "加载中…",
+			"filterLabel": "按状态筛选",
+			"filterAll": "全部"
+		},
+		"dueSoon": {
+			"title": "即将到期",
+			"subtitle_one": "未来 {{count}} 天内到期的任务",
+			"subtitle_other": "未来 {{count}} 天内到期的任务",
+			"empty": "近期没有到期的任务。",
+			"overdue_one": "已逾期 {{count}} 天",
+			"overdue_other": "已逾期 {{count}} 天",
+			"today": "今天到期",
+			"tomorrow": "明天到期",
+			"inDays_one": "{{count}} 天后到期",
+			"inDays_other": "{{count}} 天后到期"
 		},
 		"waitingTasks": {
 			"title": "Waiting tasks",

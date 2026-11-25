@@ -48,10 +48,16 @@
 			"evening": "Boa noite",
 			"fallbackName": "olá"
 		},
+		"summary": {
+			"noneAssigned": "Nenhuma tarefa atribuída a você",
+			"assigned_one": "{{formatted}} tarefa atribuída a você",
+			"assigned_other": "{{formatted}} tarefas atribuídas a você",
+			"overdue_one": "{{count}} atrasada",
+			"overdue_other": "{{count}} atrasadas",
+			"dueThisWeek_one": "{{count}} vence esta semana",
+			"dueThisWeek_other": "{{count}} vencem esta semana"
+		},
 		"hero": {
-			"badge": "Workspace scrumban",
-			"subtitleWithProjects_one": "Você tem {{count}} projeto ativo. Continue de onde parou.",
-			"subtitleWithProjects_other": "Você tem {{count}} projetos ativos. Continue de onde parou.",
 			"subtitleEmpty": "Seu workspace está pronto. Crie um projeto, convide sua equipe e comece a entregar.",
 			"newProject": "Novo Projeto"
 		},
@@ -63,7 +69,9 @@
 			},
 			"openTasks": {
 				"label": "Tarefas Abertas",
-				"sub": "Em todos os projetos"
+				"sub": "Em todos os projetos",
+				"subAssigned_one": "{{formatted}} atribuída a você",
+				"subAssigned_other": "{{formatted}} atribuídas a você"
 			},
 			"teamMembers": {
 				"label": "Membros da Equipe",
@@ -72,8 +80,13 @@
 			"aiAgents": {
 				"label": "Agentes de IA",
 				"sub": "Nenhum configurado",
-				"subActive": "{{count}} configurados"
-			}
+				"subActive": "{{count}} configurados",
+				"setUp": "Configurar"
+			},
+			"delta": "{{value}} esta semana",
+			"noChange": "Sem mudanças esta semana",
+			"trendLabel_one": "{{label}} no último dia",
+			"trendLabel_other": "{{label}} nos últimos {{count}} dias"
 		},
 		"myTasks": {
 			"title": "Minhas Tarefas",
@@ -82,7 +95,21 @@
 			"emptyDescription": "Nenhuma tarefa aberta está atribuída a você no momento.",
 			"loadError": "Não foi possível carregar suas tarefas. Tente novamente.",
 			"loadMore": "Carregar mais",
-			"loading": "Carregando…"
+			"loading": "Carregando…",
+			"filterLabel": "Filtrar por status",
+			"filterAll": "Todas"
+		},
+		"dueSoon": {
+			"title": "Prazos próximos",
+			"subtitle_one": "Suas tarefas com prazo no próximo dia",
+			"subtitle_other": "Suas tarefas com prazo nos próximos {{count}} dias",
+			"empty": "Nenhum prazo próximo.",
+			"overdue_one": "Atrasada há {{count}} dia",
+			"overdue_other": "Atrasada há {{count}} dias",
+			"today": "Vence hoje",
+			"tomorrow": "Vence amanhã",
+			"inDays_one": "Vence em {{count}} dia",
+			"inDays_other": "Vence em {{count}} dias"
 		},
 		"waitingTasks": {
 			"title": "Waiting tasks",

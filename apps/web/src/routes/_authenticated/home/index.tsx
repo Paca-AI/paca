@@ -8,7 +8,6 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import {
 	ArrowRight,
 	Bot,
-	Calendar,
 	FolderKanban,
 	GitMerge,
 	Layers,
@@ -16,10 +15,13 @@ import {
 	Users,
 	Zap,
 } from "lucide-react";
-import { type ComponentType, useMemo, useState } from "react";
+import { type ComponentType, type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AssignedTasksList } from "@/components/home/assigned-tasks-list";
+import { summarizeDueDates } from "@/components/home/due-dates";
+import { DueSoonCard } from "@/components/home/due-soon-card";
 import { LegacyPluginsBanner } from "@/components/home/LegacyPluginsBanner";
+import { Sparkline, weekDelta } from "@/components/home/sparkline";
 import { UpdateBanner } from "@/components/home/UpdateBanner";
 import { WaitingTasksList } from "@/components/home/waiting-tasks-list";
 import { EntityAvatar } from "@/components/shared/entity-avatar";
@@ -43,12 +45,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { usePermissions } from "@/hooks/use-permissions";
 import { ApiErrorCode, getApiErrorCode } from "@/lib/api-error";
 import { currentUserQueryOptions } from "@/lib/auth-api";
+import { formatDate } from "@/lib/format-date";
 import { assignedTasksQueryOptions } from "@/lib/interaction-api";
 import {
 	createProject,
 	type Project,
 	projectsInfiniteQueryOptions,
 	workspaceStatsQueryOptions,
+	workspaceTrendQueryOptions,
 } from "@/lib/project-api";
 import { projectAvatar } from "@/lib/provider-logos";
 import { cn } from "@/lib/utils";
@@ -60,6 +64,9 @@ export const Route = createFileRoute("/_authenticated/home/")({
 			queryClient.ensureQueryData(workspaceStatsQueryOptions()),
 			queryClient.ensureInfiniteQueryData(assignedTasksQueryOptions()),
 		]);
+		// Not awaited: the charts are a nice-to-have and shouldn't hold up the
+		// page; the cards render without them until the series arrive.
+		void queryClient.prefetchQuery(workspaceTrendQueryOptions());
 	},
 	component: HomePage,
 });
@@ -304,9 +311,9 @@ export function CreateProjectDialog({
 	);
 }
 
-// ── Project Card ──────────────────────────────────────────────────────────────
+// ── Project Row ───────────────────────────────────────────────────────────────
 
-function ProjectCard({ project }: { project: Project }) {
+function ProjectRow({ project }: { project: Project }) {
 	const { t } = useTranslation("shared");
 
 	const formattedDate = new Date(project.created_at).toLocaleDateString(
@@ -318,39 +325,33 @@ function ProjectCard({ project }: { project: Project }) {
 		<Link
 			to="/projects/$projectId"
 			params={{ projectId: project.id }}
-			className="group relative flex flex-col rounded-xl border border-border/60 bg-card p-5 transition-all duration-200 hover:border-primary/40 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+			className="group flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
 		>
-			<div className="absolute inset-x-0 top-0 h-px rounded-t-xl bg-primary/40 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-			<div className="flex items-start gap-3.5 mb-4">
-				<EntityAvatar
-					{...projectAvatar(project)}
-					fallback={<FolderKanban className="size-4" />}
-					size="lg"
-					shape="rounded"
-					className="font-[Syne]"
-				/>
-				<div className="min-w-0 flex-1">
-					<div className="flex items-center gap-2 mb-0.5">
-						<p className="font-[Syne] text-sm font-bold truncate leading-snug">
-							{project.name}
-						</p>
-					</div>
-					{project.description ? (
-						<p className="mt-0.5 text-xs text-muted-foreground line-clamp-2 leading-relaxed">
-							{project.description}
-						</p>
-					) : (
-						<p className="mt-0.5 text-xs text-muted-foreground/90 italic">
-							{t("home.projectCard.noDescription")}
-						</p>
-					)}
-				</div>
+			<EntityAvatar
+				{...projectAvatar(project)}
+				fallback={<FolderKanban className="size-4" />}
+				size="default"
+				shape="rounded"
+				className="font-[Syne]"
+			/>
+			<div className="min-w-0 flex-1">
+				<p className="font-[Syne] text-sm font-bold truncate leading-snug text-foreground">
+					{project.name}
+				</p>
+				<p className="flex gap-1 text-xs text-muted-foreground">
+					<span
+						className={cn(
+							"truncate",
+							!project.description && "italic text-muted-foreground/90",
+						)}
+					>
+						{project.description || t("home.projectCard.noDescription")}
+					</span>
+					<span aria-hidden="true">·</span>
+					<span className="shrink-0">{formattedDate}</span>
+				</p>
 			</div>
-			<div className="mt-auto flex items-center gap-2 text-xs text-muted-foreground">
-				<Calendar className="size-3 shrink-0" />
-				<span>{formattedDate}</span>
-				<ArrowRight className="size-3 ml-auto opacity-0 transition-all duration-150 group-hover:opacity-60 group-hover:translate-x-0.5" />
-			</div>
+			<ArrowRight className="size-3 shrink-0 text-muted-foreground opacity-0 transition-all duration-150 group-hover:translate-x-0.5 group-hover:opacity-60" />
 		</Link>
 	);
 }
@@ -363,29 +364,69 @@ function StatCard({
 	value,
 	sub,
 	iconClass,
+	trend,
+	increaseIsGood = true,
 }: {
 	icon: ComponentType<{ className?: string }>;
 	label: string;
 	value: string | number;
-	sub: string;
+	sub: ReactNode;
 	iconClass: string;
+	/** Daily values, oldest first; drawn as a sparkline with a 7-day change. */
+	trend?: number[];
+	/** Whether a rising trend is good news (projects) or bad (open tasks). */
+	increaseIsGood?: boolean;
 }) {
+	const { t, i18n } = useTranslation("shared");
+	const delta = trend ? weekDelta(trend) : null;
+	const hasChart = trend !== undefined && trend.length > 1;
+
 	return (
-		<Card className="relative overflow-hidden border-border/60">
-			<div className="absolute inset-x-0 top-0 h-px bg-primary/40" />
-			<CardContent className="p-5">
+		<Card className="border-border/60 py-0">
+			<CardContent className="flex items-center gap-3.5 p-4">
 				<div
-					className={`flex size-9 items-center justify-center rounded-[10px] ${iconClass}`}
+					className={`flex size-9 shrink-0 items-center justify-center rounded-[10px] ${iconClass}`}
 				>
 					<Icon className="size-4" />
 				</div>
-				<div className="mt-4">
-					<p className="font-mono text-4xl font-semibold tracking-tight tabular-nums">
-						{value}
+				<div className="min-w-0 flex-1">
+					<div className="flex items-center gap-2">
+						<p className="font-mono text-2xl font-semibold leading-none tracking-tight tabular-nums">
+							{value}
+						</p>
+						{delta !== null ? (
+							<span
+								className={cn(
+									"truncate rounded px-1.5 py-px text-[11px] font-medium tabular-nums",
+									delta === 0
+										? "bg-muted text-muted-foreground"
+										: delta > 0 === increaseIsGood
+											? "bg-primary/10 text-primary"
+											: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+								)}
+							>
+								{delta === 0
+									? t("home.stats.noChange")
+									: t("home.stats.delta", {
+											value: new Intl.NumberFormat(i18n.language, {
+												signDisplay: "always",
+											}).format(delta),
+										})}
+							</span>
+						) : null}
+					</div>
+					<p className="mt-1.5 truncate text-sm font-medium text-foreground/80">
+						{label}
 					</p>
-					<p className="mt-1 text-sm font-medium text-foreground/80">{label}</p>
-					<p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>
+					<p className="truncate text-xs text-muted-foreground">{sub}</p>
 				</div>
+				{hasChart ? (
+					<Sparkline
+						values={trend}
+						label={t("home.stats.trendLabel", { label, count: trend.length })}
+						className="shrink-0"
+					/>
+				) : null}
 			</CardContent>
 		</Card>
 	);
@@ -414,6 +455,31 @@ const GETTING_STARTED = [
 	},
 ] as const;
 
+function Dot() {
+	return (
+		<span aria-hidden="true" className="mx-1.5 text-muted-foreground/60">
+			·
+		</span>
+	);
+}
+
+function SectionHeading({
+	title,
+	subtitle,
+}: {
+	title: string;
+	subtitle: string;
+}) {
+	return (
+		<div className="mb-3">
+			<h2 className="font-[Syne] text-base font-bold tracking-tight">
+				{title}
+			</h2>
+			<p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
+		</div>
+	);
+}
+
 // ── Home Page ─────────────────────────────────────────────────────────────────
 
 function HomePage() {
@@ -426,19 +492,36 @@ function HomePage() {
 		isFetchingNextPage,
 	} = useInfiniteQuery(projectsInfiniteQueryOptions());
 	const { data: workspaceStats } = useQuery(workspaceStatsQueryOptions());
+	const { data: trend } = useQuery(workspaceTrendQueryOptions());
+	const { data: assignedData, hasNextPage: hasMoreAssigned } = useInfiniteQuery(
+		assignedTasksQueryOptions(),
+	);
 	const { hasPermission } = usePermissions();
 	const [createOpen, setCreateOpen] = useState(false);
 
 	const canCreate = hasPermission("projects:create");
+	const canManageAgents = hasPermission("agents:write");
 
 	const projects = useMemo(
 		() => projectsData?.pages.flatMap((p) => p.items) ?? [],
 		[projectsData],
 	);
+	const assignedTasks = useMemo(
+		() => assignedData?.pages.flatMap((p) => p.items) ?? [],
+		[assignedData],
+	);
+	const dueSummary = useMemo(
+		() => summarizeDueDates(assignedTasks),
+		[assignedTasks],
+	);
 	const projectCount = projectsData?.pages[0]?.total ?? 0;
 	const openTaskCount = workspaceStats?.open_task_count ?? 0;
 	const teamMemberCount = workspaceStats?.team_member_count ?? 0;
 	const aiAgentCount = workspaceStats?.ai_agent_count ?? 0;
+	// Only the loaded pages are counted; "50+" says there are more.
+	const assignedLabel = hasMoreAssigned
+		? `${assignedTasks.length}+`
+		: String(assignedTasks.length);
 
 	const greeting = (() => {
 		const hour = new Date().getHours();
@@ -450,70 +533,85 @@ function HomePage() {
 	const displayName =
 		user?.full_name || user?.username || t("home.greeting.fallbackName");
 
+	const today = formatDate(new Date().toISOString(), {
+		weekday: "long",
+		month: "short",
+		day: "numeric",
+	});
+
 	return (
 		<div className="flex flex-col">
 			<UpdateBanner />
 			<LegacyPluginsBanner />
-			{/* Hero banner */}
-			<div className="relative overflow-hidden border-b border-border/50">
-				<div
-					className="pointer-events-none absolute inset-0"
-					style={{
-						backgroundImage:
-							"radial-gradient(circle, color-mix(in oklch, var(--color-primary) 18%, transparent) 1px, transparent 1px)",
-						backgroundSize: "22px 22px",
-						maskImage:
-							"radial-gradient(ellipse 90% 100% at 0% 0%, black 30%, transparent 80%)",
-					}}
-				/>
-				<div className="pointer-events-none absolute -top-16 -left-16 size-72 rounded-full bg-primary/10 blur-3xl" />
-				<div className="pointer-events-none absolute -bottom-8 right-8 size-52 rounded-full bg-secondary/10 blur-3xl" />
-				<div className="relative flex flex-col gap-4 px-6 py-10 sm:flex-row sm:items-end sm:justify-between">
-					<div>
-						<div className="mb-3 flex items-center gap-2">
-							<Badge
-								variant="secondary"
-								className="gap-1.5 px-2.5 py-0.5 text-xs font-semibold border border-border/60"
-							>
-								{t("home.hero.badge")}
-							</Badge>
-						</div>
-						<h1 className="font-[Syne] text-3xl font-bold tracking-tight leading-tight">
-							{greeting},{" "}
-							<span
-								className="bg-clip-text text-transparent"
-								style={{
-									backgroundImage:
-										"linear-gradient(135deg, var(--color-primary) 0%, color-mix(in oklch, var(--color-primary) 70%, var(--color-secondary)) 100%)",
-								}}
-							>
-								{displayName}
-							</span>
-						</h1>
-						<p className="mt-2 max-w-lg text-sm text-muted-foreground leading-relaxed">
-							{projectCount > 0
-								? t("home.hero.subtitleWithProjects", { count: projectCount })
-								: t("home.hero.subtitleEmpty")}
-						</p>
-					</div>
-					<div className="flex shrink-0 items-center gap-2">
-						{canCreate ? (
-							<Button
-								size="sm"
-								className="gap-1.5 shadow-sm shadow-primary/20"
-								onClick={() => setCreateOpen(true)}
-							>
-								<Plus className="size-3.5" />
-								{t("home.hero.newProject")}
-							</Button>
-						) : null}
-					</div>
+			{/* Compact header: greeting plus what needs attention today */}
+			<header className="flex flex-col gap-3 border-b border-border/50 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+				<div className="min-w-0">
+					<h1 className="font-[Syne] text-2xl font-bold tracking-tight leading-tight">
+						{greeting},{" "}
+						<span
+							className="bg-clip-text text-transparent"
+							style={{
+								backgroundImage:
+									"linear-gradient(135deg, var(--color-primary) 0%, color-mix(in oklch, var(--color-primary) 70%, var(--color-secondary)) 100%)",
+							}}
+						>
+							{displayName}
+						</span>
+					</h1>
+					<p className="mt-1 text-sm text-muted-foreground">
+						{projectCount > 0 ? (
+							<>
+								<span>{today}</span>
+								<Dot />
+								<span>
+									{assignedTasks.length === 0
+										? t("home.summary.noneAssigned")
+										: t("home.summary.assigned", {
+												count: assignedTasks.length,
+												formatted: assignedLabel,
+											})}
+								</span>
+								{dueSummary.overdue > 0 ? (
+									<>
+										<Dot />
+										<span className="font-medium text-destructive">
+											{t("home.summary.overdue", {
+												count: dueSummary.overdue,
+											})}
+										</span>
+									</>
+								) : null}
+								{dueSummary.dueThisWeek > 0 ? (
+									<>
+										<Dot />
+										<span className="font-medium text-amber-600 dark:text-amber-400">
+											{t("home.summary.dueThisWeek", {
+												count: dueSummary.dueThisWeek,
+											})}
+										</span>
+									</>
+								) : null}
+							</>
+						) : (
+							t("home.hero.subtitleEmpty")
+						)}
+					</p>
 				</div>
-			</div>
+				{canCreate ? (
+					<Button
+						size="sm"
+						className="shrink-0 gap-1.5 self-start shadow-sm shadow-primary/20 sm:self-auto"
+						onClick={() => setCreateOpen(true)}
+					>
+						<Plus className="size-3.5" />
+						{t("home.hero.newProject")}
+					</Button>
+				) : null}
+			</header>
 
 			<div className="flex flex-col gap-6 p-6">
 				{/* Stats row */}
-				<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+				<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
 					<StatCard
 						icon={FolderKanban}
 						label={t("home.stats.projects.label")}
@@ -524,13 +622,23 @@ function HomePage() {
 								: t("home.stats.projects.subActive", { count: projectCount })
 						}
 						iconClass="bg-primary/10 text-primary"
+						trend={trend?.projects}
 					/>
 					<StatCard
 						icon={Layers}
 						label={t("home.stats.openTasks.label")}
 						value={openTaskCount}
-						sub={t("home.stats.openTasks.sub")}
+						sub={
+							assignedTasks.length > 0
+								? t("home.stats.openTasks.subAssigned", {
+										count: assignedTasks.length,
+										formatted: assignedLabel,
+									})
+								: t("home.stats.openTasks.sub")
+						}
 						iconClass="bg-primary/10 text-primary"
+						trend={trend?.open_tasks}
+						increaseIsGood={false}
 					/>
 					<StatCard
 						icon={Users}
@@ -538,115 +646,109 @@ function HomePage() {
 						value={teamMemberCount}
 						sub={t("home.stats.teamMembers.sub")}
 						iconClass="bg-muted text-muted-foreground"
+						trend={trend?.team_members}
 					/>
 					<StatCard
 						icon={Bot}
 						label={t("home.stats.aiAgents.label")}
 						value={aiAgentCount}
 						sub={
-							aiAgentCount === 0
-								? t("home.stats.aiAgents.sub")
-								: t("home.stats.aiAgents.subActive", { count: aiAgentCount })
+							aiAgentCount > 0 ? (
+								t("home.stats.aiAgents.subActive", { count: aiAgentCount })
+							) : (
+								<>
+									{t("home.stats.aiAgents.sub")}
+									{canManageAgents ? (
+										<>
+											<Dot />
+											<Link
+												to="/admin/agents"
+												search={{ create: true }}
+												className="font-medium text-primary hover:underline"
+											>
+												{t("home.stats.aiAgents.setUp")}
+											</Link>
+										</>
+									) : null}
+								</>
+							)
 						}
 						iconClass="bg-muted text-muted-foreground"
 					/>
 				</div>
 
-				{/* My Tasks — assigned to the current user across every project */}
 				{projectCount > 0 ? (
-					<div>
-						<div className="mb-4">
-							<h2 className="font-[Syne] text-base font-bold tracking-tight">
-								{t("home.myTasks.title")}
-							</h2>
-							<p className="text-xs text-muted-foreground mt-0.5">
-								{t("home.myTasks.subtitle")}
-							</p>
-						</div>
-						<AssignedTasksList />
-					</div>
-				) : null}
+					<div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+						<div className="flex min-w-0 flex-col gap-6">
+							{/* My Tasks — assigned to the current user across every project */}
+							<section>
+								<SectionHeading
+									title={t("home.myTasks.title")}
+									subtitle={t("home.myTasks.subtitle")}
+								/>
+								<AssignedTasksList />
+							</section>
 
-				{/* Waiting tasks — least recently active open tasks across every
-				    project the viewer can access */}
-				{projectCount > 0 ? (
-					<div>
-						<div className="mb-4">
-							<h2 className="font-[Syne] text-base font-bold tracking-tight">
-								{t("home.waitingTasks.title")}
-							</h2>
-							<p className="text-xs text-muted-foreground mt-0.5">
-								{t("home.waitingTasks.description")}
-							</p>
+							{/* Waiting tasks — least recently active open tasks across
+							    every project the viewer can access */}
+							<section>
+								<SectionHeading
+									title={t("home.waitingTasks.title")}
+									subtitle={t("home.waitingTasks.description")}
+								/>
+								<WaitingTasksList />
+							</section>
 						</div>
-						<WaitingTasksList />
-					</div>
-				) : null}
 
-				{/* Projects section or empty state */}
-				{projectCount > 0 ? (
-					<div>
-						<div className="flex items-center justify-between mb-4">
-							<div>
-								<h2 className="font-[Syne] text-base font-bold tracking-tight">
-									{t("home.projectsSection.title")}
-								</h2>
-								<p className="text-xs text-muted-foreground mt-0.5">
-									{t("home.projectsSection.countInWorkspace", {
-										count: projectCount,
-									})}
-								</p>
-							</div>
-							{canCreate ? (
-								<Button
-									size="sm"
-									variant="outline"
-									className="gap-1.5 border-border/60"
-									onClick={() => setCreateOpen(true)}
-								>
-									<Plus className="size-3.5" />
-									{t("home.projectsSection.newShort")}
-								</Button>
-							) : null}
-						</div>
-						<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-							{projects.map((project) => (
-								<ProjectCard key={project.id} project={project} />
-							))}
-							{/* Add project card */}
-							{canCreate ? (
-								<button
-									type="button"
-									onClick={() => setCreateOpen(true)}
-									className="group flex min-h-30 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border/60 bg-muted/10 p-5 text-muted-foreground/90 transition-all hover:border-primary/40 hover:bg-primary/5 hover:text-primary/70"
-								>
-									<div className="flex size-9 items-center justify-center rounded-xl border border-dashed border-current transition-colors">
-										<Plus className="size-4" />
+						<aside className="flex flex-col gap-6">
+							<DueSoonCard />
+
+							<section className="rounded-xl border border-border/60 bg-card">
+								<header className="flex items-start justify-between gap-2 px-4 pt-4 pb-2">
+									<div>
+										<h2 className="font-[Syne] text-sm font-bold tracking-tight">
+											{t("home.projectsSection.title")}
+										</h2>
+										<p className="text-xs text-muted-foreground mt-0.5">
+											{t("home.projectsSection.countInWorkspace", {
+												count: projectCount,
+											})}
+										</p>
 									</div>
-									<span className="text-xs font-medium">
-										{t("home.projectsSection.newProjectCard")}
-									</span>
-								</button>
-							) : null}
-						</div>
-						{hasNextPage ? (
-							<div className="mt-4 flex justify-center">
-								<Button
-									size="sm"
-									variant="outline"
-									className="gap-1.5 border-border/60"
-									disabled={isFetchingNextPage}
-									onClick={() => fetchNextPage()}
-								>
-									{isFetchingNextPage ? (
-										<Spinner aria-hidden="true" className="size-3.5" />
+									{canCreate ? (
+										<Button
+											size="sm"
+											variant="outline"
+											className="h-7 gap-1 border-border/60 px-2 text-xs"
+											onClick={() => setCreateOpen(true)}
+										>
+											<Plus className="size-3" />
+											{t("home.projectsSection.newShort")}
+										</Button>
 									) : null}
-									{isFetchingNextPage
-										? t("home.projectsSection.loadingMore")
-										: t("home.projectsSection.loadMore")}
-								</Button>
-							</div>
-						) : null}
+								</header>
+								<div className="px-2 pb-2">
+									{projects.map((project) => (
+										<ProjectRow key={project.id} project={project} />
+									))}
+								</div>
+								{hasNextPage ? (
+									<button
+										type="button"
+										disabled={isFetchingNextPage}
+										onClick={() => fetchNextPage()}
+										className="flex w-full items-center justify-center gap-1.5 border-t border-border/50 py-2.5 text-xs font-medium text-muted-foreground/90 transition-all duration-150 hover:bg-primary/5 hover:text-primary disabled:opacity-50"
+									>
+										{isFetchingNextPage ? (
+											<Spinner aria-hidden="true" className="size-3" />
+										) : null}
+										{isFetchingNextPage
+											? t("home.projectsSection.loadingMore")
+											: t("home.projectsSection.loadMore")}
+									</button>
+								) : null}
+							</section>
+						</aside>
 					</div>
 				) : (
 					<div className="grid gap-6 lg:grid-cols-[1fr_300px]">
