@@ -1252,7 +1252,7 @@ function ProjectSwitcher({
 				<EntityAvatar
 					{...(currentProject ? projectAvatar(currentProject) : { name: "" })}
 					fallback={<FolderKanban className="size-3" />}
-					size="xs"
+					size="sm"
 					shape="rounded"
 					className="shrink-0"
 				/>
@@ -1274,7 +1274,7 @@ function ProjectSwitcher({
 				<EntityAvatar
 					{...(currentProject ? projectAvatar(currentProject) : { name: "" })}
 					fallback={<FolderKanban className="size-3" />}
-					size="xs"
+					size="sm"
 					shape="rounded"
 					className="shrink-0"
 				/>
@@ -1313,7 +1313,7 @@ function ProjectSwitcher({
 							>
 								<EntityAvatar
 									{...projectAvatar(p)}
-									size="xs"
+									size="sm"
 									shape="rounded"
 									className="shrink-0"
 								/>
