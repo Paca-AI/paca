@@ -57,6 +57,18 @@ type WorkspaceStatsResponse struct {
 	AIAgentCount    int64 `json:"ai_agent_count"`
 }
 
+// WorkspaceTrendResponse is the daily history behind the home page's stat
+// cards. Dates holds one UTC calendar date per day, oldest first, and each
+// series holds the counter's value at the end of that day — so the last value
+// is the live count. A series is empty when its source isn't available.
+type WorkspaceTrendResponse struct {
+	Days        int      `json:"days"`
+	Dates       []string `json:"dates"`
+	Projects    []int64  `json:"projects"`
+	OpenTasks   []int64  `json:"open_tasks"`
+	TeamMembers []int64  `json:"team_members"`
+}
+
 // ProjectFromEntity maps a domain Project to a ProjectResponse DTO.
 func ProjectFromEntity(p *projectdom.Project) ProjectResponse {
 	settings := p.Settings

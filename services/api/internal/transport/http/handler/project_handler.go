@@ -2,7 +2,10 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -33,6 +36,15 @@ type taskServiceForStats interface {
 // userdom.Service.CountUsers.
 type userServiceForStats interface {
 	CountUsers(ctx context.Context) (int64, error)
+}
+
+// workspaceTrendSource rebuilds the workspace counters as daily series for
+// GetWorkspaceTrend (see postgres.WorkspaceTrendRepository). Each method
+// returns one value per day end from firstDayEnd to lastDayEnd inclusive.
+type workspaceTrendSource interface {
+	ProjectCountTrend(ctx context.Context, projectIDs []uuid.UUID, firstDayEnd, lastDayEnd time.Time) ([]int64, error)
+	OpenTaskTrend(ctx context.Context, projectIDs []uuid.UUID, firstDayEnd, lastDayEnd time.Time) ([]int64, error)
+	UserCountTrend(ctx context.Context, firstDayEnd, lastDayEnd time.Time) ([]int64, error)
 }
 
 // projectJevConfigService is the minimal surface used to update a
@@ -69,7 +81,12 @@ type ProjectHandler struct {
 	// taskScoper limits the workspace open-task count to the tasks the caller
 	// may read in each project. Nil leaves it unscoped.
 	taskScoper ProjectsScoper
-	encryptor  *secret.Encryptor
+	// trend backs GetWorkspaceTrend. Nil makes it return empty series.
+	trend workspaceTrendSource
+	// now is the clock GetWorkspaceTrend's day boundaries are taken from;
+	// time.Now unless a test replaces it.
+	now       func() time.Time
+	encryptor *secret.Encryptor
 	// jevHTTPClient is the transport TestJevConfig's Jev client uses. Nil
 	// means "use jev.New's own SSRF-safe default" — see
 	// WithProjectJevHTTPClient.
@@ -108,6 +125,12 @@ func WithProjectStatsServices(taskSvc taskServiceForStats, userSvc userServiceFo
 // iam.WithProjectScopes).
 func WithProjectTaskScoper(s ProjectsScoper) ProjectHandlerOption {
 	return func(h *ProjectHandler) { h.taskScoper = s }
+}
+
+// WithProjectWorkspaceTrend wires the source of the daily series returned by
+// GET /projects/workspace-trend.
+func WithProjectWorkspaceTrend(src workspaceTrendSource) ProjectHandlerOption {
+	return func(h *ProjectHandler) { h.trend = src }
 }
 
 // WithProjectAvatarService configures avatar URL resolution for member
@@ -167,7 +190,7 @@ func WithProjectJevConfigService(svc projectJevConfigService, enc *secret.Encryp
 
 // NewProjectHandler returns a ProjectHandler wired to the service and authorizer.
 func NewProjectHandler(svc projectdom.Service, authorizer *iam.Authorizer, opts ...ProjectHandlerOption) *ProjectHandler {
-	h := &ProjectHandler{svc: svc}
+	h := &ProjectHandler{svc: svc, now: time.Now}
 	if authorizer != nil { // never store a typed nil in the interface
 		h.authorizer = authorizer
 	}
@@ -247,6 +270,53 @@ func (h *ProjectHandler) hasPlatformProjectsRead(r *http.Request) (bool, error) 
 	return iam.AllowedAll(r.Context(), h.authorizer, principal, "project", iam.ActionProjectsRead)
 }
 
+// workspaceProjectIDs returns the projects the workspace counters cover:
+// every project for a caller with platform-wide projects:read, otherwise the
+// ones they can access.
+func (h *ProjectHandler) workspaceProjectIDs(r *http.Request, accountID uuid.UUID) ([]uuid.UUID, error) {
+	hasGlobalRead, err := h.hasPlatformProjectsRead(r)
+	if err != nil {
+		return nil, err
+	}
+	var projects []*projectdom.Project
+	if hasGlobalRead {
+		projects, _, err = h.svc.List(r.Context(), 1, 10000)
+	} else {
+		projects, _, err = h.svc.ListAccessible(r.Context(), accountID, 1, 10000)
+	}
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]uuid.UUID, len(projects))
+	for i, p := range projects {
+		ids[i] = p.ID
+	}
+	return ids, nil
+}
+
+// workspaceTaskScope attaches to ctx the scope of the tasks the caller may
+// read in each of projectIDs, so a task query spanning them counts only those;
+// a project they may read no task in contributes nothing. ctx is returned
+// unchanged when no scoper is wired.
+func (h *ProjectHandler) workspaceTaskScope(ctx context.Context, r *http.Request, projectIDs []uuid.UUID) (context.Context, error) {
+	if h.taskScoper == nil {
+		return ctx, nil
+	}
+	principal, err := middleware.IAMPrincipalFrom(r)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, len(projectIDs))
+	for i, id := range projectIDs {
+		ids[i] = id.String()
+	}
+	byProject, err := h.taskScoper.ListScopes(r.Context(), principal, string(iam.ActionTasksRead), ids, "task")
+	if err != nil {
+		return nil, err
+	}
+	return iam.WithProjectScopes(ctx, "task", byProject), nil
+}
+
 // GetWorkspaceStats handles GET /projects/workspace-stats.
 // It returns workspace-wide aggregate counts for the authenticated user:
 // open tasks and AI agents across all accessible projects, plus
@@ -259,32 +329,13 @@ func (h *ProjectHandler) GetWorkspaceStats(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	hasGlobalRead, authzErr := h.hasPlatformProjectsRead(r)
-	if authzErr != nil {
-		presenter.Error(w, r, authzErr)
-		return
-	}
-
-	var (
-		projects []*projectdom.Project
-		err      error
-	)
-	if hasGlobalRead {
-		projects, _, err = h.svc.List(r.Context(), 1, 10000)
-	} else {
-		projects, _, err = h.svc.ListAccessible(r.Context(), accountID, 1, 10000)
-	}
+	projectIDs, err := h.workspaceProjectIDs(r, accountID)
 	if err != nil {
 		presenter.Error(w, r, err)
 		return
 	}
 
 	var stats dto.WorkspaceStatsResponse
-
-	projectIDs := make([]uuid.UUID, len(projects))
-	for i, p := range projects {
-		projectIDs[i] = p.ID
-	}
 
 	// Each counter is a single aggregate query (not a per-project fan-out):
 	// CountOpenTasksByProjects and CountDistinctAgentsByProjects each
@@ -300,25 +351,10 @@ func (h *ProjectHandler) GetWorkspaceStats(w http.ResponseWriter, r *http.Reques
 	g, gctx := errgroup.WithContext(r.Context())
 
 	if h.taskSvc != nil {
-		// Each project contributes the scope of the tasks the caller may read
-		// there; a project they may read none of adds nothing.
-		countCtx := gctx
-		if h.taskScoper != nil {
-			principal, perr := middleware.IAMPrincipalFrom(r)
-			if perr != nil {
-				presenter.Error(w, r, perr)
-				return
-			}
-			ids := make([]string, len(projectIDs))
-			for i, id := range projectIDs {
-				ids[i] = id.String()
-			}
-			byProject, serr := h.taskScoper.ListScopes(r.Context(), principal, string(iam.ActionTasksRead), ids, "task")
-			if serr != nil {
-				presenter.Error(w, r, serr)
-				return
-			}
-			countCtx = iam.WithProjectScopes(gctx, "task", byProject)
+		countCtx, serr := h.workspaceTaskScope(gctx, r, projectIDs)
+		if serr != nil {
+			presenter.Error(w, r, serr)
+			return
 		}
 		g.Go(func() error {
 			count, err := h.taskSvc.CountOpenTasksByProjects(countCtx, projectIDs)
@@ -606,4 +642,96 @@ func pagingParams(r *http.Request) (page, pageSize int, err error) {
 	}
 	pageSize, err = parsePageSize(r, 20, 100)
 	return page, pageSize, err
+}
+
+const (
+	workspaceTrendDefaultDays = 30
+	workspaceTrendMinDays     = 7
+	workspaceTrendMaxDays     = 90
+)
+
+// GetWorkspaceTrend handles GET /projects/workspace-trend?days=N. It returns
+// the workspace counters of GetWorkspaceStats as daily series over the last
+// N UTC days (default 30, 7 to 90), for the home page's stat-card charts.
+// Projects and open tasks cover the same projects, and the same task scope,
+// as GetWorkspaceStats, so each series ends at the live value; the open-task
+// series is rebuilt from the activity log and is approximate further back
+// (see postgres.WorkspaceTrendRepository.OpenTaskTrend). There is no
+// AI-agent series: agent membership has no history to rebuild it from.
+func (h *ProjectHandler) GetWorkspaceTrend(w http.ResponseWriter, r *http.Request) {
+	accountID, ok := requireAccountID(w, r)
+	if !ok {
+		return
+	}
+
+	days := workspaceTrendDefaultDays
+	if raw := r.URL.Query().Get("days"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < workspaceTrendMinDays || n > workspaceTrendMaxDays {
+			presenter.Error(w, r, apierr.New(apierr.CodeBadRequest, fmt.Sprintf(
+				"days must be an integer between %d and %d", workspaceTrendMinDays, workspaceTrendMaxDays)))
+			return
+		}
+		days = n
+	}
+
+	// Day ends are UTC midnights; the last one is the coming midnight, so
+	// today's point includes everything up to now.
+	now := time.Now
+	if h.now != nil {
+		now = h.now
+	}
+	today := now().UTC().Truncate(24 * time.Hour)
+	lastDayEnd := today.Add(24 * time.Hour)
+	firstDayEnd := lastDayEnd.Add(-time.Duration(days-1) * 24 * time.Hour)
+
+	resp := dto.WorkspaceTrendResponse{
+		Days:        days,
+		Dates:       make([]string, days),
+		Projects:    []int64{},
+		OpenTasks:   []int64{},
+		TeamMembers: []int64{},
+	}
+	for i := range days {
+		resp.Dates[i] = firstDayEnd.Add(time.Duration(i-1) * 24 * time.Hour).Format(time.DateOnly)
+	}
+	if h.trend == nil {
+		presenter.OK(w, r, resp)
+		return
+	}
+
+	projectIDs, err := h.workspaceProjectIDs(r, accountID)
+	if err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	g, gctx := errgroup.WithContext(r.Context())
+	g.Go(func() error {
+		series, err := h.trend.ProjectCountTrend(gctx, projectIDs, firstDayEnd, lastDayEnd)
+		resp.Projects = series
+		return err
+	})
+	g.Go(func() error {
+		series, err := h.trend.UserCountTrend(gctx, firstDayEnd, lastDayEnd)
+		resp.TeamMembers = series
+		return err
+	})
+	taskCtx, err := h.workspaceTaskScope(gctx, r, projectIDs)
+	if err != nil {
+		_ = g.Wait()
+		presenter.Error(w, r, err)
+		return
+	}
+	g.Go(func() error {
+		series, err := h.trend.OpenTaskTrend(taskCtx, projectIDs, firstDayEnd, lastDayEnd)
+		resp.OpenTasks = series
+		return err
+	})
+	if err := g.Wait(); err != nil {
+		presenter.Error(w, r, err)
+		return
+	}
+
+	presenter.OK(w, r, resp)
 }
