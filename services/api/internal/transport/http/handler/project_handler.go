@@ -65,6 +65,7 @@ type ProjectsScoper interface {
 // decisions and a caller's effective actions. Satisfied by *iam.Authorizer.
 type projectAuthorizer interface {
 	iam.Checker
+	AuthorizeMany(ctx context.Context, p iam.Principal, queries []iam.Query) ([]iam.Result, error)
 	EffectiveActions(ctx context.Context, p iam.Principal, projectID string) ([]string, error)
 }
 
@@ -83,6 +84,8 @@ type ProjectHandler struct {
 	taskScoper ProjectsScoper
 	// trend backs GetWorkspaceTrend. Nil makes it return empty series.
 	trend workspaceTrendSource
+	// search backs Search (GET /search). Nil makes it return no results.
+	search searchSource
 	// now is the clock GetWorkspaceTrend's day boundaries are taken from;
 	// time.Now unless a test replaces it.
 	now       func() time.Time
