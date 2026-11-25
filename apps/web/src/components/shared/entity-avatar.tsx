@@ -28,6 +28,18 @@ const RADII = {
 	inherit: { self: "rounded-[inherit]", ring: "after:rounded-[inherit]" },
 } as const;
 
+// The initials' font size per size. Set on the fallback itself, because
+// AvatarFallback has its own text size that would otherwise win over one
+// inherited from the root and let the initials spill out of a small avatar.
+const FALLBACK_TEXT: Record<keyof typeof SIZES, string> = {
+	xs: "text-[9px]",
+	sm: "text-[10px]",
+	md: "text-xs",
+	default: "text-xs",
+	lg: "text-sm",
+	xl: "text-lg",
+};
+
 export type EntityAvatarSize = keyof typeof SIZES;
 
 export interface EntityAvatarProps {
@@ -104,7 +116,8 @@ export function EntityAvatar({
 			<AvatarFallback
 				className={cn(
 					radius.self,
-					"bg-primary/10 font-semibold text-primary",
+					FALLBACK_TEXT[size],
+					"bg-primary/10 font-semibold leading-none text-primary",
 					type !== "human" && "p-[15%]",
 				)}
 			>
