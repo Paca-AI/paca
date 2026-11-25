@@ -40,7 +40,7 @@ type PersonHit struct {
 	AvatarThumbKey *string   `db:"avatar_thumb_key"`
 	// ProjectID is one project the person is a member of that the caller may
 	// list the members of (the first by name), so the result can link to its
-	// team page. Nil when they share none, e.g. when an admin with users:read
+	// team page. Nil when they share none, e.g. when a user admin (users:write)
 	// finds someone outside their projects.
 	ProjectID *uuid.UUID `db:"project_id"`
 }

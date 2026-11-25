@@ -52,7 +52,7 @@ export const SEARCH_LIMIT = 6;
 /** Searches projects, tasks and people across the workspace. The API only
  *  returns what the caller may see: their readable projects, the tasks they
  *  may read in each, and the members of their teams (every user with
- *  users:read). */
+ *  users:write). */
 export async function searchWorkspace(
 	q: string,
 	limit = SEARCH_LIMIT,

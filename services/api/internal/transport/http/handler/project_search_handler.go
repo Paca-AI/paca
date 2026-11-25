@@ -40,7 +40,7 @@ const (
 )
 
 // searchAccess is what the caller may search: the projects they may read,
-// the projects whose member list they may read, and whether they may read
+// the projects whose member list they may read, and whether they may find
 // every user.
 type searchAccess struct {
 	readable, memberLists []uuid.UUID
@@ -49,7 +49,11 @@ type searchAccess struct {
 
 // searchAccessFor answers, with one fetch of the caller's grants, which of
 // projectIDs they hold projects:read and project.members:read on, and whether
-// they hold the platform-wide users:read. An authorizer error denies.
+// they hold the platform-wide users:write. An authorizer error denies.
+//
+// Finding people outside one's teams takes users:write (managing users), not
+// users:read: the built-in default role gives every user users:read, which
+// would make the team limit apply to nobody.
 func (h *ProjectHandler) searchAccessFor(r *http.Request, projectIDs []uuid.UUID) (searchAccess, error) {
 	var access searchAccess
 	principal, err := middleware.IAMPrincipalFrom(r)
@@ -64,8 +68,8 @@ func (h *ProjectHandler) searchAccessFor(r *http.Request, projectIDs []uuid.UUID
 			iam.Query{Action: string(iam.ActionProjectMembersRead), Resource: res})
 	}
 	queries = append(queries, iam.Query{
-		Action:   string(iam.ActionUsersRead),
-		Resource: iam.PlatformRootFor(string(iam.ActionUsersRead)),
+		Action:   string(iam.ActionUsersWrite),
+		Resource: iam.PlatformRootFor(string(iam.ActionUsersWrite)),
 	})
 	results, err := h.authorizer.AuthorizeMany(r.Context(), principal, queries)
 	if err != nil {
@@ -93,7 +97,8 @@ func (h *ProjectHandler) searchAccessFor(r *http.Request, projectIDs []uuid.UUID
 //   - tasks: of those same projects, the ones the caller may read, per
 //     project (the tasks:read scope, as for the workspace open-task count);
 //   - people: members of the projects whose member list the caller may read
-//     (project.members:read), i.e. their teams; every user with users:read.
+//     (project.members:read), i.e. their teams; every user for a user admin
+//     (users:write).
 //
 // The route itself is open to any authenticated caller; a caller who may see
 // nothing gets empty lists.

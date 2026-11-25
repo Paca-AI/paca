@@ -72,7 +72,7 @@ function SearchPanel({ onDone }: { onDone: () => void }) {
 	const { t } = useTranslation("appShell");
 	const navigate = useNavigate();
 	const { hasPermission } = usePermissions();
-	const canListUsers = hasPermission("users:read");
+	const canManageUsers = hasPermission("users:write");
 
 	const [query, setQuery] = useState("");
 	const [debounced, setDebounced] = useState("");
@@ -230,7 +230,7 @@ function SearchPanel({ onDone }: { onDone: () => void }) {
 								key={person.id}
 								value={`person:${person.id}`}
 								onSelect={() => openPerson(person)}
-								disabled={!person.project_id && !canListUsers}
+								disabled={!person.project_id && !canManageUsers}
 								className="gap-3"
 							>
 								<EntityAvatar

@@ -186,13 +186,25 @@ func TestSearch_ScopesEachKindToWhatTheCallerMayRead(t *testing.T) {
 	}
 }
 
-func TestSearch_UsersReadFindsEveryUser(t *testing.T) {
-	f := newSearchFixture(t, "users:read")
+func TestSearch_UsersWriteFindsEveryUser(t *testing.T) {
+	f := newSearchFixture(t, "users:write")
 	if w := do(t, f.router, http.MethodGet, "/search?q=bo", nil); w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 	if !f.src.allUsers {
-		t.Error("a caller with users:read should search every user")
+		t.Error("a user admin (users:write) should search every user")
+	}
+}
+
+// users:read is in the built-in default role, so it must not lift the team
+// limit, or every user would find every user.
+func TestSearch_UsersReadAloneKeepsPeopleToTeams(t *testing.T) {
+	f := newSearchFixture(t, "users:read")
+	if w := do(t, f.router, http.MethodGet, "/search?q=bo", nil); w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if f.src.allUsers || !slices.Equal(f.src.memberProjectIDs, []uuid.UUID{f.projects[0]}) {
+		t.Errorf("users:read: all users %v, teams %v; want only team %v", f.src.allUsers, f.src.memberProjectIDs, f.projects[0])
 	}
 }
 

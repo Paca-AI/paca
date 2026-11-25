@@ -135,7 +135,7 @@ func (r *SearchRepository) SearchTasks(ctx context.Context, projectIDs []uuid.UU
 // accounts, and never the internal agent bot) whose display name or username
 // contains q. With allUsers false, only members of memberProjectIDs are
 // returned: the projects whose member list the caller may read, which keeps a
-// regular user's search to their own teams. With allUsers true (users:read),
+// regular user's search to their own teams. With allUsers true (a user admin),
 // any user matches. Either way each hit's ProjectID is a project of
 // memberProjectIDs they belong to, for linking to its team page.
 func (r *SearchRepository) SearchPeople(ctx context.Context, memberProjectIDs []uuid.UUID, allUsers bool, q string, limit int) ([]searchdom.PersonHit, error) {
