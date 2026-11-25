@@ -334,7 +334,7 @@ export function TaskDetailModal({
 			<div className="flex flex-col lg:flex-row flex-1 min-w-0 min-h-0 overflow-y-auto lg:overflow-hidden">
 				{/* Main content area: no own scroll on mobile (body scrolls), scrollable on lg+ */}
 				<div className="lg:flex-1 lg:overflow-y-auto [scrollbar-gutter:stable]">
-					<div className="px-4 lg:px-8 py-5 lg:py-7 space-y-6 lg:space-y-8 max-w-3xl mx-auto">
+					<div className="px-4 lg:px-8 py-5 lg:py-7 space-y-6 lg:space-y-8 max-w-6xl mx-auto">
 						{/* Type badge + Status chip + Title */}
 						<div className="space-y-4">
 							<div className="flex items-center gap-2.5 flex-wrap">

@@ -137,7 +137,7 @@ export function PropertiesPanel({
 
 	return (
 		<>
-			<div className="divide-y divide-border/50 rounded-xl border border-border/50 bg-card/50 px-4 py-0.5">
+			<div className="divide-y divide-border/50 overflow-hidden rounded-xl border border-border/50 bg-card/50">
 				<PropertyField
 					label={t("taskDetail.properties.status")}
 					mode="select"
