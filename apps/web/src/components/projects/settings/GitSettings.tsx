@@ -562,38 +562,38 @@ function Repositories({
 	);
 
 	const dialog = canOpenForm ? (
-		<>
-			<Dialog
-				open={formOpen}
-				onOpenChange={(open) => {
-					if (!open) closeForm();
-				}}
-			>
-				<DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-					<DialogHeader>
-						<DialogTitle>{t("project.git.link.title")}</DialogTitle>
-						<DialogDescription>
-							{t("project.git.link.dialogDescription")}
-						</DialogDescription>
-					</DialogHeader>
-					{form}
-				</DialogContent>
-			</Dialog>
-			{browseTarget ? (
-				<GitRepositoryBrowserDialog
-					key={browseTarget}
-					open={formOpen && browsing}
-					onOpenChange={setBrowsing}
-					projectId={projectId}
-					identityId={browseTarget}
-					linked={linkedKeys}
-					onPick={(fullPath) => {
-						setInput(fullPath);
-						setBrowsing(false);
-					}}
-				/>
-			) : null}
-		</>
+		<Dialog
+			open={formOpen}
+			onOpenChange={(open) => {
+				if (!open) closeForm();
+			}}
+		>
+			<DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+				<DialogHeader>
+					<DialogTitle>{t("project.git.link.title")}</DialogTitle>
+					<DialogDescription>
+						{t("project.git.link.dialogDescription")}
+					</DialogDescription>
+				</DialogHeader>
+				{form}
+				{/* Rendered inside the link dialog so base-ui nests it: Escape then
+				    closes only the browser, not the form behind it as well. */}
+				{browseTarget ? (
+					<GitRepositoryBrowserDialog
+						key={browseTarget}
+						open={formOpen && browsing}
+						onOpenChange={setBrowsing}
+						projectId={projectId}
+						identityId={browseTarget}
+						linked={linkedKeys}
+						onPick={(fullPath) => {
+							setInput(fullPath);
+							setBrowsing(false);
+						}}
+					/>
+				) : null}
+			</DialogContent>
+		</Dialog>
 	) : null;
 
 	return (

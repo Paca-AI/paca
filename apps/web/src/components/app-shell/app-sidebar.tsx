@@ -1251,8 +1251,8 @@ function ProjectSwitcher({
 			<div className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm font-medium text-sidebar-foreground/80 select-none">
 				<EntityAvatar
 					{...(currentProject ? projectAvatar(currentProject) : { name: "" })}
-					fallback={<FolderKanban className="size-3" />}
-					size="xs"
+					fallback={<FolderKanban className="size-3.5" />}
+					size="sm"
 					shape="rounded"
 					className="shrink-0"
 				/>
@@ -1273,8 +1273,8 @@ function ProjectSwitcher({
 			>
 				<EntityAvatar
 					{...(currentProject ? projectAvatar(currentProject) : { name: "" })}
-					fallback={<FolderKanban className="size-3" />}
-					size="xs"
+					fallback={<FolderKanban className="size-3.5" />}
+					size="sm"
 					shape="rounded"
 					className="shrink-0"
 				/>
@@ -1313,7 +1313,7 @@ function ProjectSwitcher({
 							>
 								<EntityAvatar
 									{...projectAvatar(p)}
-									size="xs"
+									size="sm"
 									shape="rounded"
 									className="shrink-0"
 								/>
