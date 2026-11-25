@@ -31,7 +31,7 @@ function TaskDetailSkeleton() {
 			{/* Task detail skeleton body */}
 			<div className="flex flex-col lg:flex-row flex-1 min-w-0 min-h-0 overflow-y-auto lg:overflow-hidden">
 				{/* Main content */}
-				<div className="lg:flex-1 lg:overflow-y-auto px-4 lg:px-8 py-5 lg:py-7 space-y-6 lg:space-y-8 max-w-3xl mx-auto w-full">
+				<div className="lg:flex-1 lg:overflow-y-auto px-4 lg:px-8 py-5 lg:py-7 space-y-6 lg:space-y-8 max-w-6xl mx-auto w-full">
 					{/* Type + status badges */}
 					<div className="flex items-center gap-2.5 flex-wrap">
 						<Skeleton className="h-6 w-20 rounded-md" />
