@@ -10,7 +10,7 @@ export function FieldRow({
 	children: React.ReactNode;
 }) {
 	return (
-		<div className="grid grid-cols-1 md:grid-cols-[9.5rem_1fr] items-start md:items-center gap-1.5 md:gap-4 py-3 px-6 group/field hover:bg-muted/40 transition-colors duration-200">
+		<div className="grid grid-cols-1 md:grid-cols-[9.5rem_1fr] items-start md:items-center gap-1.5 md:gap-4 py-3 px-4 group/field hover:bg-muted/40 transition-colors duration-200">
 			<span className="text-sm font-medium text-muted-foreground leading-snug select-none">
 				{label}
 			</span>
