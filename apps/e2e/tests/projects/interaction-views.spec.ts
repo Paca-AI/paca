@@ -1022,7 +1022,7 @@ test.describe('Filtering and searching tasks within a view', () => {
     await navigateToBacklog(page, projectId);
 
     // Open the search bar
-    await page.locator('button').filter({ has: page.locator('svg.lucide-search') }).click();
+    await page.getByRole('button', { name: /^Search tasks/ }).click();
 
     // Type a search keyword
     await page.getByPlaceholder(/search/i).fill('ALPHA');
@@ -1044,7 +1044,7 @@ test.describe('Filtering and searching tasks within a view', () => {
     await navigateToBacklog(page, projectId);
 
     // Open search and filter
-    await page.locator('button').filter({ has: page.locator('svg.lucide-search') }).click();
+    await page.getByRole('button', { name: /^Search tasks/ }).click();
     await page.getByPlaceholder(/search/i).fill('ALPHA2');
     await expect(page.getByText(`${TEST_PROJECT_PREFIX}BETA2_TASK`)).not.toBeVisible();
 
