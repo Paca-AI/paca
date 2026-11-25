@@ -21,8 +21,8 @@ export interface AssigneePatch {
 }
 
 const AVATAR_SIZE = {
-	sm: { box: "size-5", avatar: "xs", icon: "size-2.5", sparkle: "size-2.5" },
-	md: { box: "size-6", avatar: "sm", icon: "size-3", sparkle: "size-3" },
+	sm: { box: "size-6", avatar: "sm", icon: "size-3", sparkle: "size-3" },
+	md: { box: "size-8", avatar: "default", icon: "size-4", sparkle: "size-4" },
 } as const;
 
 const memberName = (m: ProjectMember) => m.full_name || m.username;

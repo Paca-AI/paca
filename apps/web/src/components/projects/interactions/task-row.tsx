@@ -488,8 +488,8 @@ export function TaskRow({
 					>
 						<EntityAvatar
 							{...(reporter ? memberAvatar(reporter) : { name: "" })}
-							fallback={<User className="size-3" />}
-							size="sm"
+							fallback={<User className="size-4" />}
+							size="default"
 						/>
 					</div>
 				);

@@ -406,8 +406,8 @@ export function TaskCard({
 					>
 						<EntityAvatar
 							{...(reporter ? memberAvatar(reporter) : { name: "" })}
-							fallback={<User className="size-2.5" />}
-							size="xs"
+							fallback={<User className="size-3" />}
+							size="sm"
 						/>
 					</span>
 				);
