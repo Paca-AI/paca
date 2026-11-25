@@ -33,6 +33,7 @@
 		"epic": "Définir l'epic",
 		"moveLeftRight": "Déplacer la colonne à gauche / à droite",
 		"delete": "Supprimer la tâche",
-		"save": "Enregistrer"
+		"save": "Enregistrer",
+		"globalSearch": "Rechercher partout"
 	}
 }

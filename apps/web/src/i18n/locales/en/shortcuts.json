@@ -33,6 +33,7 @@
 		"epic": "Set epic",
 		"moveLeftRight": "Move column left / right",
 		"delete": "Delete task",
-		"save": "Save"
+		"save": "Save",
+		"globalSearch": "Search everywhere"
 	}
 }

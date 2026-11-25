@@ -9,6 +9,7 @@ import {
 import { type CSSProperties, lazy, Suspense, useEffect } from "react";
 
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
+import { GlobalSearch } from "@/components/app-shell/global-search";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
 import { RouteErrorComponent } from "@/components/route-error-boundary";
 import {
@@ -182,6 +183,7 @@ function AuthenticatedLayout() {
 							<div className="absolute inset-x-0 bottom-0 h-px bg-border/60" />
 							<SidebarTrigger className="-ml-1 text-muted-foreground hover:text-foreground transition-colors" />
 							<div className="w-px h-4 bg-border/60" />
+							{user && <GlobalSearch />}
 							{user && (
 								<div className="ml-auto">
 									<NotificationBell />

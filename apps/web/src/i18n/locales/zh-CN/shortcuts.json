@@ -33,6 +33,7 @@
 		"epic": "设置史诗",
 		"moveLeftRight": "向左 / 向右移动列",
 		"delete": "删除任务",
-		"save": "保存"
+		"save": "保存",
+		"globalSearch": "全局搜索"
 	}
 }

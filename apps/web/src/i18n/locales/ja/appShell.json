@@ -114,5 +114,21 @@
 		"logOut": "ログアウト",
 		"loggingOut": "ログアウト中…",
 		"sendFeedback": "フィードバックを送る"
+	},
+	"search": {
+		"button": "検索",
+		"placeholder": "プロジェクト、タスク、メンバーを検索…",
+		"dialogTitle": "検索",
+		"dialogDescription": "アクセスできるプロジェクト、タスク、メンバーを検索します。",
+		"inputPlaceholder": "プロジェクト、タスク、メンバーを検索…",
+		"hint": "入力してプロジェクト、タスク、チームメンバーを検索します。ABC-12 のようなタスクキーでそのタスクに直接移動できます。",
+		"searching": "検索中…",
+		"empty": "「{{query}}」に一致する結果はありません",
+		"error": "検索に失敗しました。もう一度お試しください。",
+		"groups": {
+			"projects": "プロジェクト",
+			"tasks": "タスク",
+			"people": "メンバー"
+		}
 	}
 }

@@ -114,5 +114,21 @@
 		"logOut": "退出登录",
 		"loggingOut": "正在退出登录…",
 		"sendFeedback": "发送反馈"
+	},
+	"search": {
+		"button": "搜索",
+		"placeholder": "搜索项目、任务、成员…",
+		"dialogTitle": "搜索",
+		"dialogDescription": "查找你有权访问的项目、任务和成员。",
+		"inputPlaceholder": "搜索项目、任务、成员…",
+		"hint": "输入以搜索你的项目、任务和团队成员。输入任务编号（如 ABC-12）可直接打开该任务。",
+		"searching": "正在搜索…",
+		"empty": "没有与“{{query}}”匹配的结果",
+		"error": "搜索失败，请重试。",
+		"groups": {
+			"projects": "项目",
+			"tasks": "任务",
+			"people": "成员"
+		}
 	}
 }

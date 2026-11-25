@@ -33,6 +33,7 @@
 		"epic": "Establecer épica",
 		"moveLeftRight": "Mover columna a la izquierda / derecha",
 		"delete": "Eliminar tarea",
-		"save": "Guardar"
+		"save": "Guardar",
+		"globalSearch": "Buscar en todo"
 	}
 }

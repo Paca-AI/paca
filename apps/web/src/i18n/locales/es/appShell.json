@@ -114,5 +114,21 @@
 		"logOut": "Cerrar sesión",
 		"loggingOut": "Cerrando sesión…",
 		"sendFeedback": "Enviar comentarios"
+	},
+	"search": {
+		"button": "Buscar",
+		"placeholder": "Buscar proyectos, tareas, personas…",
+		"dialogTitle": "Buscar",
+		"dialogDescription": "Encuentra los proyectos, tareas y personas a los que tienes acceso.",
+		"inputPlaceholder": "Buscar proyectos, tareas, personas…",
+		"hint": "Escribe para buscar en tus proyectos, tareas y compañeros. Una clave de tarea como ABC-12 lleva directamente a la tarea.",
+		"searching": "Buscando…",
+		"empty": "Sin resultados para «{{query}}»",
+		"error": "La búsqueda falló. Inténtalo de nuevo.",
+		"groups": {
+			"projects": "Proyectos",
+			"tasks": "Tareas",
+			"people": "Personas"
+		}
 	}
 }

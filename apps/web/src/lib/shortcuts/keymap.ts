@@ -8,7 +8,11 @@
 // swallows the keydown before page JS ever sees it, or because overriding it
 // would break a near-universal user expectation:
 //   - Hard-blocked, no override possible on any browser: Mod+T/N/W (tab/window
-//     control), Mod+1-9 (switch tab), Mod+L/K (address bar / omnibox).
+//     control), Mod+1-9 (switch tab), Mod+L (address bar).
+//   - Mod+K is the exception that proves the rule: some browsers bind it to
+//     their search box, but a page that calls preventDefault() wins, and it
+//     is the shortcut users expect for search (GitHub, Linear, Slack), so it
+//     opens the global search.
 //   - OS-level app menu items on macOS, never reach the page: ⌘Q, ⌘H, ⌘M.
 //   - DevTools bindings (Shift variants): Mod+Shift+I/J/C/K/M/T/N/B/D/O/P/S/R/U/G/V/Z.
 //   - Avoided even though technically overridable, because stealing them
@@ -29,6 +33,7 @@ export type ShortcutActionId =
 	| "goto.docs"
 	| "goto.settings"
 	| "general.help"
+	| "general.search"
 	| "page.prevView"
 	| "page.nextView"
 	| "page.search"
@@ -56,6 +61,8 @@ const PLAIN_ACTIONS: Record<string, ShortcutActionId> = {
 	g: "goto.agents",
 	j: "goto.team",
 	d: "goto.docs",
+	// general
+	k: "general.search",
 	// page
 	f: "page.search",
 	"[": "page.prevView",
@@ -181,6 +188,12 @@ export const SHORTCUT_DISPLAY: ShortcutDisplayEntry[] = [
 		group: "general",
 		labelKey: "help",
 		chords: [{ mod: true, key: "/" }],
+	},
+	{
+		id: "general.search",
+		group: "general",
+		labelKey: "globalSearch",
+		chords: [{ mod: true, key: "K" }],
 	},
 	{
 		id: "general.sidebar",

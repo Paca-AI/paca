@@ -6,6 +6,7 @@ import { ShortcutHelpDialog } from "@/components/shortcuts/shortcut-help-dialog"
 import { usePermissions } from "@/hooks/use-permissions";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { listSprints } from "@/lib/interaction-api";
+import { useGlobalSearchStore } from "./global-search-store";
 import { useShortcutHelpStore } from "./help-dialog-store";
 import { useHoveredTaskStore } from "./hovered-task-store";
 import { matchShortcut, type ShortcutActionId } from "./keymap";
@@ -115,10 +116,17 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if (e.isComposing || e.key === "Process") return;
-			if (isTypingTarget(e.target)) return;
 
 			const action = matchShortcut(e);
 			if (!action) return;
+			// Search works from anywhere, a text field included: Mod+K has no
+			// editing meaning here, and the browser would otherwise take it.
+			if (action === "general.search") {
+				e.preventDefault();
+				useGlobalSearchStore.getState().toggle();
+				return;
+			}
+			if (isTypingTarget(e.target)) return;
 
 			if (action === "general.help") {
 				e.preventDefault();

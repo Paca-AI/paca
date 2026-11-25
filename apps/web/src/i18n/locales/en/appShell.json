@@ -114,5 +114,21 @@
 		"logOut": "Log out",
 		"loggingOut": "Logging out…",
 		"sendFeedback": "Send feedback"
+	},
+	"search": {
+		"button": "Search",
+		"placeholder": "Search projects, tasks, people…",
+		"dialogTitle": "Search",
+		"dialogDescription": "Find projects, tasks and people you have access to.",
+		"inputPlaceholder": "Search projects, tasks, people…",
+		"hint": "Type to search your projects, tasks and teammates. A task key such as ABC-12 jumps straight to the task.",
+		"searching": "Searching…",
+		"empty": "No results for “{{query}}”",
+		"error": "Search failed. Please try again.",
+		"groups": {
+			"projects": "Projects",
+			"tasks": "Tasks",
+			"people": "People"
+		}
 	}
 }

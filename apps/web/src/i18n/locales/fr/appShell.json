@@ -114,5 +114,21 @@
 		"logOut": "Se déconnecter",
 		"loggingOut": "Déconnexion en cours…",
 		"sendFeedback": "Envoyer un retour"
+	},
+	"search": {
+		"button": "Rechercher",
+		"placeholder": "Rechercher projets, tâches, personnes…",
+		"dialogTitle": "Rechercher",
+		"dialogDescription": "Trouvez les projets, tâches et personnes auxquels vous avez accès.",
+		"inputPlaceholder": "Rechercher projets, tâches, personnes…",
+		"hint": "Saisissez du texte pour rechercher dans vos projets, tâches et coéquipiers. Une clé de tâche comme ABC-12 mène directement à la tâche.",
+		"searching": "Recherche…",
+		"empty": "Aucun résultat pour « {{query}} »",
+		"error": "La recherche a échoué. Veuillez réessayer.",
+		"groups": {
+			"projects": "Projets",
+			"tasks": "Tâches",
+			"people": "Personnes"
+		}
 	}
 }

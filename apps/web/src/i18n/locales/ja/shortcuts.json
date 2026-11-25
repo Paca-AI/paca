@@ -33,6 +33,7 @@
 		"epic": "エピックを設定",
 		"moveLeftRight": "列を左 / 右に移動",
 		"delete": "タスクを削除",
-		"save": "保存"
+		"save": "保存",
+		"globalSearch": "全体を検索"
 	}
 }
