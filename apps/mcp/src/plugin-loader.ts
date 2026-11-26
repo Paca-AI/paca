@@ -404,14 +404,22 @@ export async function resolveImportUrl(
 	// horizon-DNS deployment (e.g. paca.example.lan → 192.168.x.x), where
 	// every plugin's `/plugins-mcp/<id>/mcp.js` resolves against exactly
 	// this host and would otherwise never load.
-	let baseURLHostname: string | undefined;
+	//
+	// Compared as `host` (hostname + effective port), not `hostname` alone:
+	// trusting every port on the base host would let a manifest reach other
+	// TLS services on that machine that the guard otherwise blocks. Not
+	// compared as full `origin` either — the scheme is already fixed by the
+	// branch below, and `URL.host` omits a default port, so
+	// `https://paca.example.lan` and a path-only entry resolved against it
+	// compare equal while `https://paca.example.lan:8443` does not.
+	let baseURLHost: string | undefined;
 	try {
-		baseURLHostname = new URL(baseURL).hostname;
+		baseURLHost = new URL(baseURL).host;
 	} catch {
 		// ignore — baseURL may be invalid; fall through to the strict checks
 	}
 	const isBaseURLHost =
-		baseURLHostname !== undefined && resolved.hostname === baseURLHostname;
+		baseURLHost !== undefined && resolved.host === baseURLHost;
 
 	if (scheme === "https:") {
 		// Guard against SSRF: reject hostnames that resolve to private IPs —
@@ -427,7 +435,7 @@ export async function resolveImportUrl(
 
 	if (scheme === "http:") {
 		// http:// is allowed for localhost/loopback OR the operator-configured
-		// baseURL hostname (e.g. an internal Docker gateway service).
+		// baseURL host (e.g. an internal Docker gateway service, port included).
 		const isTrustedHost = isLocalhostHostname(resolved.hostname) || isBaseURLHost;
 		if (!isTrustedHost) {
 			throw new Error(
