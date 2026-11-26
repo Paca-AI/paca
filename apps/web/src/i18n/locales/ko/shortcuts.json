@@ -33,6 +33,7 @@
 		"epic": "에픽 설정",
 		"moveLeftRight": "열을 왼쪽 / 오른쪽으로 이동",
 		"delete": "작업 삭제",
-		"save": "저장"
+		"save": "저장",
+		"globalSearch": "전체 검색"
 	}
 }

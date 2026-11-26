@@ -44,6 +44,18 @@ describe("matchShortcut", () => {
 		expect(matchShortcut(key({ key: "p", ctrlKey: true }))).toBeNull();
 	});
 
+	it("binds Mod+K to the global search", () => {
+		expect(matchShortcut(key({ key: "k", ctrlKey: true }))).toBe(
+			"general.search",
+		);
+		expect(matchShortcut(key({ key: "K", metaKey: true }))).toBe(
+			"general.search",
+		);
+		expect(
+			matchShortcut(key({ key: "k", ctrlKey: true, shiftKey: true })),
+		).toBeNull();
+	});
+
 	it("matches plain Mod+letter goto actions", () => {
 		expect(matchShortcut(key({ key: "i", ctrlKey: true }))).toBe(
 			"goto.backlog",

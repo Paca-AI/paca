@@ -103,6 +103,7 @@ var openRouteGroups = []struct {
 			"GET /api/v1/projects",
 			"GET /api/v1/projects/workspace-stats",
 			"GET /api/v1/projects/workspace-trend",
+			"GET /api/v1/search",
 			"GET /api/v1/files/roots",
 			"GET /api/v1/port-forwards/resolve",
 			"GET /api/v1/projects/{projectId}/members/me/permissions",

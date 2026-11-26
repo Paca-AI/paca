@@ -114,5 +114,21 @@
 		"logOut": "로그아웃",
 		"loggingOut": "로그아웃 중…",
 		"sendFeedback": "피드백 보내기"
+	},
+	"search": {
+		"button": "검색",
+		"placeholder": "프로젝트, 작업, 사람 검색…",
+		"dialogTitle": "검색",
+		"dialogDescription": "접근 권한이 있는 프로젝트, 작업, 사람을 찾습니다.",
+		"inputPlaceholder": "프로젝트, 작업, 사람 검색…",
+		"hint": "입력하여 프로젝트, 작업, 팀원을 검색하세요. ABC-12 같은 작업 키로 해당 작업으로 바로 이동할 수 있습니다.",
+		"searching": "검색 중…",
+		"empty": "“{{query}}”에 대한 결과가 없습니다",
+		"error": "검색에 실패했습니다. 다시 시도하세요.",
+		"groups": {
+			"projects": "프로젝트",
+			"tasks": "작업",
+			"people": "사람"
+		}
 	}
 }

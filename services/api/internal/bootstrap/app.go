@@ -643,6 +643,7 @@ func New(cfg *config.Config) (*App, error) {
 			handler.WithProjectStatsServices(taskService, userService),
 			handler.WithProjectTaskScoper(authorizer),
 			handler.WithProjectWorkspaceTrend(pgRepo.NewWorkspaceTrendRepository(db)),
+			handler.WithProjectSearch(pgRepo.NewSearchRepository(db)),
 			handler.WithProjectAvatarService(attachmentService),
 			// projectService, the cached wrapper — not projectServiceBase.
 			// UpdateJevConfig writes credentials that every read path then

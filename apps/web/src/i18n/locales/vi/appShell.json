@@ -114,5 +114,21 @@
 		"logOut": "Đăng xuất",
 		"loggingOut": "Đang đăng xuất…",
 		"sendFeedback": "Gửi phản hồi"
+	},
+	"search": {
+		"button": "Tìm kiếm",
+		"placeholder": "Tìm dự án, công việc, mọi người…",
+		"dialogTitle": "Tìm kiếm",
+		"dialogDescription": "Tìm dự án, công việc và mọi người mà bạn có quyền truy cập.",
+		"inputPlaceholder": "Tìm dự án, công việc, mọi người…",
+		"hint": "Nhập để tìm trong dự án, công việc và đồng đội của bạn. Mã công việc như ABC-12 sẽ mở thẳng công việc đó.",
+		"searching": "Đang tìm…",
+		"empty": "Không có kết quả cho “{{query}}”",
+		"error": "Tìm kiếm thất bại. Vui lòng thử lại.",
+		"groups": {
+			"projects": "Dự án",
+			"tasks": "Công việc",
+			"people": "Mọi người"
+		}
 	}
 }

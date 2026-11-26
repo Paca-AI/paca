@@ -114,5 +114,21 @@
 		"logOut": "Sair",
 		"loggingOut": "Saindo…",
 		"sendFeedback": "Enviar feedback"
+	},
+	"search": {
+		"button": "Pesquisar",
+		"placeholder": "Pesquisar projetos, tarefas, pessoas…",
+		"dialogTitle": "Pesquisar",
+		"dialogDescription": "Encontre projetos, tarefas e pessoas a que você tem acesso.",
+		"inputPlaceholder": "Pesquisar projetos, tarefas, pessoas…",
+		"hint": "Digite para pesquisar seus projetos, tarefas e colegas de equipe. Uma chave de tarefa como ABC-12 leva direto à tarefa.",
+		"searching": "Pesquisando…",
+		"empty": "Nenhum resultado para “{{query}}”",
+		"error": "A pesquisa falhou. Tente novamente.",
+		"groups": {
+			"projects": "Projetos",
+			"tasks": "Tarefas",
+			"people": "Pessoas"
+		}
 	}
 }
