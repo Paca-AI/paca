@@ -365,8 +365,10 @@ async function loadPluginEntry(
  *   URLs are accepted.  Any other scheme is rejected.
  * - For `https://` URLs the hostname is resolved via DNS and the function
  *   throws if any resolved address falls inside a private / internal IP range
- *   (SSRF protection, similar to the API marketplace URL validator). The
- *   source is then fetched and re-exposed as a `data:` URL, because Node's
+ *   (SSRF protection, similar to the API marketplace URL validator) — except
+ *   when the hostname is `baseURL`'s own host, which the operator configured
+ *   and which may legitimately resolve to a LAN address (split-horizon DNS).
+ *   The source is then fetched and re-exposed as a `data:` URL, because Node's
  *   default ESM loader cannot `import()` a remote URL of any scheme (network
  *   imports were experimental and removed in Node 22).
  * - For `http://` URLs the hostname must be localhost, a loopback address, or
@@ -395,9 +397,28 @@ export async function resolveImportUrl(
 		return resolved.href;
 	}
 
+	// The operator-configured base/gateway host is trusted for both schemes:
+	// the http:// branch below already allows it, and an https:// plugin
+	// entry on that same host must not be rejected just because the host
+	// resolves to a private IP — the normal situation for a LAN / split-
+	// horizon-DNS deployment (e.g. paca.example.lan → 192.168.x.x), where
+	// every plugin's `/plugins-mcp/<id>/mcp.js` resolves against exactly
+	// this host and would otherwise never load.
+	let baseURLHostname: string | undefined;
+	try {
+		baseURLHostname = new URL(baseURL).hostname;
+	} catch {
+		// ignore — baseURL may be invalid; fall through to the strict checks
+	}
+	const isBaseURLHost =
+		baseURLHostname !== undefined && resolved.hostname === baseURLHostname;
+
 	if (scheme === "https:") {
-		// Guard against SSRF: reject hostnames that resolve to private IPs.
-		await assertNotPrivateHost(resolved.hostname);
+		// Guard against SSRF: reject hostnames that resolve to private IPs —
+		// unless it is the configured base/gateway host itself (see above).
+		if (!isBaseURLHost) {
+			await assertNotPrivateHost(resolved.hostname);
+		}
 		// Node's default ESM loader can't import() an https:// URL either —
 		// network imports were experimental and removed in Node 22 — so fetch
 		// the source and evaluate it via a data: URL, same as http:// below.
@@ -407,15 +428,7 @@ export async function resolveImportUrl(
 	if (scheme === "http:") {
 		// http:// is allowed for localhost/loopback OR the operator-configured
 		// baseURL hostname (e.g. an internal Docker gateway service).
-		let baseURLHostname: string | undefined;
-		try {
-			baseURLHostname = new URL(baseURL).hostname;
-		} catch {
-			// ignore — baseURL may be invalid; fall through to localhost-only check
-		}
-		const isTrustedHost =
-			isLocalhostHostname(resolved.hostname) ||
-			(baseURLHostname !== undefined && resolved.hostname === baseURLHostname);
+		const isTrustedHost = isLocalhostHostname(resolved.hostname) || isBaseURLHost;
 		if (!isTrustedHost) {
 			throw new Error(
 				`http:// plugin URLs are only allowed for localhost or the configured gateway host. ` +

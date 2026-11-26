@@ -271,6 +271,41 @@ describe("resolveImportUrl", () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
+	it("trusts the configured baseURL host over https:// even when it resolves to a private IP", async () => {
+		// LAN / split-horizon deployment: PACA_API_URL=https://paca.example.lan
+		// resolves to 192.168.x.x. Every plugin's path-only remoteEntryUrl
+		// resolves against that same host, so rejecting it would mean no
+		// plugin tools ever load. The http:// branch already trusts this host.
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			text: async () => "export default {}",
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const out = await resolveImportUrl(
+			"/plugins-mcp/com.paca.bdd/mcp.js",
+			"https://paca.example.lan",
+		);
+
+		// No DNS lookup is attempted for the trusted host — the test would
+		// otherwise fail on name resolution for this non-existent name.
+		expect(fetchMock).toHaveBeenCalledWith(
+			"https://paca.example.lan/plugins-mcp/com.paca.bdd/mcp.js",
+			{ redirect: "error" },
+		);
+		expect(out.startsWith("data:text/javascript;base64,")).toBe(true);
+	});
+
+	it("still applies the private-IP guard to an https:// host that is NOT the baseURL host", async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(
+			resolveImportUrl("https://192.168.1.10/mcp.js", "https://paca.example.lan"),
+		).rejects.toThrow(/private\/internal IP/);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
 	it("passes a file:// entry through unchanged (import()-able as-is)", async () => {
 		const out = await resolveImportUrl(
 			"file:///tmp/mcp.js",
