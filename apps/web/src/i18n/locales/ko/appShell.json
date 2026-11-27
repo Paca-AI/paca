@@ -117,7 +117,6 @@
 	},
 	"search": {
 		"button": "검색",
-		"placeholder": "프로젝트, 작업, 사람 검색…",
 		"dialogTitle": "검색",
 		"dialogDescription": "접근 권한이 있는 프로젝트, 작업, 사람을 찾습니다.",
 		"inputPlaceholder": "프로젝트, 작업, 사람 검색…",

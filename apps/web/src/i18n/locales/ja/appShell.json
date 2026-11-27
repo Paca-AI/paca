@@ -117,7 +117,6 @@
 	},
 	"search": {
 		"button": "検索",
-		"placeholder": "プロジェクト、タスク、メンバーを検索…",
 		"dialogTitle": "検索",
 		"dialogDescription": "アクセスできるプロジェクト、タスク、メンバーを検索します。",
 		"inputPlaceholder": "プロジェクト、タスク、メンバーを検索…",
