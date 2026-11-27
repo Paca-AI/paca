@@ -360,8 +360,24 @@ test.describe("The workspace home respects a scoped role", () => {
 			.locator("xpath=ancestor::*[@data-slot='card'][1]");
 		await expect(stat.getByText("3", { exact: true })).toBeVisible();
 
-		await expect(page.getByText("Mine in S1 A")).toBeVisible();
-		await expect(page.getByText("Mine in S1 B")).toBeVisible();
+		// An assigned open task shows in both "My Tasks" and "Waiting tasks", so
+		// each title is looked up inside its own section.
+		const section = (title: string) =>
+			page.locator("section").filter({
+				has: page.getByRole("heading", { name: title, exact: true }),
+			});
+		const myTasks = section("My Tasks");
+		await expect(myTasks.getByText("Mine in S1 A")).toBeVisible();
+		await expect(myTasks.getByText("Mine in S1 B")).toBeVisible();
+		await expect(myTasks.getByText("Unassigned in S1")).toHaveCount(0);
+
+		const waiting = section("Waiting tasks");
+		await expect(waiting.getByText("Mine in S1 A")).toBeVisible();
+		await expect(waiting.getByText("Mine in S1 B")).toBeVisible();
+		await expect(waiting.getByText("Unassigned in S1")).toBeVisible();
+
+		// Checked page-wide, once both lists have loaded.
 		await expect(page.getByText("Mine in S2")).toHaveCount(0);
+		await expect(page.getByText("Unassigned in S2")).toHaveCount(0);
 	});
 });

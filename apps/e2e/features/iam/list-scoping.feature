@@ -49,4 +49,6 @@ Feature: Lists, pages and counts under a scoped role
     Scenario: The home page shows the scoped open-task count and assigned tasks
       When the member signs in and opens the home page
       Then the "Open Tasks" card shows 3
-      And the two S1 tasks are listed and the S2 task is not
+      And "My Tasks" lists the two assigned S1 tasks
+      And "Waiting tasks" lists the three S1 tasks
+      And no S2 task appears anywhere on the page
