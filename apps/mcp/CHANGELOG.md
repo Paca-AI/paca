@@ -7,6 +7,7 @@ The package version follows the main Paca repository release and is published on
 ## [Unreleased]
 
 ### Fixed
+- Plugin MCP tools load when the Paca host resolves to a private IP (LAN or split-horizon DNS deployment). The `https://` SSRF guard now trusts the configured `PACA_GATEWAY_URL` / `PACA_API_URL` host (hostname and port), as the `http://` branch already did; every plugin's path-only `remoteEntryUrl` resolves against that host and was rejected with `resolves to private/internal IP`, so `bdd_*`, `checklist_*`, `dashboard_*` and `time_logging_*` tools never appeared.
 - A checklist item next to a blank line is parsed without a space before its text (`write_doc` and `push` stored `" task"` for `* [ ] task` in a loose list).
 - `create_sprint` and `update_sprint` accept a `goal`, and `update_sprint` clears it when `goal` is `null` ([#597](https://github.com/Paca-AI/paca/issues/597)).
 - `update_task` accepts `sprintId: null`, which moves the task out of its sprint and back to the backlog ([#597](https://github.com/Paca-AI/paca/issues/597)).
