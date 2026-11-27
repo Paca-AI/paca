@@ -81,6 +81,43 @@ type AgentResponse struct {
 	EnvVars         []AgentEnvVarResponse    `json:"env_vars,omitempty"`
 }
 
+// ChattableAgentResponse is what any signed-in caller may see of a global
+// agent (GET /agents): enough to pick one to chat with or to invite into a
+// project, and nothing about how it is configured or what it may do — that
+// needs agents:read (AgentResponse). Every field is listed here on purpose:
+// never embed AgentResponse, and add a field only if it is safe for every
+// user of the instance to read. The provider names pick the fallback avatar.
+type ChattableAgentResponse struct {
+	ID          uuid.UUID `json:"id"`
+	AgentScope  string    `json:"agent_scope"`
+	Name        string    `json:"name"`
+	Handle      string    `json:"handle"`
+	Description string    `json:"description"`
+	// AvatarURL/AvatarThumbURL: see AgentResponse.
+	AvatarURL      *string `json:"avatar_url,omitempty"`
+	AvatarThumbURL *string `json:"avatar_thumb_url,omitempty"`
+	AgentType      string  `json:"agent_type"`
+	LLMProvider    string  `json:"llm_provider"`
+	ACPProvider    *string `json:"acp_provider,omitempty"`
+	CLIProvider    *string `json:"cli_provider,omitempty"`
+}
+
+// ChattableAgentFromEntity maps a global Agent entity to
+// ChattableAgentResponse.
+func ChattableAgentFromEntity(a *agentdom.Agent) ChattableAgentResponse {
+	return ChattableAgentResponse{
+		ID:          a.ID,
+		AgentScope:  string(agentdom.AgentScopeGlobal),
+		Name:        a.Name,
+		Handle:      a.Handle,
+		Description: a.Description,
+		AgentType:   a.AgentType,
+		LLMProvider: a.LLMProvider,
+		ACPProvider: a.ACPProvider,
+		CLIProvider: a.CLIProvider,
+	}
+}
+
 // CreateAgentRequest is the body for POST /projects/:projectId/agents.
 // LLM fields are required when agent_type is "llm" (the default when
 // omitted); ACP fields are required when agent_type is "acp" — validated in

@@ -1,4 +1,8 @@
-import { type Agent, listAgents, listChattableAgents } from "./agent-api";
+import {
+	type ChattableAgent,
+	listAgents,
+	listChattableAgents,
+} from "./agent-api";
 import {
 	IdDirectory,
 	MAX_IDS_PER_LOOKUP,
@@ -7,8 +11,9 @@ import {
 
 /** Resolves agent ids to agents without loading the whole agent list. With a
  *  projectId it looks agents up among those visible in that project; with
- *  null, among the global agents anyone may chat with. */
-export class AgentDirectory extends IdDirectory<Agent> {
+ *  null, among the global agents anyone may chat with. The latter carry no
+ *  configuration, so entries are typed as what both lookups return. */
+export class AgentDirectory extends IdDirectory<ChattableAgent> {
 	constructor(projectId: string | null) {
 		super(
 			async (ids) =>

@@ -172,6 +172,17 @@ func (h *AgentHandler) toAgentResponse(ctx context.Context, ag *agentdom.Agent) 
 	return resp
 }
 
+// toChattableAgentResponse is toAgentResponse for the reduced view any
+// signed-in caller may read.
+func (h *AgentHandler) toChattableAgentResponse(ctx context.Context, ag *agentdom.Agent) dto.ChattableAgentResponse {
+	resp := dto.ChattableAgentFromEntity(ag)
+	if h.avatarSvc != nil {
+		resp.AvatarURL, _ = h.avatarSvc.ResolveAvatarURL(ctx, ag.AvatarKey)
+		resp.AvatarThumbURL, _ = h.avatarSvc.ResolveAvatarURL(ctx, ag.AvatarThumbKey)
+	}
+	return resp
+}
+
 // --- Agents -----------------------------------------------------------------
 
 // parseAgentListParams reads the query params shared by the agent list
@@ -428,10 +439,24 @@ func (h *AgentHandler) DeleteAgent(w http.ResponseWriter, r *http.Request) {
 
 // --- Global Agents (admin) ---------------------------------------------------
 
-// ListGlobalAgents handles GET /admin/agents and GET /agents — one
-// cursor-paginated page of the global agents, ordered by name (see
+// ListGlobalAgents handles GET /admin/agents — one cursor-paginated page of
+// the global agents with their full configuration, ordered by name (see
 // parseAgentListParams for search/ids/page_size/cursor).
 func (h *AgentHandler) ListGlobalAgents(w http.ResponseWriter, r *http.Request) {
+	listGlobalAgentPage(h, w, r, h.toAgentResponse)
+}
+
+// ListChattableAgents handles GET /agents — the same page of global agents as
+// ListGlobalAgents, open to any signed-in caller and therefore limited to
+// what is needed to pick one (see dto.ChattableAgentResponse).
+func (h *AgentHandler) ListChattableAgents(w http.ResponseWriter, r *http.Request) {
+	listGlobalAgentPage(h, w, r, h.toChattableAgentResponse)
+}
+
+// listGlobalAgentPage writes one page of the global agents, each rendered by
+// toItem. The caller's choice of toItem decides how much of an agent leaves
+// the server.
+func listGlobalAgentPage[T any](h *AgentHandler, w http.ResponseWriter, r *http.Request, toItem func(context.Context, *agentdom.Agent) T) {
 	filter, cursor, pageSize, err := parseAgentListParams(r)
 	if err != nil {
 		presenter.Error(w, r, err)
@@ -442,9 +467,9 @@ func (h *AgentHandler) ListGlobalAgents(w http.ResponseWriter, r *http.Request) 
 		presenter.Error(w, r, err)
 		return
 	}
-	resp := make([]dto.AgentResponse, 0, len(agents))
+	resp := make([]T, 0, len(agents))
 	for _, a := range agents {
-		resp = append(resp, h.toAgentResponse(r.Context(), a))
+		resp = append(resp, toItem(r.Context(), a))
 	}
 	var nextCursor *string
 	if hasMore && len(agents) > 0 {

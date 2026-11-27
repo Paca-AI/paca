@@ -64,7 +64,7 @@ import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { useRolesByIds } from "@/hooks/use-role-search";
 import { type User, usersInfiniteQueryOptions } from "@/lib/admin-api";
 import {
-	type Agent,
+	type ChattableAgent,
 	chattableAgentsInfiniteQueryOptions,
 } from "@/lib/agent-api";
 import {
@@ -206,7 +206,9 @@ function AddMemberDialog({
 	const [selectedServiceAccount, setSelectedServiceAccount] =
 		useState<ServiceAccount | null>(null);
 	const [selectedUser, setSelectedUser] = useState<User | null>(null);
-	const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+	const [selectedAgent, setSelectedAgent] = useState<ChattableAgent | null>(
+		null,
+	);
 	const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
 	const [userSearch, setUserSearch] = useState("");
 	const [debouncedUserSearch, setDebouncedUserSearch] = useState("");

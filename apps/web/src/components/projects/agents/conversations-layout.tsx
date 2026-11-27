@@ -50,8 +50,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { useProjectRealtime } from "@/hooks/use-project-realtime";
 import {
-	type Agent,
 	type AgentConversation,
+	type ChattableAgent,
 	CONVERSATION_STATUS_COLORS,
 	CONVERSATION_STATUS_LABELS,
 	type ConversationFilters as ConversationFiltersState,
@@ -121,7 +121,7 @@ function ConversationListItem({
 	onDelete,
 }: {
 	conv: AgentConversation;
-	agent: Agent | undefined;
+	agent: ChattableAgent | undefined;
 	/** Absent for a global conversation (no project to scope the link to). */
 	projectId?: string;
 	isActive: boolean;

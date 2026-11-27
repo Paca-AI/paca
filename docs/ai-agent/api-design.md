@@ -17,6 +17,8 @@ Every agent has an `agent_type` of either `llm` or `acp` (default `llm` when omi
 
 List the agents visible in a project, ordered by name and cursor-paginated: the project's own agents plus any global agents invited into it. Query: `page_size` (1-100, default 30), `cursor` (the previous page's `next_cursor`), `search` (every word must appear in the name, handle or description), `ids` (up to 100 agent ids — a batch lookup), and `scope` (`project` or `global`) to keep only one kind. The same pagination applies to `GET /api/v1/admin/agents` and `GET /api/v1/agents` (the global agents).
 
+The two global listings differ in what they return. `GET /api/v1/admin/agents` needs `agents:read` and returns each agent's full configuration. `GET /api/v1/agents` is open to every signed-in caller, so that anyone can pick a global agent to chat with or invite into a project, and returns only `id`, `agent_scope`, `name`, `handle`, `description`, `avatar_url`, `avatar_thumb_url`, `agent_type`, `llm_provider`, `acp_provider` and `cli_provider`.
+
 **Response:**
 ```json
 {
