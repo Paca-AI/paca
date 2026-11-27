@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -19,6 +21,7 @@ import (
 	attachmentdom "github.com/Paca-AI/api/internal/domain/attachment"
 	domainauth "github.com/Paca-AI/api/internal/domain/auth"
 	projectdom "github.com/Paca-AI/api/internal/domain/project"
+	roledom "github.com/Paca-AI/api/internal/domain/role"
 	"github.com/Paca-AI/api/internal/platform/authz/iam"
 	"github.com/Paca-AI/api/internal/transport/http/handler"
 	httpmw "github.com/Paca-AI/api/internal/transport/http/middleware"
@@ -1596,6 +1599,62 @@ func TestListGlobalAgents_IsPaginated(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), `"next_cursor":null`) {
 		t.Fatalf("last page must report next_cursor null: %s", w.Body.String())
+	}
+}
+
+// TestListChattableAgents_OmitsConfiguration pins the exact fields any
+// signed-in caller may read about a global agent (GHSA-98xv-pw56-x8xj). A new
+// key here is readable by every user of the instance: add it to the allowlist
+// only if that is safe.
+func TestListChattableAgents_OmitsConfiguration(t *testing.T) {
+	provider, environmentID, createdBy := "claude-code", uuid.New(), uuid.New()
+	svc := &mockAgentSvc{listAgentsMore: true, listAgentsResult: []*agentdom.Agent{{
+		ID: uuid.New(), AgentScope: agentdom.AgentScopeGlobal,
+		Name: "Release Bot", Handle: "release-bot", Description: "Release automation",
+		AgentType: "llm", LLMProvider: "openai", LLMModel: "secret-model",
+		LLMBaseURL: "https://secret.internal/v1", LLMAPIKeySecret: "secret-key",
+		ACPProvider: &provider, ACPCommand: []string{"secret-command"},
+		ACPModel: "secret-acp-model", ACPEffort: "secret-effort",
+		CLIProvider: &provider, CLIModel: "secret-cli-model", CLIAuthMode: "secret-mode",
+		SystemPrompt: "secret prompt", GitCommitterName: "secret name",
+		GitCommitterEmail: "secret@example.com", DockerEnabled: true,
+		DefaultEnvironmentID: &environmentID, DefaultFolderID: &environmentID,
+		CreatedBy:  &createdBy,
+		Roles:      []roledom.Summary{{ID: uuid.New(), Name: "secret role"}},
+		MCPServers: []*agentdom.AgentMCPServer{{ServerName: "secret-server"}},
+		Skills:     []*agentdom.AgentSkill{{SkillName: "secret-skill"}},
+		EnvVars:    []*agentdom.AgentEnvironmentVariable{{Key: "secret-env"}},
+	}}}
+	h := handler.NewAgentHandler(svc, "", "", "")
+	r := chi.NewRouter()
+	r.Get("/agents", h.ListChattableAgents)
+
+	w := doAgentRequest(t, r, http.MethodGet, "/agents?search=bot&page_size=5", nil)
+	if w.Code != http.StatusOK || svc.listLimit != 5 || svc.listFilter.Search != "bot" {
+		t.Fatalf("got %d limit=%d filter=%+v", w.Code, svc.listLimit, svc.listFilter)
+	}
+	var body struct {
+		Data struct {
+			Items      []map[string]any `json:"items"`
+			NextCursor *string          `json:"next_cursor"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Data.Items) != 1 || body.Data.NextCursor == nil {
+		t.Fatalf("want one item and a next cursor: %s", w.Body.String())
+	}
+	got := slices.Sorted(maps.Keys(body.Data.Items[0]))
+	want := []string{
+		"acp_provider", "agent_scope", "agent_type", "cli_provider",
+		"description", "handle", "id", "llm_provider", "name",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("fields = %v, want %v", got, want)
+	}
+	if strings.Contains(w.Body.String(), "secret") {
+		t.Errorf("response leaks configuration: %s", w.Body.String())
 	}
 }
 

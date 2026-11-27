@@ -560,15 +560,37 @@ export async function deleteGlobalAgent(agentId: string): Promise<void> {
 	await apiClient.instance.delete(`/admin/agents/${agentId}`);
 }
 
+// What GET /agents returns about a global agent: enough to pick one. Its
+// configuration and roles need agents:read (listGlobalAgents).
+export type ChattableAgent = Pick<
+	Agent,
+	| "id"
+	| "agent_scope"
+	| "name"
+	| "handle"
+	| "description"
+	| "avatar_url"
+	| "avatar_thumb_url"
+	| "agent_type"
+	| "llm_provider"
+	| "acp_provider"
+	| "cli_provider"
+>;
+
+export interface ChattableAgentPage {
+	items: ChattableAgent[];
+	page_size: number;
+	next_cursor: string | null;
+}
+
 // Any authenticated human may browse global agents (to chat with one) —
 // unlike listGlobalAgents (/admin/agents) above, this isn't permission-gated.
 export async function listChattableAgents(
 	opts: AgentListOptions = {},
-): Promise<AgentPage> {
-	const { data } = await apiClient.instance.get<SuccessEnvelope<AgentPage>>(
-		"/agents",
-		{ params: agentListParams(opts) },
-	);
+): Promise<ChattableAgentPage> {
+	const { data } = await apiClient.instance.get<
+		SuccessEnvelope<ChattableAgentPage>
+	>("/agents", { params: agentListParams(opts) });
 	return data.data;
 }
 

@@ -498,11 +498,11 @@ func New(deps Deps) http.Handler {
 
 					// Any authenticated human may browse global agents (to chat
 					// with one) — unlike /admin/agents, this is intentionally
-					// not permission-gated, matching how any project member can
-					// already see a project's agents. It's the same handler as
-					// the admin listing, just reachable without an admin
-					// permission.
-					r.Get("/", deps.Agent.ListGlobalAgents)
+					// not permission-gated, so it has its own handler returning
+					// only what picking an agent needs. Never mount the admin
+					// listing here: an agent's configuration and roles need
+					// agents:read.
+					r.Get("/", deps.Agent.ListChattableAgents)
 
 					// Agent self-service (authenticated with the agent's
 					// own API key) — what the MCP server calls when running as a
