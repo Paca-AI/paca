@@ -1002,6 +1002,29 @@ export function GanttView({
 					className="relative"
 					style={{ minWidth: leftColW + chartWidth }}
 				>
+					{/*
+					 * Task column resize handle, spanning the full chart height.
+					 * The overlay covers the body; its sticky child pins to the
+					 * left edge so the handle stays on the column border while
+					 * scrolling horizontally.
+					 */}
+					<div className="pointer-events-none absolute inset-0 z-30">
+						<div
+							className="sticky left-0 h-full"
+							style={{ width: leftColW }}
+						>
+							<PaneResizeHandle
+								config={GANTT_TASK_PANE}
+								pane={taskPane}
+								label={tShared("paneResize.taskColumn")}
+								edge="right"
+								showGrip
+								testId="gantt-task-column-resize-handle"
+								className="pointer-events-auto"
+							/>
+						</div>
+					</div>
+
 					{/* ── Sticky timeline header ───────────────────────────── */}
 					<div
 						className={cn(
@@ -1021,14 +1044,6 @@ export function GanttView({
 							<span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/90">
 								{t("layout.gantt.taskColumnLabel")}
 							</span>
-							<PaneResizeHandle
-								config={GANTT_TASK_PANE}
-								pane={taskPane}
-								label={tShared("paneResize.taskColumn")}
-								edge="right"
-								showGrip
-								testId="gantt-task-column-resize-handle"
-							/>
 						</div>
 
 						{/* Scale: a coarse band above one cell per step */}
