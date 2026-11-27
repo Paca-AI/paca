@@ -48,8 +48,9 @@ Feature: Global search
 
     Scenario: The sidebar button opens the search
       Given the admin is on the home page
-      When the admin clicks Search in the sidebar
+      When the admin clicks Search in the sidebar, opening it first on mobile
       Then the search input is shown
+      And on mobile the sidebar is closed
 
     Scenario: Cmd/Ctrl+K opens the search and Enter opens the first task
       Given the admin is on the home page

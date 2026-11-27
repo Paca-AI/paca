@@ -243,14 +243,20 @@ test.describe("The search dialog", () => {
 		await cleanup(request);
 	});
 
-	test("The sidebar button opens the search", async ({ page }) => {
+	test("The sidebar button opens the search", async ({ page, isMobile }) => {
 		await signIn(page);
+		// On mobile the sidebar is a sheet, not in the page until it is opened.
+		if (isMobile) {
+			await page.getByRole("button", { name: "Toggle Sidebar" }).click();
+		}
+		const sidebar = page.locator('[data-slot="sidebar"]');
 
-		await page
-			.locator('[data-slot="sidebar"]')
-			.getByRole("button", { name: "Search", exact: true })
-			.click();
+		await sidebar.getByRole("button", { name: "Search", exact: true }).click();
 		await expect(page.getByRole("combobox")).toBeVisible();
+		if (isMobile) {
+			// The sheet makes way for the dialog.
+			await expect(sidebar).toHaveCount(0);
+		}
 	});
 
 	test("Cmd/Ctrl+K opens the search and Enter opens the first task", async ({
