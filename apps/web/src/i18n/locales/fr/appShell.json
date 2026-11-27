@@ -117,7 +117,6 @@
 	},
 	"search": {
 		"button": "Rechercher",
-		"placeholder": "Rechercher projets, tâches, personnes…",
 		"dialogTitle": "Rechercher",
 		"dialogDescription": "Trouvez les projets, tâches et personnes auxquels vous avez accès.",
 		"inputPlaceholder": "Rechercher projets, tâches, personnes…",

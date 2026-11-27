@@ -137,6 +137,7 @@ import {
 	isMoveBlocked,
 	parseDocNodeDragPayload,
 } from "./doc-dnd";
+import { GlobalSearchButton } from "./global-search";
 import { UserMenu } from "./user-menu";
 
 // Shared by every inactive nav item (top-level, project, plugin, and
@@ -1242,95 +1243,109 @@ function ProjectSwitcher({
 		isLoadingMore: isFetchingNextPage,
 		onLoadMore: () => void fetchNextPage(),
 	});
-	const label = currentProject?.name ?? t("projectSwitcher.projects");
+	const { resolvedMode } = useThemeMode();
+	const branding = useBranding();
+	// Outside a project the switcher stands for the workspace, under its brand.
+	const label = currentProjectId
+		? (currentProject?.name ?? t("projectSwitcher.projects"))
+		: (branding?.brand_name ?? "paca");
 
 	const { data: user } = useQuery(currentUserQueryOptions);
 
-	if (!user) {
-		return (
-			<div className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm font-medium text-sidebar-foreground/80 select-none">
+	const identity = (
+		<>
+			{currentProjectId ? (
 				<EntityAvatar
 					{...(currentProject ? projectAvatar(currentProject) : { name: "" })}
-					fallback={<FolderKanban className="size-3.5" />}
-					size="sm"
+					fallback={<FolderKanban className="size-4" />}
 					shape="rounded"
 					className="shrink-0"
 				/>
-				<span className="flex-1 truncate text-left">{label}</span>
-			</div>
+			) : (
+				<img
+					src={
+						branding?.logo_thumb_url ??
+						branding?.logo_url ??
+						(resolvedMode === "dark" ? "/paca-logo-dark.svg" : "/paca-logo.svg")
+					}
+					alt={t("brand.logoAlt")}
+					className="size-8 shrink-0"
+				/>
+			)}
+			<span
+				className={cn(
+					"truncate text-base text-sidebar-foreground",
+					currentProjectId
+						? "font-medium"
+						: "font-[family-name:Syne] font-bold tracking-tight",
+				)}
+			>
+				{label}
+			</span>
+		</>
+	);
+	// sidebar-10's team switcher is only as wide as its content.
+	const buttonClassName = "w-fit max-w-full";
+
+	if (!user) {
+		return (
+			<SidebarMenuButton size="lg" render={<div />} className={buttonClassName}>
+				{identity}
+			</SidebarMenuButton>
 		);
 	}
 
 	return (
 		<DropdownMenu open={open} onOpenChange={setOpen}>
-			<DropdownMenuTrigger
-				className={cn(
-					"flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm font-medium text-sidebar-foreground/80 transition-all duration-150 select-none cursor-pointer",
-					open
-						? "bg-primary/10 text-primary"
-						: "hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-				)}
+			<SidebarMenuButton
+				size="lg"
+				tooltip={label}
+				render={<DropdownMenuTrigger />}
+				className={cn(buttonClassName, "cursor-pointer")}
 			>
-				<EntityAvatar
-					{...(currentProject ? projectAvatar(currentProject) : { name: "" })}
-					fallback={<FolderKanban className="size-3.5" />}
-					size="sm"
-					shape="rounded"
-					className="shrink-0"
-				/>
-				<span className="flex-1 truncate text-left">{label}</span>
-				<ChevronDown
-					className={cn(
-						"size-3.5 shrink-0 opacity-40 transition-transform duration-200",
-						open && "rotate-180",
-					)}
-				/>
-			</DropdownMenuTrigger>
+				{identity}
+				<ChevronDown className="opacity-50" />
+			</SidebarMenuButton>
 			<DropdownMenuContent
 				align="start"
-				sideOffset={6}
-				className="w-60"
+				className="w-64"
 				onScroll={handleProjectsScroll}
 			>
 				<DropdownMenuGroup>
-					<DropdownMenuLabel className="text-xs text-muted-foreground pb-1">
+					<DropdownMenuLabel>
 						{t("projectSwitcher.yourProjects")}
 					</DropdownMenuLabel>
-				</DropdownMenuGroup>
-				<DropdownMenuSeparator />
-				{projects.length > 0 ? (
-					<DropdownMenuGroup>
-						{projects.map((p) => (
-							<DropdownMenuItem
-								key={p.id}
-								render={
-									<Link
-										to="/projects/$projectId"
-										params={{ projectId: p.id }}
-										className="flex items-center gap-2"
-									/>
-								}
-							>
+					{projects.map((p) => (
+						<DropdownMenuItem
+							key={p.id}
+							// text-popover-foreground beats the global link colour.
+							className="gap-2 p-2 text-popover-foreground"
+							render={
+								<Link to="/projects/$projectId" params={{ projectId: p.id }} />
+							}
+						>
+							<div className="flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-xs border">
 								<EntityAvatar
 									{...projectAvatar(p)}
-									size="sm"
-									shape="rounded"
-									className="shrink-0"
+									size="xs"
+									shape="inherit"
+									className="after:hidden **:data-[slot=avatar-fallback]:bg-transparent **:data-[slot=avatar-fallback]:text-foreground"
 								/>
-								<span className="truncate">{p.name}</span>
-								{p.id === currentProjectId && (
-									<span className="ml-auto size-1.5 rounded-full bg-primary" />
-								)}
-							</DropdownMenuItem>
-						))}
-						{isFetchingNextPage ? (
-							<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground">
-								<Spinner aria-hidden="true" className="size-3" />
-								{t("projectSwitcher.loadingMore")}
 							</div>
-						) : null}
-					</DropdownMenuGroup>
-				) : (
+							<span className="truncate">{p.name}</span>
+							{p.id === currentProjectId && (
+								<span className="ml-auto size-1.5 shrink-0 rounded-full bg-primary" />
+							)}
+						</DropdownMenuItem>
+					))}
+					{isFetchingNextPage ? (
+						<div className="flex items-center justify-center gap-1.5 py-2 text-xs text-muted-foreground">
+							<Spinner aria-hidden="true" className="size-3" />
+							{t("projectSwitcher.loadingMore")}
+						</div>
+					) : null}
+				</DropdownMenuGroup>
+				{projects.length === 0 && (
 					<div className="flex flex-col items-center gap-1 px-3 py-4">
 						<div className="flex size-8 items-center justify-center rounded-md bg-muted">
 							<FolderKanban className="size-4 text-muted-foreground" />
@@ -1340,12 +1355,21 @@ function ProjectSwitcher({
 						</p>
 					</div>
 				)}
-				<DropdownMenuSeparator />
 				{canCreate ? (
-					<DropdownMenuItem render={<Link to="/home" />}>
-						<Plus className="size-3.5" />
-						{t("projectSwitcher.newProject")}
-					</DropdownMenuItem>
+					<>
+						<DropdownMenuSeparator />
+						<DropdownMenuItem
+							className="gap-2 p-2 text-popover-foreground"
+							render={<Link to="/home" />}
+						>
+							<div className="flex size-6 shrink-0 items-center justify-center rounded-md border bg-background">
+								<Plus className="size-4" />
+							</div>
+							<span className="font-medium text-muted-foreground">
+								{t("projectSwitcher.newProject")}
+							</span>
+						</DropdownMenuItem>
+					</>
 				) : null}
 			</DropdownMenuContent>
 		</DropdownMenu>
@@ -2215,13 +2239,9 @@ export function AppSidebar() {
 	const { state: sidebarState, isMobile } = useSidebar();
 	const sidebarPane = usePaneWidth(SIDEBAR_PANE);
 	const { hasPermission } = usePermissions();
-	const { resolvedMode } = useThemeMode();
 	const { projectId } = useParams({ strict: false });
 	const { data: user } = useQuery(currentUserQueryOptions);
 	const { getNavItems } = usePluginRegistry();
-	const branding = useBranding();
-	const logoUrl = branding?.logo_thumb_url ?? branding?.logo_url;
-	const brandName = branding?.brand_name;
 
 	const canAccessGlobalRoles =
 		hasPermission("roles:read") || hasPermission("roles:write");
@@ -2276,44 +2296,16 @@ export function AppSidebar() {
 
 	return (
 		<Sidebar collapsible="icon">
-			{/* Brand */}
-			<SidebarHeader className="gap-2 pb-2">
-				<div className="flex items-center gap-2.5 px-2 pt-1">
-					{user ? (
-						<Link to="/home">
-							<img
-								src={
-									logoUrl ??
-									(resolvedMode === "dark"
-										? "/paca-logo-dark.svg"
-										: "/paca-logo.svg")
-								}
-								alt={t("brand.logoAlt")}
-								className="size-8 shrink-0"
-							/>
-						</Link>
-					) : (
-						<img
-							src={
-								logoUrl ??
-								(resolvedMode === "dark"
-									? "/paca-logo-dark.svg"
-									: "/paca-logo.svg")
-							}
-							alt={t("brand.logoAlt")}
-							className="size-8 shrink-0"
+			<SidebarHeader>
+				<SidebarMenu>
+					<SidebarMenuItem>
+						<ProjectSwitcher
+							currentProjectId={projectId}
+							canCreate={canCreateProject}
 						/>
-					)}
-					<span className="font-[Syne] font-bold text-base tracking-tight text-sidebar-foreground group-data-[collapsible=icon]:hidden">
-						{brandName ?? "paca"}
-					</span>
-				</div>
-				<div className="group-data-[collapsible=icon]:hidden">
-					<ProjectSwitcher
-						currentProjectId={projectId}
-						canCreate={canCreateProject}
-					/>
-				</div>
+					</SidebarMenuItem>
+				</SidebarMenu>
+				{user && <GlobalSearchButton className={NAV_ITEM_INACTIVE_CLASS} />}
 			</SidebarHeader>
 
 			<SidebarSeparator />

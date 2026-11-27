@@ -117,7 +117,6 @@
 	},
 	"search": {
 		"button": "Buscar",
-		"placeholder": "Buscar proyectos, tareas, personas…",
 		"dialogTitle": "Buscar",
 		"dialogDescription": "Encuentra los proyectos, tareas y personas a los que tienes acceso.",
 		"inputPlaceholder": "Buscar proyectos, tareas, personas…",

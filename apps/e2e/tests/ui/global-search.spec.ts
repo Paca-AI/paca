@@ -5,7 +5,7 @@
 // the handler: projects the caller may read, the tasks their roles let them
 // read in each project, and the members of their teams (every user with
 // users:write). These scenarios check each of those against real roles, then
-// drive the header dialog once end to end.
+// drive the dialog end to end.
 
 import {
 	type APIRequestContext,
@@ -241,6 +241,16 @@ test.describe("The search dialog", () => {
 	test.afterEach(async ({ request }) => {
 		await authRequest(request);
 		await cleanup(request);
+	});
+
+	test("The sidebar button opens the search", async ({ page }) => {
+		await signIn(page);
+
+		await page
+			.locator('[data-slot="sidebar"]')
+			.getByRole("button", { name: "Search", exact: true })
+			.click();
+		await expect(page.getByRole("combobox")).toBeVisible();
 	});
 
 	test("Cmd/Ctrl+K opens the search and Enter opens the first task", async ({

@@ -15,7 +15,12 @@ import {
 	CommandItem,
 	CommandList,
 } from "@/components/ui/command";
-import { KbdChord } from "@/components/ui/kbd";
+import {
+	SidebarMenu,
+	SidebarMenuButton,
+	SidebarMenuItem,
+	useSidebar,
+} from "@/components/ui/sidebar";
 import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 import { usePermissions } from "@/hooks/use-permissions";
 import { projectAvatar } from "@/lib/provider-logos";
@@ -27,44 +32,56 @@ import {
 } from "@/lib/search-api";
 import { useGlobalSearchStore } from "@/lib/shortcuts/global-search-store";
 
-const SEARCH_CHORD = { mod: true, key: "K" } as const;
+/**
+ * The sidebar's search entry. It only opens the dialog: the sidebar is
+ * unmounted while closed on mobile, so `GlobalSearchDialog` lives in the app
+ * layout instead, where Mod+K can always reach it.
+ */
+export function GlobalSearchButton({ className }: { className?: string }) {
+	const { t } = useTranslation("appShell");
+	const setOpen = useGlobalSearchStore((s) => s.setOpen);
+	const { setOpenMobile } = useSidebar();
+
+	return (
+		<SidebarMenu>
+			<SidebarMenuItem>
+				<SidebarMenuButton
+					tooltip={t("search.button")}
+					onClick={() => {
+						setOpenMobile(false);
+						setOpen(true);
+					}}
+					className={className}
+				>
+					<Search />
+					<span>{t("search.button")}</span>
+				</SidebarMenuButton>
+			</SidebarMenuItem>
+		</SidebarMenu>
+	);
+}
 
 /**
- * The header search box and the dialog it opens (also on Mod+K, see
+ * The search dialog, opened by `GlobalSearchButton` and Mod+K (see
  * ShortcutProvider). Searches projects, tasks and people through GET /search,
  * which only returns what the caller may see, so nothing is filtered here.
  */
-export function GlobalSearch() {
+export function GlobalSearchDialog() {
 	const { t } = useTranslation("appShell");
 	const open = useGlobalSearchStore((s) => s.open);
 	const setOpen = useGlobalSearchStore((s) => s.setOpen);
 
 	return (
-		<>
-			<button
-				type="button"
-				onClick={() => setOpen(true)}
-				aria-label={t("search.button")}
-				className="flex h-8 w-full max-w-xs items-center gap-2 rounded-lg border border-border/70 bg-muted/40 px-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-			>
-				<Search className="size-4 shrink-0" />
-				<span className="truncate">{t("search.placeholder")}</span>
-				<KbdChord
-					chord={SEARCH_CHORD}
-					className="ml-auto hidden md:inline-flex"
-				/>
-			</button>
-			<CommandDialog
-				open={open}
-				onOpenChange={setOpen}
-				title={t("search.dialogTitle")}
-				description={t("search.dialogDescription")}
-				className="sm:max-w-xl"
-			>
-				{/* Mounted only while open, so each opening starts empty. */}
-				{open && <SearchPanel onDone={() => setOpen(false)} />}
-			</CommandDialog>
-		</>
+		<CommandDialog
+			open={open}
+			onOpenChange={setOpen}
+			title={t("search.dialogTitle")}
+			description={t("search.dialogDescription")}
+			className="sm:max-w-xl"
+		>
+			{/* Mounted only while open, so each opening starts empty. */}
+			{open && <SearchPanel onDone={() => setOpen(false)} />}
+		</CommandDialog>
 	);
 }
 

@@ -117,7 +117,6 @@
 	},
 	"search": {
 		"button": "Tìm kiếm",
-		"placeholder": "Tìm dự án, công việc, mọi người…",
 		"dialogTitle": "Tìm kiếm",
 		"dialogDescription": "Tìm dự án, công việc và mọi người mà bạn có quyền truy cập.",
 		"inputPlaceholder": "Tìm dự án, công việc, mọi người…",

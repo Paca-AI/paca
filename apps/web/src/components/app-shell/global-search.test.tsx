@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SearchResults } from "@/lib/search-api";
@@ -10,11 +10,26 @@ import { useGlobalSearchStore } from "@/lib/shortcuts/global-search-store";
 const mocks = vi.hoisted(() => ({
 	navigateMock: vi.fn(),
 	searchMock: vi.fn(),
+	setOpenMobileMock: vi.fn(),
 	permissions: [] as string[],
 }));
 
 vi.mock("@tanstack/react-router", () => ({
 	useNavigate: () => mocks.navigateMock,
+}));
+
+vi.mock("@/components/ui/sidebar", () => ({
+	SidebarMenu: ({ children }: { children: ReactNode }) => <ul>{children}</ul>,
+	SidebarMenuItem: ({ children }: { children: ReactNode }) => (
+		<li>{children}</li>
+	),
+	SidebarMenuButton: ({
+		tooltip: _tooltip,
+		...props
+	}: ComponentProps<"button"> & { tooltip?: string }) => (
+		<button type="button" {...props} />
+	),
+	useSidebar: () => ({ setOpenMobile: mocks.setOpenMobileMock }),
 }));
 
 vi.mock("@/hooks/use-permissions", () => ({
@@ -37,7 +52,7 @@ vi.mock("@/lib/search-api", async () => {
 	};
 });
 
-import { GlobalSearch } from "./global-search";
+import { GlobalSearchButton, GlobalSearchDialog } from "./global-search";
 
 // cmdk measures its list and scrolls the active item into view; jsdom has
 // neither API.
@@ -96,6 +111,15 @@ function wrapper({ children }: { children: ReactNode }) {
 	return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
+function GlobalSearch() {
+	return (
+		<>
+			<GlobalSearchButton />
+			<GlobalSearchDialog />
+		</>
+	);
+}
+
 async function openAndType(text: string) {
 	const user = userEvent.setup();
 	render(<GlobalSearch />, { wrapper });
@@ -108,6 +132,7 @@ describe("GlobalSearch", () => {
 	beforeEach(() => {
 		mocks.navigateMock.mockReset();
 		mocks.searchMock.mockReset();
+		mocks.setOpenMobileMock.mockReset();
 		mocks.permissions = [];
 		act(() => useGlobalSearchStore.getState().setOpen(false));
 	});
@@ -120,6 +145,14 @@ describe("GlobalSearch", () => {
 			await screen.findByText(/Type to search your projects/),
 		).toBeInTheDocument();
 		expect(mocks.searchMock).not.toHaveBeenCalled();
+	});
+
+	it("closes the mobile sidebar when opened from it", async () => {
+		const user = userEvent.setup();
+		render(<GlobalSearch />, { wrapper });
+		await user.click(screen.getByRole("button", { name: "Search" }));
+		expect(mocks.setOpenMobileMock).toHaveBeenCalledWith(false);
+		expect(await screen.findByRole("combobox")).toBeInTheDocument();
 	});
 
 	it("groups the results the API returns and opens a task", async () => {

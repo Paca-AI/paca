@@ -117,7 +117,6 @@
 	},
 	"search": {
 		"button": "搜索",
-		"placeholder": "搜索项目、任务、成员…",
 		"dialogTitle": "搜索",
 		"dialogDescription": "查找你有权访问的项目、任务和成员。",
 		"inputPlaceholder": "搜索项目、任务、成员…",

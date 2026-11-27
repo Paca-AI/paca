@@ -1,6 +1,6 @@
 @ui @global-search
 Feature: Global search
-  The header search (and Cmd/Ctrl+K) finds projects, tasks and people across
+  The sidebar search (and Cmd/Ctrl+K) finds projects, tasks and people across
   the workspace. It only returns what the caller may see: projects they may
   read, the tasks their roles let them read in each project, and the members
   of projects whose member list they may read (their teams). Only a user admin
@@ -45,6 +45,11 @@ Feature: Global search
     Background:
       Given the user already has a stored authenticated admin session
       And project A has a task in sprint S1
+
+    Scenario: The sidebar button opens the search
+      Given the admin is on the home page
+      When the admin clicks Search in the sidebar
+      Then the search input is shown
 
     Scenario: Cmd/Ctrl+K opens the search and Enter opens the first task
       Given the admin is on the home page
