@@ -102,10 +102,22 @@ interface TaskPositionListResult {
 }
 
 // ── View types ─────────────────────────────────────────────────────────────────
-export type ViewType = "table" | "board" | "gantt" | "plugin" | "note";
+export type ViewType =
+	| "table"
+	| "board"
+	| "gantt"
+	| "plugin"
+	| "note"
+	| "calendar";
 
 /** The time span one step of the Gantt chart's scale covers. */
 export type GanttZoom = "day" | "week" | "month" | "quarter" | "year";
+
+/** The span of days the Calendar view's grid shows at once. */
+export type CalendarMode = "month" | "week" | "day";
+
+/** The dates that place a task on the Calendar view's grid. */
+export type CalendarDateField = "start_and_due" | "start_date" | "due_date";
 
 /**
  * A single entry in a FilterConfig's `items` map.
@@ -218,6 +230,10 @@ export interface ViewConfig {
 	gantt_zoom?: GanttZoom;
 	/** Gantt: whether "blocks" links are drawn as arrows. Unset means "shown". */
 	gantt_dependencies?: "shown" | "hidden";
+	/** Calendar: the grid. Unset falls back to the view's default ("month"). */
+	calendar_mode?: CalendarMode;
+	/** Calendar: the dates that place a task. Unset means "start_and_due". */
+	calendar_date_field?: CalendarDateField;
 	/** Saved number of tasks to fetch when paginating further ("load more") within this view. Unset falls back to a fixed default. */
 	page_size?: number;
 	/** Saved number of tasks to fetch on the first load of this view, independent of page_size. Unset falls back to the layout's default. */
@@ -228,7 +244,13 @@ export interface ViewConfig {
 }
 
 /** "Note" views hold documents (notes) instead of tasks. */
-export type ViewLayout = "Board" | "Table" | "Gantt" | "Plugin" | "Note";
+export type ViewLayout =
+	| "Board"
+	| "Table"
+	| "Gantt"
+	| "Plugin"
+	| "Note"
+	| "Calendar";
 
 // ── Filter resolver helpers ───────────────────────────────────────────────────
 
@@ -310,6 +332,7 @@ function viewTypeToLayout(vt: ViewType): ViewLayout {
 	if (vt === "gantt") return "Gantt";
 	if (vt === "plugin") return "Plugin";
 	if (vt === "note") return "Note";
+	if (vt === "calendar") return "Calendar";
 	return "Table";
 }
 
@@ -318,6 +341,7 @@ export function layoutToViewType(l: ViewLayout): ViewType {
 	if (l === "Gantt") return "gantt";
 	if (l === "Plugin") return "plugin";
 	if (l === "Note") return "note";
+	if (l === "Calendar") return "calendar";
 	return "table";
 }
 
@@ -605,6 +629,16 @@ export interface ListTasksOptions {
 	/** Inclusive due_date range, "YYYY-MM-DD". */
 	dueDateAfter?: string;
 	dueDateBefore?: string;
+	/** Calendar window, "YYYY-MM-DD", both ends inclusive: only the tasks
+	 *  placed on at least one of its days, so a task spanning the window
+	 *  matches even when neither of its dates is inside. */
+	scheduledFrom?: string;
+	scheduledTo?: string;
+	/** Only the tasks the calendar places nowhere (never with a window). */
+	unscheduled?: boolean;
+	/** The dates that place a task for scheduledFrom/To and unscheduled;
+	 *  unset means both, spanning start_date to due_date. */
+	scheduledBy?: CalendarDateField;
 	/** Inclusive story_points range. */
 	storyPointsMin?: number;
 	storyPointsMax?: number;
@@ -711,6 +745,14 @@ function buildTaskQueryParams(opts: ListTasksOptions = {}) {
 	if (opts.startDateBefore) params.start_date_before = opts.startDateBefore;
 	if (opts.dueDateAfter) params.due_date_after = opts.dueDateAfter;
 	if (opts.dueDateBefore) params.due_date_before = opts.dueDateBefore;
+	if (opts.scheduledFrom) params.scheduled_from = opts.scheduledFrom;
+	if (opts.scheduledTo) params.scheduled_to = opts.scheduledTo;
+	if (opts.unscheduled) params.unscheduled = true;
+	if (
+		opts.scheduledBy &&
+		(opts.scheduledFrom || opts.scheduledTo || opts.unscheduled)
+	)
+		params.scheduled_by = opts.scheduledBy;
 	if (opts.storyPointsMin != null)
 		params.story_points_min = opts.storyPointsMin;
 	if (opts.storyPointsMax != null)
@@ -868,6 +910,8 @@ export async function createTask(
 		task_type_id?: string | null;
 		assignee_ids?: string[];
 		parent_task_id?: string | null;
+		start_date?: string | null;
+		due_date?: string | null;
 	},
 ): Promise<Task> {
 	const { data } = await apiClient.instance.post<SuccessEnvelope<Task>>(

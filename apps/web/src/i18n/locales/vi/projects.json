@@ -2329,6 +2329,10 @@
 			"ganttDependenciesLabel": "Mũi tên phụ thuộc",
 			"ganttDependenciesShown": "Hiện",
 			"ganttDependenciesHidden": "Ẩn",
+			"calendarDateFieldLabel": "Ngày",
+			"calendarDateFieldStartAndDue": "Từ ngày bắt đầu đến ngày đến hạn",
+			"calendarDateFieldStartDate": "Ngày bắt đầu",
+			"calendarDateFieldDueDate": "Ngày đến hạn",
 			"unsavedBadge": "Thay đổi chưa lưu",
 			"unsavedTitle": "Hủy các thay đổi chưa lưu?",
 			"unsavedDescription": "Bạn đã thay đổi cài đặt của chế độ xem này nhưng chưa lưu. Hãy lưu, hoặc hủy để quay lại cài đặt đã lưu gần nhất.",
@@ -2362,6 +2366,38 @@
 			"undo": "Hoàn tác",
 			"rescheduleFailed": "Không thể đổi lịch nhiệm vụ"
 		},
+		"calendar": {
+			"modeLabel": "Chế độ xem",
+			"mode": {
+				"month": "Tháng",
+				"week": "Tuần",
+				"day": "Ngày"
+			},
+			"previous": "Trước",
+			"next": "Sau",
+			"today": "Hôm nay",
+			"jumpToToday": "Đi tới hôm nay",
+			"noDate": "Chưa có ngày",
+			"noDateHint": "Các nhiệm vụ chưa có ngày mà lịch này dùng.",
+			"noDateHintDrag": "Các nhiệm vụ chưa có ngày mà lịch này dùng. Kéo một nhiệm vụ vào một ngày để lên lịch.",
+			"noUndatedTasks": "Mọi nhiệm vụ đều đã có ngày.",
+			"loading": "Đang tải…",
+			"viewMore": "Xem thêm",
+			"loadFailed": "Không thể tải hết nhiệm vụ. Thử lại",
+			"more": "+{{count}} nữa",
+			"taskCount_other": "{{count}} nhiệm vụ",
+			"addTaskOn": "Thêm nhiệm vụ vào {{date}}",
+			"taskTitle": "Tiêu đề nhiệm vụ",
+			"add": "Thêm",
+			"dateRange": "{{start}} → {{end}}",
+			"startDate": "Bắt đầu: {{date}}",
+			"dueDate": "Đến hạn: {{date}}",
+			"resizeStart": "Kéo để đổi ngày bắt đầu",
+			"resizeEnd": "Kéo để đổi ngày đến hạn",
+			"rescheduled": "Đã đổi lịch “{{title}}”",
+			"undo": "Hoàn tác",
+			"rescheduleFailed": "Không thể đổi lịch nhiệm vụ"
+		},
 		"newViewPopover": {
 			"addView": "Thêm chế độ xem",
 			"addViewAriaLabel": "Thêm chế độ xem",
@@ -2375,6 +2411,7 @@
 				"board": "Bảng",
 				"table": "Bảng dữ liệu",
 				"gantt": "Gantt",
+				"calendar": "Lịch",
 				"plugin": "Plugin",
 				"note": "Ghi chú"
 			}

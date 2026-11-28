@@ -2329,6 +2329,10 @@
 			"ganttDependenciesLabel": "依存関係の矢印",
 			"ganttDependenciesShown": "表示",
 			"ganttDependenciesHidden": "非表示",
+			"calendarDateFieldLabel": "日付",
+			"calendarDateFieldStartAndDue": "開始日から期日まで",
+			"calendarDateFieldStartDate": "開始日",
+			"calendarDateFieldDueDate": "期日",
 			"unsavedBadge": "未保存の変更",
 			"unsavedTitle": "未保存の変更を破棄しますか？",
 			"unsavedDescription": "このビューの設定を変更しましたが、保存されていません。保存するか、破棄して最後に保存した設定に戻してください。",
@@ -2362,6 +2366,38 @@
 			"undo": "元に戻す",
 			"rescheduleFailed": "タスクの日程を変更できませんでした"
 		},
+		"calendar": {
+			"modeLabel": "表示",
+			"mode": {
+				"month": "月",
+				"week": "週",
+				"day": "日"
+			},
+			"previous": "前へ",
+			"next": "次へ",
+			"today": "今日",
+			"jumpToToday": "今日へ移動",
+			"noDate": "日付なし",
+			"noDateHint": "このカレンダーが使う日付のないタスクです。",
+			"noDateHintDrag": "このカレンダーが使う日付のないタスクです。日付にドラッグすると予定に入ります。",
+			"noUndatedTasks": "すべてのタスクに日付があります。",
+			"loading": "読み込み中…",
+			"viewMore": "もっと見る",
+			"loadFailed": "一部のタスクを読み込めませんでした。再試行",
+			"more": "他{{count}}件",
+			"taskCount_other": "{{count}}件のタスク",
+			"addTaskOn": "{{date}}にタスクを追加",
+			"taskTitle": "タスクのタイトル",
+			"add": "追加",
+			"dateRange": "{{start}} → {{end}}",
+			"startDate": "開始: {{date}}",
+			"dueDate": "期日: {{date}}",
+			"resizeStart": "ドラッグして開始日を変更",
+			"resizeEnd": "ドラッグして期日を変更",
+			"rescheduled": "「{{title}}」の日程を変更しました",
+			"undo": "元に戻す",
+			"rescheduleFailed": "タスクの日程を変更できませんでした"
+		},
 		"newViewPopover": {
 			"addView": "ビューを追加",
 			"addViewAriaLabel": "ビューを追加",
@@ -2375,6 +2411,7 @@
 				"board": "ボード",
 				"table": "テーブル",
 				"gantt": "ガント",
+				"calendar": "カレンダー",
 				"plugin": "プラグイン",
 				"note": "ノート"
 			}

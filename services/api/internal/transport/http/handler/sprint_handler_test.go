@@ -203,8 +203,9 @@ func TestCreateSprint_SeedsDefaultViews(t *testing.T) {
 			boardView = v
 		case sprintdom.ViewTypeTable:
 			tableView = v
-		case sprintdom.ViewTypeGantt, sprintdom.ViewTypePlugin, sprintdom.ViewTypeNote:
-			// gantt, plugin and note views are not seeded for sprint defaults
+		case sprintdom.ViewTypeGantt, sprintdom.ViewTypePlugin, sprintdom.ViewTypeNote,
+			sprintdom.ViewTypeCalendar:
+			// gantt, plugin, note and calendar views are not seeded for sprint defaults
 		}
 	}
 	if boardView == nil || tableView == nil {

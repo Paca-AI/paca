@@ -463,7 +463,7 @@ func TestIntegrationViews_CreateInvalidTypeReturns400(t *testing.T) {
 
 	w := serve(r, authedJSONReq(t.Context(), http.MethodPost, base, tok, map[string]any{
 		"name":      "Bad",
-		"view_type": "calendar",
+		"view_type": "spreadsheet",
 	}))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d (%s)", w.Code, w.Body.String())

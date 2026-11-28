@@ -324,7 +324,7 @@ A note view holds one document (a note) instead of a folder of them: it is not p
 
 ### 🎯 Views (9 tools)
 - `list_views` - List all views in a project
-- `create_view` - Create a new view (sprint/backlog/timeline; `table`, `board`, `gantt`, `note` or `plugin`)
+- `create_view` - Create a new view (sprint/backlog/timeline; `table`, `board`, `gantt`, `calendar`, `note` or `plugin`)
 - `reorder_views` - Reorder views in a project
 - `get_view` - Get details of a specific view
 - `update_view` - Update an existing view

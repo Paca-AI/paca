@@ -2329,6 +2329,10 @@
 			"ganttDependenciesLabel": "Flechas de dependencia",
 			"ganttDependenciesShown": "Visibles",
 			"ganttDependenciesHidden": "Ocultas",
+			"calendarDateFieldLabel": "Fechas",
+			"calendarDateFieldStartAndDue": "De inicio a vencimiento",
+			"calendarDateFieldStartDate": "Fecha de inicio",
+			"calendarDateFieldDueDate": "Fecha de vencimiento",
 			"unsavedBadge": "Cambios sin guardar",
 			"unsavedTitle": "¿Descartar los cambios sin guardar?",
 			"unsavedDescription": "Cambiaste los ajustes de esta vista pero no los guardaste. Guárdalos o descártalos para volver a los últimos ajustes guardados.",
@@ -2362,6 +2366,39 @@
 			"undo": "Deshacer",
 			"rescheduleFailed": "No se pudo reprogramar la tarea"
 		},
+		"calendar": {
+			"modeLabel": "Vista",
+			"mode": {
+				"month": "Mes",
+				"week": "Semana",
+				"day": "Día"
+			},
+			"previous": "Anterior",
+			"next": "Siguiente",
+			"today": "Hoy",
+			"jumpToToday": "Ir a hoy",
+			"noDate": "Sin fecha",
+			"noDateHint": "Tareas sin las fechas que usa este calendario.",
+			"noDateHintDrag": "Tareas sin las fechas que usa este calendario. Arrastra una a un día para programarla.",
+			"noUndatedTasks": "Todas las tareas tienen fecha.",
+			"loading": "Cargando…",
+			"viewMore": "Ver más",
+			"loadFailed": "No se pudieron cargar todas las tareas. Reintentar",
+			"more": "+{{count}} más",
+			"taskCount_one": "{{count}} tarea",
+			"taskCount_other": "{{count}} tareas",
+			"addTaskOn": "Añadir una tarea el {{date}}",
+			"taskTitle": "Título de la tarea",
+			"add": "Añadir",
+			"dateRange": "{{start}} → {{end}}",
+			"startDate": "Inicio: {{date}}",
+			"dueDate": "Vencimiento: {{date}}",
+			"resizeStart": "Arrastra para cambiar la fecha de inicio",
+			"resizeEnd": "Arrastra para cambiar la fecha de vencimiento",
+			"rescheduled": "Se reprogramó «{{title}}»",
+			"undo": "Deshacer",
+			"rescheduleFailed": "No se pudo reprogramar la tarea"
+		},
 		"newViewPopover": {
 			"addView": "Añadir vista",
 			"addViewAriaLabel": "Añadir vista",
@@ -2375,6 +2412,7 @@
 				"board": "Tablero",
 				"table": "Tabla",
 				"gantt": "Gantt",
+				"calendar": "Calendario",
 				"plugin": "Plugin",
 				"note": "Nota"
 			}

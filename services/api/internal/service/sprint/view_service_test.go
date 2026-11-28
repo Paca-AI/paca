@@ -376,7 +376,7 @@ func TestViewService_CreateView_InvalidTypeReturnsError(t *testing.T) {
 	_, err := svc.CreateView(ctx, sprintdom.CreateViewInput{
 		SprintID:    uuidPtr(uuid.New()),
 		Name:        "Bad",
-		ViewType:    "calendar",
+		ViewType:    "spreadsheet",
 		ViewContext: sprintdom.ViewContextSprint,
 	})
 	if err != sprintdom.ErrViewTypeInvalid {
@@ -1321,6 +1321,124 @@ func TestViewService_GanttConfig_IsPersonal(t *testing.T) {
 	}
 	if others[0].Config.GanttZoom != "month" || others[0].Config.GanttDependencies != "" {
 		t.Errorf("userB sees %+v, want the shared zoom", others[0].Config)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Calendar: the view type and its config fields.
+// ---------------------------------------------------------------------------
+
+func TestViewService_CalendarViewIsCreatedInEveryContext(t *testing.T) {
+	ctx := context.Background()
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), permissiveSprintRepo{}, permissiveTaskRepo{}, nil)
+	projectID := uuid.New()
+
+	for _, in := range []sprintdom.CreateViewInput{
+		// permissiveSprintRepo's sprints have no project.
+		{SprintID: uuidPtr(uuid.New()), ViewContext: sprintdom.ViewContextSprint},
+		{ProjectID: projectID, ViewContext: sprintdom.ViewContextBacklog},
+		{ProjectID: projectID, ViewContext: sprintdom.ViewContextTimeline},
+	} {
+		in.Name, in.ViewType = "Calendar", sprintdom.ViewTypeCalendar
+		v, err := svc.CreateView(ctx, in)
+		if err != nil {
+			t.Fatalf("create a %s calendar view: %v", in.ViewContext, err)
+		}
+		if v.ViewType != sprintdom.ViewTypeCalendar {
+			t.Fatalf("%s view_type = %q, want calendar", in.ViewContext, v.ViewType)
+		}
+	}
+}
+
+func TestViewService_UpdateView_TableBecomesCalendar(t *testing.T) {
+	ctx := context.Background()
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), permissiveSprintRepo{}, permissiveTaskRepo{}, nil)
+	projectID := uuid.New()
+	table := seedProjectView(t, svc, projectID, sprintdom.ViewConfig{})
+
+	calendar := sprintdom.ViewTypeCalendar
+	updated, err := svc.UpdateView(ctx, projectID, table.ID, sprintdom.UpdateViewInput{ViewType: &calendar})
+	if err != nil {
+		t.Fatalf("UpdateView: %v", err)
+	}
+	if updated.ViewType != sprintdom.ViewTypeCalendar {
+		t.Fatalf("view_type = %q, want calendar", updated.ViewType)
+	}
+}
+
+func TestViewService_CalendarConfig_DropsUnknownValues(t *testing.T) {
+	ctx := context.Background()
+	svc := sprintsvc.NewViewService(newFakeViewRepo(), permissiveSprintRepo{}, permissiveTaskRepo{}, nil)
+	projectID := uuid.New()
+
+	for _, tc := range []struct {
+		mode, field         string
+		wantMode, wantField string
+	}{
+		{"week", "due_date", "week", "due_date"},
+		{"day", "start_date", "day", "start_date"},
+		{"month", "start_and_due", "month", "start_and_due"},
+		{"", "", "", ""},
+		{"fortnight", "created_at", "", ""},
+		{"Month", "DUE_DATE", "", ""},
+	} {
+		v, err := svc.CreateView(ctx, sprintdom.CreateViewInput{
+			ProjectID:   projectID,
+			Name:        "Calendar",
+			ViewType:    sprintdom.ViewTypeCalendar,
+			ViewContext: sprintdom.ViewContextBacklog,
+			Config:      sprintdom.ViewConfig{CalendarMode: tc.mode, CalendarDateField: tc.field},
+		})
+		if err != nil {
+			t.Fatalf("create (%q, %q): %v", tc.mode, tc.field, err)
+		}
+		if v.Config.CalendarMode != tc.wantMode || v.Config.CalendarDateField != tc.wantField {
+			t.Errorf("create (%q, %q) stored (%q, %q), want (%q, %q)",
+				tc.mode, tc.field, v.Config.CalendarMode, v.Config.CalendarDateField, tc.wantMode, tc.wantField)
+		}
+	}
+}
+
+func TestViewService_CalendarConfig_IsPersonal(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeViewRepo()
+	svc := sprintsvc.NewViewService(repo, permissiveSprintRepo{}, permissiveTaskRepo{}, nil)
+	projectID := uuid.New()
+	shared := sprintdom.ViewConfig{CalendarMode: "month", CalendarDateField: "due_date"}
+	view := seedProjectView(t, svc, projectID, shared)
+	userA, userB := uuid.New(), uuid.New()
+
+	// userA switches to the week grid and keeps the shared date field; only
+	// what differs is stored.
+	if _, err := svc.SetUserViewConfig(ctx, projectID, view.ID, userA, sprintdom.ViewConfig{CalendarMode: "week", CalendarDateField: "due_date"}); err != nil {
+		t.Fatalf("SetUserViewConfig: %v", err)
+	}
+	overrides, err := repo.GetUserViewConfigs(ctx, userA, []uuid.UUID{view.ID})
+	if err != nil {
+		t.Fatalf("GetUserViewConfigs: %v", err)
+	}
+	if got := overrides[view.ID]; got.CalendarMode != "week" || got.CalendarDateField != "" {
+		t.Fatalf("stored override = %+v, want only the week mode", got)
+	}
+
+	views := []*sprintdom.SprintView{
+		{ID: view.ID, ProjectID: projectID, Config: shared},
+	}
+	if err := svc.OverlayUserConfigs(ctx, userA, views); err != nil {
+		t.Fatalf("OverlayUserConfigs(userA): %v", err)
+	}
+	if views[0].Config.CalendarMode != "week" || views[0].Config.CalendarDateField != "due_date" {
+		t.Errorf("userA sees %+v, want their week mode and the shared date field", views[0].Config)
+	}
+
+	others := []*sprintdom.SprintView{
+		{ID: view.ID, ProjectID: projectID, Config: shared},
+	}
+	if err := svc.OverlayUserConfigs(ctx, userB, others); err != nil {
+		t.Fatalf("OverlayUserConfigs(userB): %v", err)
+	}
+	if others[0].Config.CalendarMode != "month" || others[0].Config.CalendarDateField != "due_date" {
+		t.Errorf("userB sees %+v, want the shared calendar settings", others[0].Config)
 	}
 }
 

@@ -17,6 +17,7 @@ import { notifyError } from "@/lib/notify";
 const POSITION_MAX = Number.MAX_SAFE_INTEGER; // 2^53 − 1 ≈ 9 × 10^15
 
 import {
+	CalendarDays,
 	ChartGantt,
 	ChevronDown,
 	KanbanSquare,
@@ -57,6 +58,7 @@ import {
 import {
 	allTasksQueryOptions,
 	bulkMoveViewTaskPositions,
+	type CalendarMode,
 	type ChildTaskFilters,
 	type CustomFieldFilterQuery,
 	clearMyViewConfig,
@@ -108,6 +110,7 @@ import { usePageShortcutStore } from "@/lib/shortcuts/page-shortcut-store";
 import { cn } from "@/lib/utils";
 import { AssigneeQuickFilter } from "./assignee-quick-filter";
 import { BoardView } from "./board-view";
+import { CalendarView } from "./calendar-view";
 import type { DateUpdate } from "./gantt-scale";
 import { GanttView } from "./gantt-view";
 import { ListView } from "./list-view";
@@ -527,6 +530,9 @@ export function InteractionLayout({
 	const activeViewId = activeView?.id ?? "";
 	// A note view shows documents, not tasks: no task query runs for it.
 	const isNoteView = activeView?.layout === "Note";
+	// A calendar view loads the tasks of the days on screen itself, so none of
+	// the task queries below run for it either.
+	const isCalendarView = activeView?.layout === "Calendar";
 	// The header element a note view's document renders its actions into.
 	const [noteHeaderSlot, setNoteHeaderSlot] = useState<HTMLElement | null>(
 		null,
@@ -880,7 +886,8 @@ export function InteractionLayout({
 	const needsApiColumns =
 		hasApiColumns(columnBy, customFields) &&
 		activeView?.layout !== "Gantt" &&
-		!isNoteView;
+		!isNoteView &&
+		!isCalendarView;
 	const columnsFilterOpts = useMemo(() => {
 		const {
 			pageSize: _pageSize,
@@ -927,13 +934,14 @@ export function InteractionLayout({
 	);
 
 	const fetchColumnDefs = useMemo(() => {
-		if (activeView?.layout === "Gantt") return [];
+		if (activeView?.layout === "Gantt" || isCalendarView) return [];
 		// Columns not listed (still loading, or the request failed): there is no
 		// per-column query to run.
 		if (needsApiColumns && !dynamicColumns) return [];
 		return getColumnGroupDefs(columnBy, columnsCtx, t);
 	}, [
 		activeView?.layout,
+		isCalendarView,
 		needsApiColumns,
 		dynamicColumns,
 		columnBy,
@@ -948,7 +956,8 @@ export function InteractionLayout({
 		fetchColumnDefs.length > 0 &&
 		!viewsQuery.isLoading &&
 		activeView?.layout !== "Gantt" &&
-		!isNoteView;
+		!isNoteView &&
+		!isCalendarView;
 
 	// Filters carried onto the children listed under an expanded parent row:
 	// the view's own filters and sort, minus what scopes the top level.
@@ -1086,6 +1095,18 @@ export function InteractionLayout({
 		],
 	);
 
+	// The calendar's filters: the view's, without the paging, sorting and
+	// subtask nesting a grid of days has no use for.
+	const calendarTaskFilters = useMemo((): ListTasksOptions => {
+		const {
+			sortBy: _sortBy,
+			viewId: _viewId,
+			excludeSubtasks: _excludeSubtasks,
+			...filters
+		} = fallbackBaseOpts;
+		return filters;
+	}, [fallbackBaseOpts]);
+
 	const initialGlobalPageSize =
 		configuredInitialPageSize ?? getDefaultInitialPageSize(activeView?.layout);
 	const fallbackOpts = {
@@ -1099,7 +1120,8 @@ export function InteractionLayout({
 			!colQueriesEnabled &&
 			!viewsQuery.isLoading &&
 			!apiColumnsPending &&
-			!isNoteView,
+			!isNoteView &&
+			!isCalendarView,
 		// See the matching comment on the column queries above: "load more"
 		// grows pageSize (and thus the queryKey), so keep showing the smaller
 		// page's data while the larger one fetches instead of dropping to
@@ -1598,14 +1620,23 @@ export function InteractionLayout({
 				payload.extraFields?.sprint_id !== undefined
 					? payload.extraFields.sprint_id
 					: (sprintId ?? null);
+			// Dates go with the create (a task added on a Calendar day), so the
+			// task never shows up undated in between.
+			const {
+				sprint_id: _sid,
+				start_date,
+				due_date,
+				...remainingFields
+			} = payload.extraFields ?? {};
 			const task = await createTask(projectId, {
 				title: payload.title,
 				status_id: payload.statusId || undefined,
 				sprint_id: sprintIdForTask,
 				task_type_id: payload.taskTypeId ?? null,
+				start_date,
+				due_date,
 			});
-			// Apply remaining extraFields (excluding sprint_id which was handled above)
-			const { sprint_id: _sid, ...remainingFields } = payload.extraFields ?? {};
+			// Apply remaining extraFields (sprint_id and the dates went with the create)
 			if (Object.keys(remainingFields).length > 0) {
 				return updateTask(projectId, task.id, remainingFields);
 			}
@@ -1756,8 +1787,9 @@ export function InteractionLayout({
 		[projectId, qc, tasksListQueryKey],
 	);
 
-	// Gantt: saves the dates of a dragged bar. Unlike a column move it resolves
-	// or rejects, so the chart can drop its optimistic bar and offer an undo.
+	// Gantt and Calendar: saves the dates of a dragged task. Unlike a column
+	// move it resolves or rejects, so the view can drop its optimistic dates
+	// and offer an undo.
 	const handleRescheduleTask = useCallback(
 		async (taskId: string, update: DateUpdate) => {
 			const updatedTask = await updateTask(projectId, taskId, update);
@@ -2097,6 +2129,8 @@ export function InteractionLayout({
 										<Puzzle className="size-3.5" />
 									) : view.layout === "Note" ? (
 										<NotebookPen className="size-3.5" />
+									) : view.layout === "Calendar" ? (
+										<CalendarDays className="size-3.5" />
 									) : (
 										<List className="size-3.5" />
 									)}
@@ -2175,6 +2209,7 @@ export function InteractionLayout({
 					{context === "sprint" &&
 						(activeView?.layout === "Board" ||
 							activeView?.layout === "Gantt" ||
+							activeView?.layout === "Calendar" ||
 							activeView?.layout === "Table") && (
 							<AssigneeQuickFilter
 								projectId={projectId}
@@ -2293,6 +2328,34 @@ export function InteractionLayout({
 						projectId={projectId}
 						viewId={activeView.id}
 						headerSlot={noteHeaderSlot}
+					/>
+				) : isCalendarView && activeView ? (
+					<CalendarView
+						key={activeView.id}
+						projectId={projectId}
+						taskIdPrefix={taskIdPrefix}
+						taskFilters={calendarTaskFilters}
+						statuses={statuses}
+						taskTypes={creatableTaskTypes}
+						viewConfig={activeViewConfig}
+						canCreate={canCreate}
+						canEdit={canEdit}
+						onRescheduleTask={canEdit ? handleRescheduleTask : undefined}
+						mode={activeViewConfig?.calendar_mode}
+						onModeChange={
+							isRealView
+								? (mode: CalendarMode) =>
+										updateViewConfigMutation.mutate({
+											viewId: activeView.id,
+											config: {
+												...(activeView.config ?? {}),
+												calendar_mode: mode,
+											},
+										})
+								: undefined
+						}
+						onCreateTask={handleCreateTask}
+						onTaskClick={handleTaskClick}
 					/>
 				) : tasksLoading ? (
 					activeView?.layout === "Board" ? (

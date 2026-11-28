@@ -175,7 +175,7 @@ In the **Auth** column, actions joined by `+` are all required, and the action a
 | `POST` | `/api/v1/projects/:projectId/sprints/:sprintId/start` | Access token (fresh) + `sprints:write` | Start a planned sprint: set name, goal, start date, and due date, then transition `status` to `active`. Multiple sprints may be active simultaneously. Fails with `409 SPRINT_NOT_PLANNED` if the sprint is not in `planned` state. |
 | `POST` | `/api/v1/projects/:projectId/sprints/:sprintId/complete` | Access token (fresh) + `sprints:write` | Complete an active sprint: transition `status` to `completed` and move all incomplete tasks to the specified sprint (or back to no-sprint if `move_to_sprint_id` is `null`). Fails with `409 SPRINT_NOT_ACTIVE` if the sprint is not in `active` state. |
 | `GET` | `/api/v1/projects/:projectId/views?context=sprint&sprint_id=:sprintId` | Access token (fresh) + `sprints:read` | List saved view configurations. `context` must be `sprint`, `backlog`, or `timeline`; the `sprint` context requires `sprint_id`. |
-| `POST` | `/api/v1/projects/:projectId/views?context=sprint&sprint_id=:sprintId` | Access token (fresh) + `sprints:write` | Create a saved view configuration. `context` must be `sprint`, `backlog`, or `timeline`; the `sprint` context requires `sprint_id`. Sprint creation seeds one Board and one Table view with `column_by = status`, the current sprint selected, and non-system task types. Project creation seeds one backlog Table view with `column_by = sprint` plus one timeline Gantt view filtered to Epics. `view_type` is `table`, `board`, `gantt`, `plugin` or `note`; the former name `roadmap` is still accepted for one release and stored as `gantt`. A `note` view holds documents instead of tasks (see [Note view](../architecture/interaction-views.md#note-view)). |
+| `POST` | `/api/v1/projects/:projectId/views?context=sprint&sprint_id=:sprintId` | Access token (fresh) + `sprints:write` | Create a saved view configuration. `context` must be `sprint`, `backlog`, or `timeline`; the `sprint` context requires `sprint_id`. Sprint creation seeds one Board and one Table view with `column_by = status`, the current sprint selected, and non-system task types. Project creation seeds one backlog Table view with `column_by = sprint` plus one timeline Gantt view filtered to Epics. `view_type` is `table`, `board`, `gantt`, `calendar`, `plugin` or `note`; the former name `roadmap` is still accepted for one release and stored as `gantt`. A `calendar` view lays tasks out on a grid of days (see [Calendar view](../architecture/interaction-views.md#calendar-view)). A `note` view holds documents instead of tasks (see [Note view](../architecture/interaction-views.md#note-view)). |
 | `GET` | `/api/v1/projects/:projectId/views/:viewId` | Access token (fresh) + `views:read` | Get a single view configuration. |
 | `PATCH` | `/api/v1/projects/:projectId/views/:viewId` | Access token (fresh) + `views:write` | Update a view's name or config. A note view keeps its type, and no other view can become one: `400 VIEW_NOTE_TYPE_CHANGE`. |
 | `DELETE` | `/api/v1/projects/:projectId/views/:viewId` | Access token (fresh) + `views:write` | Delete a view. Fails with `409 VIEW_IS_LAST_VIEW` if it is the only remaining view. Deleting a note view soft-deletes its notes. |
@@ -183,7 +183,7 @@ In the **Auth** column, actions joined by `+` are all required, and the action a
 | `GET` | `/api/v1/projects/:projectId/views/:viewId/task-positions` | Access token (fresh) + `tasks:read` | List manual task ordering positions within a view. |
 | `PUT` | `/api/v1/projects/:projectId/views/:viewId/task-positions/:taskId` | Access token (fresh) + `tasks:write` | Set or update the manual position of a task within a view. |
 | `PUT` | `/api/v1/projects/:projectId/views/:viewId/task-positions` | Access token (fresh) + `tasks:write` | Bulk-upsert manual positions of multiple tasks within a view. |
-| `GET` | `/api/v1/projects/:projectId/tasks` | Access token (fresh) + `tasks:read` | List tasks through one shared endpoint. Supported filters include `sprint_id`, `sprint_ids`, `status_id`, `status_ids`, `assignee_id`, `assignee_ids`, `task_type_ids`, and `parent_task_id`. `sprint_id=null` is still supported for unscheduled-only backlog queries. Timeline pages should use `task_type_ids` to request Epic tasks, and manual ordering should be read from `/views/:viewId/task-positions`. `include=assignees,reporter` embeds the people behind `assignee_ids` / `reporter_id` in each task as `assignees` / `reporter` (identity only: names, avatar, kind — no roles). `GET /tasks/count` takes the same filters and returns `{"total_count": n}`. |
+| `GET` | `/api/v1/projects/:projectId/tasks` | Access token (fresh) + `tasks:read` | List tasks through one shared endpoint. Supported filters include `sprint_id`, `sprint_ids`, `status_id`, `status_ids`, `assignee_id`, `assignee_ids`, `task_type_ids`, and `parent_task_id`. `sprint_id=null` is still supported for unscheduled-only backlog queries. Timeline pages should use `task_type_ids` to request Epic tasks, and manual ordering should be read from `/views/:viewId/task-positions`. `include=assignees,reporter` embeds the people behind `assignee_ids` / `reporter_id` in each task as `assignees` / `reporter` (identity only: names, avatar, kind — no roles). `scheduled_from` / `scheduled_to` (inclusive `YYYY-MM-DD`) keep the tasks a calendar places on at least one day of that window, and `unscheduled=true` the tasks it places nowhere; `scheduled_by` (`start_and_due`, the default, `start_date` or `due_date`) picks the dates that place a task. `GET /tasks/count` takes the same filters and returns `{"total_count": n}`. |
 | `POST` | `/api/v1/projects/:projectId/tasks` | Access token (fresh) + `tasks:write` | Create a task. |
 | `GET` | `/api/v1/projects/:projectId/tasks/:taskId` | Access token (fresh) + `tasks:read` | Get task detail. |
 | `PATCH` | `/api/v1/projects/:projectId/tasks/:taskId` | Access token (fresh) + `tasks:write` | Update a task. |
@@ -782,7 +782,7 @@ Success response data:
 Function:
 
 - create a new sprint view;
-- `view_type` must be one of `board`, `table`, `gantt`, `plugin`, or `note` (`roadmap`, the former name of `gantt`, is still accepted for one release);
+- `view_type` must be one of `board`, `table`, `gantt`, `calendar`, `plugin`, or `note` (`roadmap`, the former name of `gantt`, is still accepted for one release);
 - `position` defaults to the next available slot.
 
 Request body:
@@ -913,7 +913,7 @@ Success response data:
 Function:
 
 - create a new product-backlog view;
-- `view_type` must be one of `board`, `table`, `gantt`, `plugin`, or `note` (`roadmap`, the former name of `gantt`, is still accepted for one release);
+- `view_type` must be one of `board`, `table`, `gantt`, `calendar`, `plugin`, or `note` (`roadmap`, the former name of `gantt`, is still accepted for one release);
 - `position` defaults to the next available slot.
 
 Request body:
@@ -1036,7 +1036,7 @@ Success response data: same envelope as the product-backlog views list.
 Function:
 
 - create a new timeline view;
-- `view_type` must be one of `board`, `table`, `gantt`, `plugin`, or `note` (`roadmap`, the former name of `gantt`, is still accepted for one release);
+- `view_type` must be one of `board`, `table`, `gantt`, `calendar`, `plugin`, or `note` (`roadmap`, the former name of `gantt`, is still accepted for one release);
 - `position` defaults to the next available slot.
 
 Success response: `201 Created` with view data.
@@ -1270,6 +1270,10 @@ Query parameters:
 | `include` | – | `assignees`, `reporter` or both (comma-separated): embed the people behind `assignee_ids` / `reporter_id` in each task as `assignees` / `reporter` |
 | `exclude_subtasks` | `false` | When `true`, omit tasks whose parent is a live, non-Epic task in the same sprint (or both in the backlog); they are listed under that parent instead. Tasks that only belong to an Epic, or whose parent is in another sprint, stay. Ignored when `parent_task_id` is set |
 | `exclude_system_types` | `false` | When `true`, omit tasks whose type has `is_system = true` (Epic, Subtask) |
+| `scheduled_from` | – | `YYYY-MM-DD`, inclusive. Keep the tasks placed on this day or later (see `scheduled_by`): with both dates, a task whose span from start to due date reaches it |
+| `scheduled_to` | – | `YYYY-MM-DD`, inclusive. Keep the tasks placed on this day or earlier; with `scheduled_from` it is a window, and a task spanning the whole window matches even when neither of its dates is inside. Must not be before `scheduled_from` |
+| `unscheduled` | `false` | When `true`, keep only the tasks placed nowhere: no start or due date with `start_and_due`, or no value for the one date `scheduled_by` names. Cannot be combined with `scheduled_from` / `scheduled_to` |
+| `scheduled_by` | `start_and_due` | The dates that place a task for the three filters above: `start_and_due` (every day from the start date to the due date; a task with one of them sits on that day), `start_date` or `due_date`. Alone it filters nothing |
 
 Success response data (without `view_id`):
 
@@ -1789,7 +1793,7 @@ The schema and HTTP contract are consistent. Before adding the next slice (proje
 | `SPRINT_STATUS_INVALID` | 400 | Sprint status value is not one of the allowed values. |
 | `VIEW_NOT_FOUND` | 404 | Sprint view with the given ID does not exist. |
 | `VIEW_NAME_INVALID` | 400 | View name is empty or invalid. |
-| `VIEW_TYPE_INVALID` | 400 | View type is not one of `board`, `table`, `gantt`, `plugin`, or `note`. |
+| `VIEW_TYPE_INVALID` | 400 | View type is not one of `board`, `table`, `gantt`, `calendar`, `plugin`, or `note`. |
 | `VIEW_NOTE_TYPE_CHANGE` | 400 | An update would turn a note view into another type, or another view into a note view. |
 | `DOC_NOTE_VIEW_TAKEN` | 409 | A note view already has its document: it holds exactly one. |
 | `VIEW_IS_LAST_VIEW` | 409 | View cannot be deleted because it is the only remaining view on the sprint. |

@@ -2329,6 +2329,10 @@
 			"ganttDependenciesLabel": "Setas de dependência",
 			"ganttDependenciesShown": "Visíveis",
 			"ganttDependenciesHidden": "Ocultas",
+			"calendarDateFieldLabel": "Datas",
+			"calendarDateFieldStartAndDue": "Do início à entrega",
+			"calendarDateFieldStartDate": "Data de início",
+			"calendarDateFieldDueDate": "Data de entrega",
 			"unsavedBadge": "Alterações não salvas",
 			"unsavedTitle": "Descartar alterações não salvas?",
 			"unsavedDescription": "Você alterou as configurações desta visualização, mas não as salvou. Salve-as ou descarte para voltar às últimas configurações salvas.",
@@ -2362,6 +2366,39 @@
 			"undo": "Desfazer",
 			"rescheduleFailed": "Não foi possível reagendar a tarefa"
 		},
+		"calendar": {
+			"modeLabel": "Visualização",
+			"mode": {
+				"month": "Mês",
+				"week": "Semana",
+				"day": "Dia"
+			},
+			"previous": "Anterior",
+			"next": "Próximo",
+			"today": "Hoje",
+			"jumpToToday": "Ir para hoje",
+			"noDate": "Sem data",
+			"noDateHint": "Tarefas sem as datas que este calendário usa.",
+			"noDateHintDrag": "Tarefas sem as datas que este calendário usa. Arraste uma para um dia para agendá-la.",
+			"noUndatedTasks": "Todas as tarefas têm data.",
+			"loading": "Carregando…",
+			"viewMore": "Ver mais",
+			"loadFailed": "Não foi possível carregar todas as tarefas. Tentar de novo",
+			"more": "+{{count}} mais",
+			"taskCount_one": "{{count}} tarefa",
+			"taskCount_other": "{{count}} tarefas",
+			"addTaskOn": "Adicionar uma tarefa em {{date}}",
+			"taskTitle": "Título da tarefa",
+			"add": "Adicionar",
+			"dateRange": "{{start}} → {{end}}",
+			"startDate": "Início: {{date}}",
+			"dueDate": "Entrega: {{date}}",
+			"resizeStart": "Arraste para alterar a data de início",
+			"resizeEnd": "Arraste para alterar a data de entrega",
+			"rescheduled": "“{{title}}” foi reagendada",
+			"undo": "Desfazer",
+			"rescheduleFailed": "Não foi possível reagendar a tarefa"
+		},
 		"newViewPopover": {
 			"addView": "Adicionar visão",
 			"addViewAriaLabel": "Adicionar visão",
@@ -2375,6 +2412,7 @@
 				"board": "Quadro",
 				"table": "Tabela",
 				"gantt": "Gantt",
+				"calendar": "Calendário",
 				"plugin": "Plugin",
 				"note": "Nota"
 			}

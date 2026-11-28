@@ -2329,6 +2329,10 @@
 			"ganttDependenciesLabel": "종속성 화살표",
 			"ganttDependenciesShown": "표시",
 			"ganttDependenciesHidden": "숨김",
+			"calendarDateFieldLabel": "날짜",
+			"calendarDateFieldStartAndDue": "시작일부터 마감일까지",
+			"calendarDateFieldStartDate": "시작일",
+			"calendarDateFieldDueDate": "마감일",
 			"unsavedBadge": "저장되지 않은 변경",
 			"unsavedTitle": "저장되지 않은 변경을 취소할까요?",
 			"unsavedDescription": "이 보기의 설정을 변경했지만 저장하지 않았습니다. 저장하거나, 취소하여 마지막으로 저장한 설정으로 돌아가세요.",
@@ -2362,6 +2366,38 @@
 			"undo": "실행 취소",
 			"rescheduleFailed": "작업 일정을 변경하지 못했습니다"
 		},
+		"calendar": {
+			"modeLabel": "보기",
+			"mode": {
+				"month": "월",
+				"week": "주",
+				"day": "일"
+			},
+			"previous": "이전",
+			"next": "다음",
+			"today": "오늘",
+			"jumpToToday": "오늘로 이동",
+			"noDate": "날짜 없음",
+			"noDateHint": "이 캘린더가 사용하는 날짜가 없는 작업입니다.",
+			"noDateHintDrag": "이 캘린더가 사용하는 날짜가 없는 작업입니다. 날짜로 끌어다 놓으면 일정이 잡힙니다.",
+			"noUndatedTasks": "모든 작업에 날짜가 있습니다.",
+			"loading": "불러오는 중…",
+			"viewMore": "더 보기",
+			"loadFailed": "일부 작업을 불러오지 못했습니다. 다시 시도",
+			"more": "+{{count}}개 더",
+			"taskCount_other": "작업 {{count}}개",
+			"addTaskOn": "{{date}}에 작업 추가",
+			"taskTitle": "작업 제목",
+			"add": "추가",
+			"dateRange": "{{start}} → {{end}}",
+			"startDate": "시작: {{date}}",
+			"dueDate": "마감: {{date}}",
+			"resizeStart": "드래그하여 시작일 변경",
+			"resizeEnd": "드래그하여 마감일 변경",
+			"rescheduled": "“{{title}}” 일정을 변경했습니다",
+			"undo": "실행 취소",
+			"rescheduleFailed": "작업 일정을 변경하지 못했습니다"
+		},
 		"newViewPopover": {
 			"addView": "뷰 추가",
 			"addViewAriaLabel": "뷰 추가",
@@ -2375,6 +2411,7 @@
 				"board": "보드",
 				"table": "테이블",
 				"gantt": "간트",
+				"calendar": "캘린더",
 				"plugin": "플러그인",
 				"note": "노트"
 			}

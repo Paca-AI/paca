@@ -209,10 +209,42 @@ type TaskFilter struct {
 	ImportanceRanges []IntRange
 	// Tags filters tasks that have ANY of these tag values (exact match).
 	Tags []string
+	// Schedule, when non-nil, keeps the tasks a calendar places within a
+	// window of days, or the tasks it cannot place at all (see
+	// ScheduleFilter).
+	Schedule *ScheduleFilter
 	// Group, when set, narrows the listing to a single group (column) of a
 	// "group by" dimension — see TaskGroup. It is ANDed with every other
 	// predicate, so a view's filters and one of its columns compose.
 	Group *TaskGroup
+}
+
+// Schedule fields (ScheduleFilter.By): the dates that place a task on a
+// calendar.
+const (
+	// ScheduleByStartAndDue places a task on every day from its start date to
+	// its due date, both included; a task with one of the two is placed on
+	// that day.
+	ScheduleByStartAndDue = "start_and_due"
+	// ScheduleByStartDate places a task on its start date only.
+	ScheduleByStartDate = "start_date"
+	// ScheduleByDueDate places a task on its due date only.
+	ScheduleByDueDate = "due_date"
+)
+
+// ScheduleFilter narrows a listing to where a calendar places tasks. By picks
+// the dates (a ScheduleBy* constant; empty means ScheduleByStartAndDue).
+//   - From / To ("YYYY-MM-DD", inclusive, either may be nil) keep the tasks
+//     placed on at least one day of the window, so a task spanning it
+//     matches even when neither of its dates falls inside.
+//   - Unscheduled keeps the tasks By places nowhere: no date at all for
+//     ScheduleByStartAndDue, no start date or no due date for the others.
+//     It is never combined with From / To.
+type ScheduleFilter struct {
+	By          string
+	From        *string
+	To          *string
+	Unscheduled bool
 }
 
 // Group dimensions a listing can be narrowed by (TaskGroup.By). Any other

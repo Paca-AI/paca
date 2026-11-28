@@ -76,6 +76,7 @@ import {
 import { memberAvatar } from "@/lib/provider-logos";
 import { useSprintDirectory } from "@/lib/sprint-directory";
 import { cn } from "@/lib/utils";
+import { resolveCalendarDateField } from "./calendar-scale";
 import { PRIORITY_LEVELS } from "./priority";
 import { ChipField } from "./task-detail/property-field/chip-field";
 import { resolveSubtaskMode } from "./use-subtask-expansion";
@@ -114,6 +115,22 @@ export function pickGanttDependencies(
 ): ViewConfig["gantt_dependencies"] {
 	if (chosen === "hidden") return "hidden";
 	return shared?.gantt_dependencies === "hidden" ? "shown" : undefined;
+}
+
+/**
+ * The value to store for a chosen Calendar "Dates" option. "Start and due
+ * dates" is the unset default, stored explicitly only when the team default
+ * is another field.
+ */
+export function pickCalendarDateField(
+	chosen: string | undefined,
+	shared: ViewConfig | undefined,
+): ViewConfig["calendar_date_field"] {
+	if (chosen === "start_date" || chosen === "due_date") return chosen;
+	return resolveCalendarDateField(shared?.calendar_date_field) ===
+		"start_and_due"
+		? undefined
+		: "start_and_due";
 }
 
 // ── Category visual config ────────────────────────────────────────────────────
@@ -1357,6 +1374,7 @@ export function ViewSettingsPanel({
 	const swimlaneOpts = buildSwimlaneOptions(customFields, t);
 	const fieldSumOpts = buildFieldSumOptions(customFields, t);
 
+	const isCalendar = view?.layout === "Calendar";
 	const sortByValue = draft.sort_by ?? "manual";
 	// Mirrors the runtime defaults in interaction-layout.tsx (see
 	// PAGE_SIZE_DEFAULTS in view-utils.ts).
@@ -1460,9 +1478,11 @@ export function ViewSettingsPanel({
 								<TabsTrigger value="display" className="flex-none px-3">
 									{t("layout.viewSettings.display")}
 								</TabsTrigger>
-								<TabsTrigger value="fields" className="flex-none px-3">
-									{t("layout.viewSettings.fieldsLabel")}
-								</TabsTrigger>
+								{!isCalendar && (
+									<TabsTrigger value="fields" className="flex-none px-3">
+										{t("layout.viewSettings.fieldsLabel")}
+									</TabsTrigger>
+								)}
 								<TabsTrigger value="filters" className="flex-none px-3">
 									{t("layout.viewSettings.filters")}
 									{filterBadge > 0 && (
@@ -1483,96 +1503,37 @@ export function ViewSettingsPanel({
 							className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
 						>
 							<div className="flex flex-col gap-3">
-								<SettingRow label={t("layout.viewSettings.fieldsLabel")}>
-									{/* A summary of what is shown; opens the Fields tab to change it. */}
-									<button
-										type="button"
-										onClick={() => setTab("fields")}
-										title={fieldsLabel}
-										className="truncate rounded-md border border-input px-2.5 py-1.5 text-left text-xs font-medium transition-colors hover:border-ring hover:text-primary"
-									>
-										{fieldsLabel}
-									</button>
-								</SettingRow>
-
-								<SettingRow label={t("layout.viewSettings.columnByLabel")}>
-									<DynamicSelect
-										value={draft.column_by ?? "status"}
-										options={columnByOpts}
-										onChange={(v) => update({ column_by: v })}
-									/>
-								</SettingRow>
-
-								<SettingRow label={t("layout.viewSettings.swimlanesLabel")}>
-									<DynamicSelect
-										value={draft.swimlanes ?? "none"}
-										options={swimlaneOpts}
-										onChange={(v) => update({ swimlanes: v })}
-									/>
-								</SettingRow>
-
-								<SettingRow label={t("layout.viewSettings.sortByLabel")}>
-									<DynamicSelect
-										value={sortByValue}
-										options={sortByOpts}
-										onChange={(v) => update({ sort_by: v })}
-									/>
-								</SettingRow>
-
-								{(view?.layout === "Table" || view?.layout === "Gantt") && (
-									<SettingRow label={t("layout.viewSettings.subtasksLabel")}>
-										<DynamicSelect
-											value={draft.subtask_mode ?? "collapsed"}
-											options={[
-												{
-													key: "collapsed",
-													label: t("layout.viewSettings.subtasksCollapsed"),
-												},
-												{
-													key: "expanded",
-													label: t("layout.viewSettings.subtasksExpanded"),
-												},
-												{
-													key: "hidden",
-													label: t("layout.viewSettings.subtasksHidden"),
-												},
-											]}
-											onChange={(v) =>
-												update({
-													subtask_mode: pickSubtaskMode(v, view?.shared_config),
-												})
-											}
-										/>
-									</SettingRow>
-								)}
-
-								{view?.layout === "Gantt" && (
+								{isCalendar && (
 									<SettingRow
-										label={t("layout.viewSettings.ganttDependenciesLabel")}
+										label={t("layout.viewSettings.calendarDateFieldLabel")}
 									>
 										<DynamicSelect
-											value={
-												draft.gantt_dependencies === "hidden"
-													? "hidden"
-													: "shown"
-											}
+											value={resolveCalendarDateField(
+												draft.calendar_date_field,
+											)}
 											options={[
 												{
-													key: "shown",
+													key: "start_and_due",
 													label: t(
-														"layout.viewSettings.ganttDependenciesShown",
+														"layout.viewSettings.calendarDateFieldStartAndDue",
 													),
 												},
 												{
-													key: "hidden",
+													key: "start_date",
 													label: t(
-														"layout.viewSettings.ganttDependenciesHidden",
+														"layout.viewSettings.calendarDateFieldStartDate",
+													),
+												},
+												{
+													key: "due_date",
+													label: t(
+														"layout.viewSettings.calendarDateFieldDueDate",
 													),
 												},
 											]}
 											onChange={(v) =>
 												update({
-													gantt_dependencies: pickGanttDependencies(
+													calendar_date_field: pickCalendarDateField(
 														v,
 														view?.shared_config,
 													),
@@ -1582,35 +1543,149 @@ export function ViewSettingsPanel({
 									</SettingRow>
 								)}
 
-								<SettingRow label={t("layout.viewSettings.fieldSumLabel")}>
-									<DynamicSelect
-										value={draft.field_sum ?? "count"}
-										options={fieldSumOpts}
-										onChange={(v) => update({ field_sum: v })}
-									/>
-								</SettingRow>
+								{/* A calendar places tasks by date: the grouping, sorting,
+								    sums, paging and fields of the other layouts don't apply. */}
+								{!isCalendar && (
+									<>
+										<SettingRow label={t("layout.viewSettings.fieldsLabel")}>
+											{/* A summary of what is shown; opens the Fields tab to change it. */}
+											<button
+												type="button"
+												onClick={() => setTab("fields")}
+												title={fieldsLabel}
+												className="truncate rounded-md border border-input px-2.5 py-1.5 text-left text-xs font-medium transition-colors hover:border-ring hover:text-primary"
+											>
+												{fieldsLabel}
+											</button>
+										</SettingRow>
 
-								<SettingRow label={t("layout.viewSettings.initialSizeLabel")}>
-									<DynamicSelect
-										value={String(
-											draft.initial_page_size ?? defaultInitialPageSize,
+										<SettingRow label={t("layout.viewSettings.columnByLabel")}>
+											<DynamicSelect
+												value={draft.column_by ?? "status"}
+												options={columnByOpts}
+												onChange={(v) => update({ column_by: v })}
+											/>
+										</SettingRow>
+
+										<SettingRow label={t("layout.viewSettings.swimlanesLabel")}>
+											<DynamicSelect
+												value={draft.swimlanes ?? "none"}
+												options={swimlaneOpts}
+												onChange={(v) => update({ swimlanes: v })}
+											/>
+										</SettingRow>
+
+										<SettingRow label={t("layout.viewSettings.sortByLabel")}>
+											<DynamicSelect
+												value={sortByValue}
+												options={sortByOpts}
+												onChange={(v) => update({ sort_by: v })}
+											/>
+										</SettingRow>
+
+										{(view?.layout === "Table" || view?.layout === "Gantt") && (
+											<SettingRow
+												label={t("layout.viewSettings.subtasksLabel")}
+											>
+												<DynamicSelect
+													value={draft.subtask_mode ?? "collapsed"}
+													options={[
+														{
+															key: "collapsed",
+															label: t("layout.viewSettings.subtasksCollapsed"),
+														},
+														{
+															key: "expanded",
+															label: t("layout.viewSettings.subtasksExpanded"),
+														},
+														{
+															key: "hidden",
+															label: t("layout.viewSettings.subtasksHidden"),
+														},
+													]}
+													onChange={(v) =>
+														update({
+															subtask_mode: pickSubtaskMode(
+																v,
+																view?.shared_config,
+															),
+														})
+													}
+												/>
+											</SettingRow>
 										)}
-										options={PAGE_SIZE_OPTIONS}
-										onChange={(v) =>
-											update({ initial_page_size: v ? Number(v) : undefined })
-										}
-									/>
-								</SettingRow>
 
-								<SettingRow label={t("layout.viewSettings.perPageLabel")}>
-									<DynamicSelect
-										value={String(draft.page_size ?? defaultPageSize)}
-										options={PAGE_SIZE_OPTIONS}
-										onChange={(v) =>
-											update({ page_size: v ? Number(v) : undefined })
-										}
-									/>
-								</SettingRow>
+										{view?.layout === "Gantt" && (
+											<SettingRow
+												label={t("layout.viewSettings.ganttDependenciesLabel")}
+											>
+												<DynamicSelect
+													value={
+														draft.gantt_dependencies === "hidden"
+															? "hidden"
+															: "shown"
+													}
+													options={[
+														{
+															key: "shown",
+															label: t(
+																"layout.viewSettings.ganttDependenciesShown",
+															),
+														},
+														{
+															key: "hidden",
+															label: t(
+																"layout.viewSettings.ganttDependenciesHidden",
+															),
+														},
+													]}
+													onChange={(v) =>
+														update({
+															gantt_dependencies: pickGanttDependencies(
+																v,
+																view?.shared_config,
+															),
+														})
+													}
+												/>
+											</SettingRow>
+										)}
+
+										<SettingRow label={t("layout.viewSettings.fieldSumLabel")}>
+											<DynamicSelect
+												value={draft.field_sum ?? "count"}
+												options={fieldSumOpts}
+												onChange={(v) => update({ field_sum: v })}
+											/>
+										</SettingRow>
+
+										<SettingRow
+											label={t("layout.viewSettings.initialSizeLabel")}
+										>
+											<DynamicSelect
+												value={String(
+													draft.initial_page_size ?? defaultInitialPageSize,
+												)}
+												options={PAGE_SIZE_OPTIONS}
+												onChange={(v) =>
+													update({
+														initial_page_size: v ? Number(v) : undefined,
+													})
+												}
+											/>
+										</SettingRow>
+
+										<SettingRow label={t("layout.viewSettings.perPageLabel")}>
+											<DynamicSelect
+												value={String(draft.page_size ?? defaultPageSize)}
+												options={PAGE_SIZE_OPTIONS}
+												onChange={(v) =>
+													update({ page_size: v ? Number(v) : undefined })
+												}
+											/>
+										</SettingRow>
+									</>
+								)}
 							</div>
 						</TabsContent>
 
