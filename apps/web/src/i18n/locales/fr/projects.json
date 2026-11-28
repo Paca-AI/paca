@@ -2329,6 +2329,10 @@
 			"ganttDependenciesLabel": "Flèches de dépendance",
 			"ganttDependenciesShown": "Affichées",
 			"ganttDependenciesHidden": "Masquées",
+			"calendarDateFieldLabel": "Dates",
+			"calendarDateFieldStartAndDue": "Du début à l'échéance",
+			"calendarDateFieldStartDate": "Date de début",
+			"calendarDateFieldDueDate": "Date d'échéance",
 			"unsavedBadge": "Modifications non enregistrées",
 			"unsavedTitle": "Abandonner les modifications non enregistrées ?",
 			"unsavedDescription": "Vous avez modifié les paramètres de cette vue sans les enregistrer. Enregistrez-les, ou abandonnez-les pour revenir aux derniers paramètres enregistrés.",
@@ -2362,6 +2366,39 @@
 			"undo": "Annuler",
 			"rescheduleFailed": "Impossible de replanifier la tâche"
 		},
+		"calendar": {
+			"modeLabel": "Affichage",
+			"mode": {
+				"month": "Mois",
+				"week": "Semaine",
+				"day": "Jour"
+			},
+			"previous": "Précédent",
+			"next": "Suivant",
+			"today": "Aujourd'hui",
+			"jumpToToday": "Aller à aujourd'hui",
+			"noDate": "Sans date",
+			"noDateHint": "Tâches sans les dates qu'utilise ce calendrier.",
+			"noDateHintDrag": "Tâches sans les dates qu'utilise ce calendrier. Faites-en glisser une sur un jour pour la planifier.",
+			"noUndatedTasks": "Toutes les tâches ont une date.",
+			"loading": "Chargement…",
+			"viewMore": "Voir plus",
+			"loadFailed": "Impossible de charger toutes les tâches. Réessayer",
+			"more": "+{{count}} de plus",
+			"taskCount_one": "{{count}} tâche",
+			"taskCount_other": "{{count}} tâches",
+			"addTaskOn": "Ajouter une tâche le {{date}}",
+			"taskTitle": "Titre de la tâche",
+			"add": "Ajouter",
+			"dateRange": "{{start}} → {{end}}",
+			"startDate": "Début : {{date}}",
+			"dueDate": "Échéance : {{date}}",
+			"resizeStart": "Faites glisser pour modifier la date de début",
+			"resizeEnd": "Faites glisser pour modifier la date d'échéance",
+			"rescheduled": "« {{title}} » replanifiée",
+			"undo": "Annuler",
+			"rescheduleFailed": "Impossible de replanifier la tâche"
+		},
 		"newViewPopover": {
 			"addView": "Ajouter une vue",
 			"addViewAriaLabel": "Ajouter une vue",
@@ -2375,6 +2412,7 @@
 				"board": "Tableau",
 				"table": "Table",
 				"gantt": "Gantt",
+				"calendar": "Calendrier",
 				"plugin": "Plugin",
 				"note": "Note"
 			}

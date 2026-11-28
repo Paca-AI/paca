@@ -2329,6 +2329,10 @@
 			"ganttDependenciesLabel": "Dependency arrows",
 			"ganttDependenciesShown": "Shown",
 			"ganttDependenciesHidden": "Hidden",
+			"calendarDateFieldLabel": "Dates",
+			"calendarDateFieldStartAndDue": "Start to due date",
+			"calendarDateFieldStartDate": "Start date",
+			"calendarDateFieldDueDate": "Due date",
 			"unsavedBadge": "Unsaved changes",
 			"unsavedTitle": "Discard unsaved changes?",
 			"unsavedDescription": "You changed this view’s settings but haven’t saved them. Save them, or discard to go back to the last saved settings.",
@@ -2362,6 +2366,39 @@
 			"undo": "Undo",
 			"rescheduleFailed": "Couldn't reschedule the task"
 		},
+		"calendar": {
+			"modeLabel": "View",
+			"mode": {
+				"month": "Month",
+				"week": "Week",
+				"day": "Day"
+			},
+			"previous": "Previous",
+			"next": "Next",
+			"today": "Today",
+			"jumpToToday": "Jump to today",
+			"noDate": "No date",
+			"noDateHint": "Tasks without the dates this calendar uses.",
+			"noDateHintDrag": "Tasks without the dates this calendar uses. Drag one onto a day to schedule it.",
+			"noUndatedTasks": "Every task has a date.",
+			"loading": "Loading…",
+			"viewMore": "View more",
+			"loadFailed": "Couldn't load all tasks. Retry",
+			"more": "+{{count}} more",
+			"taskCount_one": "{{count}} task",
+			"taskCount_other": "{{count}} tasks",
+			"addTaskOn": "Add a task on {{date}}",
+			"taskTitle": "Task title",
+			"add": "Add",
+			"dateRange": "{{start}} → {{end}}",
+			"startDate": "Start: {{date}}",
+			"dueDate": "Due: {{date}}",
+			"resizeStart": "Drag to change the start date",
+			"resizeEnd": "Drag to change the due date",
+			"rescheduled": "Rescheduled “{{title}}”",
+			"undo": "Undo",
+			"rescheduleFailed": "Couldn't reschedule the task"
+		},
 		"newViewPopover": {
 			"addView": "Add view",
 			"addViewAriaLabel": "Add view",
@@ -2375,6 +2412,7 @@
 				"board": "Board",
 				"table": "Table",
 				"gantt": "Gantt",
+				"calendar": "Calendar",
 				"plugin": "Plugin",
 				"note": "Note"
 			}

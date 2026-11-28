@@ -392,6 +392,68 @@ func TestApplyTaskFilter_DateRanges(t *testing.T) {
 	}
 }
 
+func TestApplyTaskFilter_Schedule(t *testing.T) {
+	cases := []struct {
+		name        string
+		schedule    taskdom.ScheduleFilter
+		wantClauses []string
+		wantArgs    []interface{}
+	}{
+		{
+			name:        "start_and_due_window",
+			schedule:    taskdom.ScheduleFilter{From: strPtr("2026-03-01"), To: strPtr("2026-03-31")},
+			wantClauses: []string{"GREATEST(start_date, due_date) >= $1", "LEAST(start_date, due_date) <= $2"},
+			wantArgs:    []interface{}{"2026-03-01", "2026-03-31"},
+		},
+		{
+			name:        "explicit_start_and_due_from_only",
+			schedule:    taskdom.ScheduleFilter{By: taskdom.ScheduleByStartAndDue, From: strPtr("2026-03-01")},
+			wantClauses: []string{"GREATEST(start_date, due_date) >= $1"},
+			wantArgs:    []interface{}{"2026-03-01"},
+		},
+		{
+			name:        "start_date_window",
+			schedule:    taskdom.ScheduleFilter{By: taskdom.ScheduleByStartDate, From: strPtr("2026-03-01"), To: strPtr("2026-03-31")},
+			wantClauses: []string{"start_date >= $1", "start_date <= $2"},
+			wantArgs:    []interface{}{"2026-03-01", "2026-03-31"},
+		},
+		{
+			name:        "due_date_to_only",
+			schedule:    taskdom.ScheduleFilter{By: taskdom.ScheduleByDueDate, To: strPtr("2026-03-31")},
+			wantClauses: []string{"due_date <= $1"},
+			wantArgs:    []interface{}{"2026-03-31"},
+		},
+		{
+			name:        "unscheduled_start_and_due",
+			schedule:    taskdom.ScheduleFilter{Unscheduled: true},
+			wantClauses: []string{"(start_date IS NULL AND due_date IS NULL)"},
+		},
+		{
+			name:        "unscheduled_start_date",
+			schedule:    taskdom.ScheduleFilter{By: taskdom.ScheduleByStartDate, Unscheduled: true},
+			wantClauses: []string{"start_date IS NULL"},
+		},
+		{
+			name:        "unscheduled_due_date",
+			schedule:    taskdom.ScheduleFilter{By: taskdom.ScheduleByDueDate, Unscheduled: true},
+			wantClauses: []string{"due_date IS NULL"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b := newQueryBuilder()
+			schedule := tc.schedule
+			applyTaskFilter(b, taskdom.TaskFilter{Schedule: &schedule})
+			if !reflect.DeepEqual(b.whereClauses, tc.wantClauses) {
+				t.Fatalf("whereClauses = %+v, want %+v", b.whereClauses, tc.wantClauses)
+			}
+			if len(b.args) != len(tc.wantArgs) || (len(tc.wantArgs) > 0 && !reflect.DeepEqual(b.args, tc.wantArgs)) {
+				t.Fatalf("args = %+v, want %+v", b.args, tc.wantArgs)
+			}
+		})
+	}
+}
+
 func TestApplyTaskFilter_DateRanges_OnlyOneBoundSet(t *testing.T) {
 	b := newQueryBuilder()
 	applyTaskFilter(b, taskdom.TaskFilter{DueDateBefore: strPtr("2024-12-31")})

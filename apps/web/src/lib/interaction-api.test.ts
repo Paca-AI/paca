@@ -526,6 +526,60 @@ describe("interaction-api", () => {
 			expect(config.params?.tags).toBe("urgent,needs review");
 		});
 
+		it("serializes a calendar window and the dates that place a task", async () => {
+			mockGet.mockResolvedValue(
+				ok({ items: [], total: 0, page: 1, page_size: 200 }),
+			);
+
+			await listAllTasks(PROJECT_ID, {
+				scheduledFrom: "2026-03-01",
+				scheduledTo: "2026-04-11",
+				scheduledBy: "due_date",
+			});
+
+			const [, config] = mockGet.mock.calls[0] as [
+				string,
+				{ params: Record<string, unknown> },
+			];
+			expect(config.params?.scheduled_from).toBe("2026-03-01");
+			expect(config.params?.scheduled_to).toBe("2026-04-11");
+			expect(config.params?.scheduled_by).toBe("due_date");
+			expect(config.params?.unscheduled).toBeUndefined();
+		});
+
+		it("serializes the unscheduled filter", async () => {
+			mockGet.mockResolvedValue(
+				ok({ items: [], total: 0, page: 1, page_size: 200 }),
+			);
+
+			await listAllTasks(PROJECT_ID, {
+				unscheduled: true,
+				scheduledBy: "start_and_due",
+			});
+
+			const [, config] = mockGet.mock.calls[0] as [
+				string,
+				{ params: Record<string, unknown> },
+			];
+			expect(config.params?.unscheduled).toBe(true);
+			expect(config.params?.scheduled_by).toBe("start_and_due");
+			expect(config.params?.scheduled_from).toBeUndefined();
+		});
+
+		it("drops scheduled_by when there is no window and no unscheduled filter", async () => {
+			mockGet.mockResolvedValue(
+				ok({ items: [], total: 0, page: 1, page_size: 200 }),
+			);
+
+			await listAllTasks(PROJECT_ID, { scheduledBy: "due_date" });
+
+			const [, config] = mockGet.mock.calls[0] as [
+				string,
+				{ params: Record<string, unknown> },
+			];
+			expect(config.params?.scheduled_by).toBeUndefined();
+		});
+
 		it("omits the built-in filter params when unset or empty", async () => {
 			mockGet.mockResolvedValue(
 				ok({ items: [], total: 0, page: 1, page_size: 200 }),
@@ -559,6 +613,9 @@ describe("interaction-api", () => {
 		});
 		it("maps Note → note", () => {
 			expect(layoutToViewType("Note")).toBe("note");
+		});
+		it("maps Calendar → calendar", () => {
+			expect(layoutToViewType("Calendar")).toBe("calendar");
 		});
 	});
 });

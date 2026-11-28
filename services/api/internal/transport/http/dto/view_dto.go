@@ -66,6 +66,11 @@ type ViewConfigDTO struct {
 	GanttZoom string `json:"gantt_zoom,omitempty"`
 	// GanttDependencies is "shown" or "hidden"; empty means "shown".
 	GanttDependencies string `json:"gantt_dependencies,omitempty"`
+	// CalendarMode is "month", "week" or "day"; empty means "month".
+	CalendarMode string `json:"calendar_mode,omitempty"`
+	// CalendarDateField is "start_and_due", "start_date" or "due_date";
+	// empty means "start_and_due".
+	CalendarDateField string `json:"calendar_date_field,omitempty"`
 	// PluginManifestID is the reverse-DNS plugin manifest identifier
 	// (for example "com.paca.bdd").
 	PluginManifestID string `json:"plugin_manifest_id,omitempty"`
@@ -111,6 +116,8 @@ func viewConfigToDTO(cfg sprintdom.ViewConfig) ViewConfigDTO {
 		SubtaskMode:       cfg.SubtaskMode,
 		GanttZoom:         cfg.GanttZoom,
 		GanttDependencies: cfg.GanttDependencies,
+		CalendarMode:      cfg.CalendarMode,
+		CalendarDateField: cfg.CalendarDateField,
 		PluginManifestID:  cfg.PluginID,
 		PluginComponent:   cfg.PluginComponent,
 	}
@@ -160,6 +167,8 @@ func toViewConfig(d *ViewConfigDTO) sprintdom.ViewConfig {
 		SubtaskMode:       d.SubtaskMode,
 		GanttZoom:         d.GanttZoom,
 		GanttDependencies: d.GanttDependencies,
+		CalendarMode:      d.CalendarMode,
+		CalendarDateField: d.CalendarDateField,
 		PluginID:          d.PluginManifestID,
 		PluginComponent:   d.PluginComponent,
 	}

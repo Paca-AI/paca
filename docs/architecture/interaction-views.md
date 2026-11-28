@@ -112,6 +112,20 @@ For Gantt views (`view_type = "gantt"`), config may also include:
 
 An unknown value for either key is dropped rather than stored. Like every other config key, both are per user: picking a zoom saves it to the user's personal override of the view.
 
+For Calendar views (`view_type = "calendar"`), config may also include:
+
+```json
+{
+  "calendar_mode": "month",
+  "calendar_date_field": "start_and_due"
+}
+```
+
+- `calendar_mode` is the grid: `month` (the default when unset), `week` or `day`.
+- `calendar_date_field` picks the dates that place a task: `start_and_due` (the default when unset), `start_date` or `due_date`.
+
+As with the Gantt keys, an unknown value is dropped, and both are per user.
+
 ### Rule of thumb
 
 - **Presentation** belongs in top-level config keys such as `column_by`, `sort_by`, and `slice_by`
@@ -142,7 +156,7 @@ For every interaction page:
 5. if the view uses manual sorting, load its task positions from the shared task-positions endpoint
 6. render Board, Table, or Gantt using the same task payload
 
-A note view (below) skips steps 3 to 6: it loads no tasks, and lists its notes instead.
+A Calendar view (below) sends the same filters, narrowed to the days on screen. A note view (below) skips steps 3 to 6: it loads no tasks, and lists its notes instead.
 
 ## Gantt view
 
@@ -155,6 +169,18 @@ The Gantt view (`view_type = "gantt"`) draws each task as a bar from its start d
 - Dragging a row by its task name still reorders it (under manual sort) or moves the task to another group, as before.
 
 `roadmap` is the former name of this layout. Migration `000090` renamed existing views and kept their config. For one release the API still accepts `roadmap` in a create or update request and stores it as `gantt`.
+
+## Calendar view
+
+The Calendar view (`view_type = "calendar"`) lays tasks out on a grid of days, so a team sees what lands when: a busy week, an empty one, what is due today. It can be added in the Sprint, Backlog and Timeline contexts like any other view, and reads the same tasks with the same filters, search, quick assignee filter and personal or shared config.
+
+- **Modes.** A toolbar switches between Month (whole weeks covering the month), Week and Day, with previous and next buttons and **Today**. The mode is stored per view as `calendar_mode`. Rows start on the first day of the week of the user's language (Sunday in English and Japanese, Monday in French or Russian), and month and weekday names come from it too.
+- **Placement.** With `calendar_date_field` at `start_and_due` (the default) a task shows on every day from its start date to its due date, both included, drawn as one bar per week row; a task with only one of the two dates shows on that day, as in the Gantt view. With `start_date` or `due_date` a task shows on that one date. Task dates are stored as UTC midnight, so the grid works in whole UTC days and never drifts across time zones. A day with more tasks than its row has room for shows **+N more**, which opens a list of all of them. Clicking a task opens the task detail panel.
+- **Loading.** The view asks the task list for the days on screen only, with `scheduled_from` and `scheduled_to` (and `scheduled_by` for a single date field), and loads every page of that window. Undated tasks come from the same list with `unscheduled=true`; the **No date** panel lists them a page at a time.
+- **Drag to reschedule.** People who can edit tasks can drag a task to another day: every date it has moves by the same number of days, so it keeps its length whichever date places it. With `start_and_due`, dragging either end of a bar changes only that date. Dropping a task from the **No date** panel onto a day gives it that day's date (both dates with `start_and_due`, a one-day task). Saves go through the regular task update (`PATCH /tasks/:taskId`, `tasks:write`), show the new dates at once, roll back with an error message when they fail, and can be reverted from the **Undo** action in the confirmation toast. Without edit permission the calendar is read-only.
+- **Creating.** People who can create tasks can click an empty part of a day, or its **+**, to add a task dated that day; the dates go with the create request.
+- **Keyboard.** The grid follows the ARIA grid pattern: one day is in the tab order, the arrow keys move between days (off the edge of the grid turns the page), Home and End go to the ends of the week, and Enter opens the add form of the focused day. Task bars are buttons.
+- **Settings.** Grouping, sorting, sums, paging and fields don't apply to a grid of days, so the view settings show only the **Dates** setting (`calendar_date_field`) and the filters.
 
 ## Note view
 

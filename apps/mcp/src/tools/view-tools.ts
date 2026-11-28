@@ -220,9 +220,9 @@ export function getViewTools(): Tool[] {
 					},
 					viewType: {
 						type: "string",
-						enum: ["table", "board", "gantt", "plugin", "note"],
+						enum: ["table", "board", "gantt", "calendar", "plugin", "note"],
 						description:
-							"The type of view. Use 'table', 'board', or 'gantt' for the built-in task layouts, 'note' for a view of notes (documents that belong to the view: list them with list_docs and write them with write_doc, passing viewId), or 'plugin' to host a plugin-provided view (requires pluginManifestId and pluginComponent).",
+							"The type of view. Use 'table', 'board', 'gantt' or 'calendar' (tasks on a month, week or day grid by their dates) for the built-in task layouts, 'note' for a view of notes (documents that belong to the view: list them with list_docs and write them with write_doc, passing viewId), or 'plugin' to host a plugin-provided view (requires pluginManifestId and pluginComponent).",
 					},
 					sprintId: {
 						type: "string",
@@ -312,9 +312,9 @@ export function getViewTools(): Tool[] {
 					},
 					viewType: {
 						type: "string",
-						enum: ["table", "board", "gantt", "plugin", "note"],
+						enum: ["table", "board", "gantt", "calendar", "plugin", "note"],
 						description:
-							"The type of view (table, board, gantt, or plugin — plugin requires pluginManifestId and pluginComponent). A note view keeps its type: it cannot become another type, and no other view can become a note view.",
+							"The type of view (table, board, gantt, calendar, or plugin — plugin requires pluginManifestId and pluginComponent). A note view keeps its type: it cannot become another type, and no other view can become a note view.",
 					},
 					sprintId: {
 						type: "string",

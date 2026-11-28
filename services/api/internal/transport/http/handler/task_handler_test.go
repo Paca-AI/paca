@@ -947,6 +947,74 @@ func TestTaskHandler_ListTasks_DateRangeFilters(t *testing.T) {
 	}
 }
 
+func TestTaskHandler_ListTasks_ScheduleFilter(t *testing.T) {
+	projectID := uuid.New()
+	cases := []struct {
+		name  string
+		query string
+		want  *taskdom.ScheduleFilter
+	}{
+		{"none", "", nil},
+		{"scheduled_by_alone_filters_nothing", "scheduled_by=due_date", nil},
+		{"unscheduled_false_filters_nothing", "unscheduled=false", nil},
+		{
+			"window_defaults_to_start_and_due",
+			"scheduled_from=2026-03-01&scheduled_to=2026-03-31",
+			&taskdom.ScheduleFilter{From: ptr("2026-03-01"), To: ptr("2026-03-31")},
+		},
+		{
+			"window_by_due_date",
+			"scheduled_by=due_date&scheduled_from=2026-03-01",
+			&taskdom.ScheduleFilter{By: taskdom.ScheduleByDueDate, From: ptr("2026-03-01")},
+		},
+		{
+			"same_day_window",
+			"scheduled_by=start_and_due&scheduled_from=2026-03-05&scheduled_to=2026-03-05",
+			&taskdom.ScheduleFilter{By: taskdom.ScheduleByStartAndDue, From: ptr("2026-03-05"), To: ptr("2026-03-05")},
+		},
+		{
+			"unscheduled_by_start_date",
+			"scheduled_by=start_date&unscheduled=true",
+			&taskdom.ScheduleFilter{By: taskdom.ScheduleByStartDate, Unscheduled: true},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := newFakeTaskSvc()
+			r := buildTaskHandlerRouter(svc)
+			w := doTaskRequest(r, http.MethodGet, fmt.Sprintf("/projects/%s/tasks?%s", projectID, tc.query), nil)
+			if w.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+			}
+			if !reflect.DeepEqual(svc.lastFilter.Schedule, tc.want) {
+				t.Fatalf("Schedule = %+v, want %+v", svc.lastFilter.Schedule, tc.want)
+			}
+		})
+	}
+}
+
+func TestTaskHandler_ListTasks_InvalidScheduleFilterReturns400(t *testing.T) {
+	projectID := uuid.New()
+	for _, query := range []string{
+		"scheduled_by=created_at&scheduled_from=2026-03-01",
+		"scheduled_from=not-a-date",
+		"scheduled_to=" + url.QueryEscape("2026/03/31"),
+		"scheduled_from=2026-04-01&scheduled_to=2026-03-31",
+		"unscheduled=yes",
+		"unscheduled=true&scheduled_from=2026-03-01",
+		"unscheduled=true&scheduled_to=2026-03-31",
+	} {
+		t.Run(query, func(t *testing.T) {
+			svc := newFakeTaskSvc()
+			r := buildTaskHandlerRouter(svc)
+			w := doTaskRequest(r, http.MethodGet, fmt.Sprintf("/projects/%s/tasks?%s", projectID, query), nil)
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
 func TestTaskHandler_ListTasks_InvalidDateFilterReturns400(t *testing.T) {
 	svc := newFakeTaskSvc()
 	r := buildTaskHandlerRouter(svc)

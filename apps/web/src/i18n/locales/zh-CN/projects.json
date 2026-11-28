@@ -2329,6 +2329,10 @@
 			"ganttDependenciesLabel": "依赖箭头",
 			"ganttDependenciesShown": "显示",
 			"ganttDependenciesHidden": "隐藏",
+			"calendarDateFieldLabel": "日期",
+			"calendarDateFieldStartAndDue": "从开始日期到截止日期",
+			"calendarDateFieldStartDate": "开始日期",
+			"calendarDateFieldDueDate": "截止日期",
 			"unsavedBadge": "未保存的更改",
 			"unsavedTitle": "放弃未保存的更改？",
 			"unsavedDescription": "你修改了此视图的设置但尚未保存。请保存，或放弃以恢复到上次保存的设置。",
@@ -2362,6 +2366,38 @@
 			"undo": "撤销",
 			"rescheduleFailed": "无法重新安排任务"
 		},
+		"calendar": {
+			"modeLabel": "视图",
+			"mode": {
+				"month": "月",
+				"week": "周",
+				"day": "日"
+			},
+			"previous": "上一页",
+			"next": "下一页",
+			"today": "今天",
+			"jumpToToday": "跳转到今天",
+			"noDate": "无日期",
+			"noDateHint": "缺少此日历所用日期的任务。",
+			"noDateHintDrag": "缺少此日历所用日期的任务。拖到某一天即可安排日期。",
+			"noUndatedTasks": "所有任务都有日期。",
+			"loading": "正在加载…",
+			"viewMore": "查看更多",
+			"loadFailed": "无法加载全部任务。重试",
+			"more": "还有 {{count}} 项",
+			"taskCount_other": "{{count}} 个任务",
+			"addTaskOn": "在 {{date}} 添加任务",
+			"taskTitle": "任务标题",
+			"add": "添加",
+			"dateRange": "{{start}} → {{end}}",
+			"startDate": "开始：{{date}}",
+			"dueDate": "截止：{{date}}",
+			"resizeStart": "拖动以更改开始日期",
+			"resizeEnd": "拖动以更改截止日期",
+			"rescheduled": "已重新安排“{{title}}”",
+			"undo": "撤销",
+			"rescheduleFailed": "无法重新安排任务"
+		},
 		"newViewPopover": {
 			"addView": "添加视图",
 			"addViewAriaLabel": "添加视图",
@@ -2375,6 +2411,7 @@
 				"board": "看板",
 				"table": "表格",
 				"gantt": "甘特图",
+				"calendar": "日历",
 				"plugin": "插件",
 				"note": "笔记"
 			}

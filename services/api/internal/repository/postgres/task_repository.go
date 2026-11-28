@@ -596,6 +596,9 @@ func applyTaskFilter(b *queryBuilder, filter taskdom.TaskFilter) {
 		b.whereClauses = append(b.whereClauses, "due_date <= "+p)
 		b.args = append(b.args, *filter.DueDateBefore)
 	}
+	if filter.Schedule != nil {
+		applyScheduleFilter(b, *filter.Schedule)
+	}
 	if filter.StoryPointsMin != nil {
 		p := b.placeholder()
 		b.whereClauses = append(b.whereClauses, "story_points >= "+p)
@@ -741,6 +744,35 @@ func applyTaskGroup(b *queryBuilder, g *taskdom.TaskGroup) {
 		default:
 			b.whereClauses = append(b.whereClauses, "(custom_fields->>"+keyP+") = "+valP)
 		}
+	}
+}
+
+// applyScheduleFilter adds the predicates of a ScheduleFilter. With both dates
+// in play a task's days run from the earlier of its two dates to the later
+// one: LEAST and GREATEST skip a NULL, so a task with one date occupies that
+// day, and one with none is never inside a window.
+func applyScheduleFilter(b *queryBuilder, f taskdom.ScheduleFilter) {
+	first, last := "LEAST(start_date, due_date)", "GREATEST(start_date, due_date)"
+	unscheduled := "(start_date IS NULL AND due_date IS NULL)"
+	switch f.By {
+	case taskdom.ScheduleByStartDate:
+		first, last, unscheduled = "start_date", "start_date", "start_date IS NULL"
+	case taskdom.ScheduleByDueDate:
+		first, last, unscheduled = "due_date", "due_date", "due_date IS NULL"
+	}
+	if f.Unscheduled {
+		b.whereClauses = append(b.whereClauses, unscheduled)
+		return
+	}
+	if f.From != nil {
+		p := b.placeholder()
+		b.whereClauses = append(b.whereClauses, last+" >= "+p)
+		b.args = append(b.args, *f.From)
+	}
+	if f.To != nil {
+		p := b.placeholder()
+		b.whereClauses = append(b.whereClauses, first+" <= "+p)
+		b.args = append(b.args, *f.To)
 	}
 }
 

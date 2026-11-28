@@ -458,7 +458,8 @@ export const FIELD_SUM_COUNT = {
  * Plugin views render arbitrary content and don't paginate through this
  * mechanism, so they reuse the Table (list) defaults. Note views list notes,
  * not tasks, and load no tasks at all; they carry the same defaults only to
- * keep the record complete.
+ * keep the record complete. Calendar views load every task of the days on
+ * screen, a page of the API's maximum (200) at a time, and ignore both.
  */
 export const PAGE_SIZE_DEFAULTS: Record<
 	ViewLayout,
@@ -467,6 +468,7 @@ export const PAGE_SIZE_DEFAULTS: Record<
 	Table: { initial: 5, perPage: 20 },
 	Board: { initial: 20, perPage: 20 },
 	Gantt: { initial: 100, perPage: 100 },
+	Calendar: { initial: 200, perPage: 200 },
 	Plugin: { initial: 5, perPage: 20 },
 	Note: { initial: 5, perPage: 20 },
 };
@@ -626,6 +628,8 @@ export type TaskFieldUpdate = Partial<{
 	sprint_id: string | null;
 	parent_task_id: string | null;
 	assignment_mode: "manual" | "auto";
+	start_date: string | null;
+	due_date: string | null;
 }>;
 
 /**

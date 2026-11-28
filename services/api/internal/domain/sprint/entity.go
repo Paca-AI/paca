@@ -72,6 +72,9 @@ const (
 	// ViewTypeNote is a view of free-form documents (notes) instead of
 	// tasks. Its notes are documents whose view_id names it.
 	ViewTypeNote ViewType = "note"
+	// ViewTypeCalendar lays tasks out on a month, week or day grid by their
+	// start and due dates.
+	ViewTypeCalendar ViewType = "calendar"
 )
 
 // viewTypeRoadmap is the former name of ViewTypeGantt. It is still accepted
@@ -81,11 +84,12 @@ const viewTypeRoadmap ViewType = "roadmap"
 
 // ValidViewTypes is the set of allowed view_type values.
 var ValidViewTypes = map[ViewType]bool{
-	ViewTypeTable:  true,
-	ViewTypeBoard:  true,
-	ViewTypeGantt:  true,
-	ViewTypePlugin: true,
-	ViewTypeNote:   true,
+	ViewTypeTable:    true,
+	ViewTypeBoard:    true,
+	ViewTypeGantt:    true,
+	ViewTypePlugin:   true,
+	ViewTypeNote:     true,
+	ViewTypeCalendar: true,
 }
 
 // NormalizeViewType maps a deprecated alias to the view type it stands for
@@ -114,6 +118,39 @@ var ValidGanttZooms = map[string]bool{
 	GanttZoomMonth:   true,
 	GanttZoomQuarter: true,
 	GanttZoomYear:    true,
+}
+
+// Calendar modes: the span of days the Calendar view's grid shows at once.
+const (
+	CalendarModeMonth = "month"
+	CalendarModeWeek  = "week"
+	CalendarModeDay   = "day"
+)
+
+// ValidCalendarModes is the set of allowed ViewConfig.CalendarMode values
+// (empty means the client's default, "month").
+var ValidCalendarModes = map[string]bool{
+	CalendarModeMonth: true,
+	CalendarModeWeek:  true,
+	CalendarModeDay:   true,
+}
+
+// Calendar date fields: which of a task's dates place it on the Calendar
+// view's grid.
+const (
+	// CalendarDateFieldStartAndDue spans a task from its start date to its
+	// due date; a task with one of the two shows on that day.
+	CalendarDateFieldStartAndDue = "start_and_due"
+	CalendarDateFieldStartDate   = "start_date"
+	CalendarDateFieldDueDate     = "due_date"
+)
+
+// ValidCalendarDateFields is the set of allowed ViewConfig.CalendarDateField
+// values (empty means CalendarDateFieldStartAndDue).
+var ValidCalendarDateFields = map[string]bool{
+	CalendarDateFieldStartAndDue: true,
+	CalendarDateFieldStartDate:   true,
+	CalendarDateFieldDueDate:     true,
 }
 
 // FilterEntry is a discriminated union stored inside a FilterConfig's Items
@@ -247,6 +284,13 @@ type ViewConfig struct {
 	// GanttDependencies controls whether the Gantt view draws its "blocks"
 	// links as arrows: "shown" (also the meaning of empty) or "hidden".
 	GanttDependencies string `json:"gantt_dependencies,omitempty"`
+	// CalendarMode is the Calendar view's grid: "month", "week" or "day".
+	// Empty means the client's default ("month").
+	CalendarMode string `json:"calendar_mode,omitempty"`
+	// CalendarDateField picks the dates that place a task on the Calendar
+	// view: "start_and_due" (also the meaning of empty), "start_date" or
+	// "due_date".
+	CalendarDateField string `json:"calendar_date_field,omitempty"`
 	// Plugin view fields (only set when view_type = "plugin")
 	// PluginID stores the plugin manifest identifier (reverse-DNS), not the
 	// plugin UUID used by plugin-extension-settings APIs.

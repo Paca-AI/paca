@@ -528,6 +528,51 @@ func isValidDateString(s string) bool {
 	return err == nil
 }
 
+// parseScheduleFilter reads the calendar window query params: scheduled_from
+// and scheduled_to (inclusive "YYYY-MM-DD", either may be omitted) or
+// unscheduled=true, with scheduled_by choosing the dates that place a task
+// (start_and_due, the default, start_date or due_date). It returns nil when
+// neither a window nor unscheduled is asked for; scheduled_by alone filters
+// nothing.
+func parseScheduleFilter(r *http.Request) (*taskdom.ScheduleFilter, error) {
+	q := r.URL.Query()
+	f := taskdom.ScheduleFilter{By: strings.TrimSpace(q.Get("scheduled_by"))}
+	switch f.By {
+	case "", taskdom.ScheduleByStartAndDue, taskdom.ScheduleByStartDate, taskdom.ScheduleByDueDate:
+	default:
+		return nil, apierr.New(apierr.CodeBadRequest, "invalid scheduled_by")
+	}
+	if raw := strings.TrimSpace(q.Get("scheduled_from")); raw != "" {
+		if !isValidDateString(raw) {
+			return nil, apierr.New(apierr.CodeBadRequest, "invalid scheduled_from")
+		}
+		f.From = &raw
+	}
+	if raw := strings.TrimSpace(q.Get("scheduled_to")); raw != "" {
+		if !isValidDateString(raw) {
+			return nil, apierr.New(apierr.CodeBadRequest, "invalid scheduled_to")
+		}
+		f.To = &raw
+	}
+	if f.From != nil && f.To != nil && *f.From > *f.To {
+		return nil, apierr.New(apierr.CodeBadRequest, "scheduled_from is after scheduled_to")
+	}
+	switch raw := strings.TrimSpace(q.Get("unscheduled")); raw {
+	case "", "false":
+	case "true":
+		f.Unscheduled = true
+	default:
+		return nil, apierr.New(apierr.CodeBadRequest, "invalid unscheduled")
+	}
+	if f.Unscheduled && (f.From != nil || f.To != nil) {
+		return nil, apierr.New(apierr.CodeBadRequest, "unscheduled cannot be combined with scheduled_from or scheduled_to")
+	}
+	if !f.Unscheduled && f.From == nil && f.To == nil {
+		return nil, nil
+	}
+	return &f, nil
+}
+
 // importanceRangeParam is the wire shape of one entry in the
 // importance_ranges query parameter (a JSON array of inclusive [min,max]
 // ranges, OR'd together — see taskdom.TaskFilter.ImportanceRanges).
@@ -662,6 +707,11 @@ func (h *TaskHandler) parseTaskFilter(r *http.Request, projectID uuid.UUID) (tas
 		}
 		filter.DueDateBefore = &raw
 	}
+	schedule, err := parseScheduleFilter(r)
+	if err != nil {
+		return filter, err
+	}
+	filter.Schedule = schedule
 	if raw := strings.TrimSpace(r.URL.Query().Get("story_points_min")); raw != "" {
 		v, err := strconv.Atoi(raw)
 		if err != nil {
@@ -808,6 +858,10 @@ func (h *TaskHandler) ListTaskColumns(w http.ResponseWriter, r *http.Request) {
 //     customFieldFilterParam for the shape of each entry)
 //   - start_date_after=<YYYY-MM-DD>, start_date_before=<YYYY-MM-DD>
 //   - due_date_after=<YYYY-MM-DD>, due_date_before=<YYYY-MM-DD>
+//   - scheduled_from=<YYYY-MM-DD>, scheduled_to=<YYYY-MM-DD> (tasks placed on
+//     at least one day of the window) or unscheduled=true (tasks placed
+//     nowhere), with scheduled_by=start_and_due|start_date|due_date choosing
+//     the dates that place a task (see taskdom.ScheduleFilter)
 //   - story_points_min=<int>, story_points_max=<int>
 //   - importance_ranges=<json> (array of {"min":int,"max":int}, OR'd together)
 //   - tags=<tag,tag,...> (matches tasks with ANY of these tags)

@@ -507,8 +507,8 @@ func (s *ViewService) OverlayUserConfigs(ctx context.Context, accountID uuid.UUI
 }
 
 // normalizeViewConfig clears values outside their allowed set so a typo is not
-// persisted; unknown subtask modes, Gantt zooms and Gantt dependency modes fall
-// back to the default (empty).
+// persisted; unknown subtask modes, Gantt zooms, Gantt dependency modes,
+// Calendar modes and Calendar date fields fall back to the default (empty).
 func normalizeViewConfig(cfg sprintdom.ViewConfig) sprintdom.ViewConfig {
 	switch cfg.SubtaskMode {
 	case "", "collapsed", "expanded", "hidden":
@@ -522,6 +522,12 @@ func normalizeViewConfig(cfg sprintdom.ViewConfig) sprintdom.ViewConfig {
 	case "", "shown", "hidden":
 	default:
 		cfg.GanttDependencies = ""
+	}
+	if !sprintdom.ValidCalendarModes[cfg.CalendarMode] {
+		cfg.CalendarMode = ""
+	}
+	if !sprintdom.ValidCalendarDateFields[cfg.CalendarDateField] {
+		cfg.CalendarDateField = ""
 	}
 	return cfg
 }
@@ -580,6 +586,12 @@ func mergeViewConfig(shared, override sprintdom.ViewConfig) sprintdom.ViewConfig
 	if override.GanttDependencies != "" {
 		out.GanttDependencies = override.GanttDependencies
 	}
+	if override.CalendarMode != "" {
+		out.CalendarMode = override.CalendarMode
+	}
+	if override.CalendarDateField != "" {
+		out.CalendarDateField = override.CalendarDateField
+	}
 	// out.PluginID / out.PluginComponent intentionally left at shared's value.
 	return out
 }
@@ -629,6 +641,12 @@ func diffViewConfig(shared, desired sprintdom.ViewConfig) sprintdom.ViewConfig {
 	}
 	if desired.GanttDependencies != shared.GanttDependencies {
 		out.GanttDependencies = desired.GanttDependencies
+	}
+	if desired.CalendarMode != shared.CalendarMode {
+		out.CalendarMode = desired.CalendarMode
+	}
+	if desired.CalendarDateField != shared.CalendarDateField {
+		out.CalendarDateField = desired.CalendarDateField
 	}
 	return out
 }

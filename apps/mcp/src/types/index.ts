@@ -493,7 +493,13 @@ export interface UpdateTaskStatusInput {
 
 // ==================== Views ====================
 
-export type ViewType = "table" | "board" | "gantt" | "plugin" | "note";
+export type ViewType =
+	| "table"
+	| "board"
+	| "gantt"
+	| "calendar"
+	| "plugin"
+	| "note";
 export type ViewLayout = "Board" | "Table" | "Gantt";
 export type ViewsContext = "sprint" | "backlog" | "timeline";
 

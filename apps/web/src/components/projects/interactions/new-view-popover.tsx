@@ -1,4 +1,5 @@
 import {
+	CalendarDays,
 	ChartGantt,
 	KanbanSquare,
 	List,
@@ -32,12 +33,19 @@ type LayoutOption =
 	| { type: "builtin"; layout: ViewLayout }
 	| { type: "plugin"; registration: PluginRegistration };
 
-const builtinLayouts: ViewLayout[] = ["Board", "Table", "Gantt", "Note"];
+const builtinLayouts: ViewLayout[] = [
+	"Board",
+	"Table",
+	"Gantt",
+	"Calendar",
+	"Note",
+];
 
 const layoutIcon = (l: ViewLayout) => {
 	if (l === "Board") return <KanbanSquare className="size-3.5" />;
 	if (l === "Gantt") return <ChartGantt className="size-3.5" />;
 	if (l === "Note") return <NotebookPen className="size-3.5" />;
+	if (l === "Calendar") return <CalendarDays className="size-3.5" />;
 	return <List className="size-3.5" />;
 };
 
@@ -47,6 +55,7 @@ const LAYOUT_LABEL_KEYS = {
 	Gantt: "layout.newViewPopover.layouts.gantt",
 	Plugin: "layout.newViewPopover.layouts.plugin",
 	Note: "layout.newViewPopover.layouts.note",
+	Calendar: "layout.newViewPopover.layouts.calendar",
 } as const satisfies Record<ViewLayout, string>;
 
 export function NewViewPopover({
