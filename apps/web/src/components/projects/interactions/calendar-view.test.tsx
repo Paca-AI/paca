@@ -145,13 +145,19 @@ function createDt() {
 	};
 }
 
-/** Drags `source` onto the day cell of `date`. */
-async function dragTo(source: HTMLElement, date: string) {
+/** Starts dragging `source` and waits for the view to pick the drag up. */
+async function startDragging(source: HTMLElement) {
 	const dt = createDt();
 	fireEvent.dragStart(source, { dataTransfer: dt });
 	await act(async () => {
 		await new Promise((r) => setTimeout(r, 5));
 	});
+	return dt;
+}
+
+/** Drags `source` onto the day cell of `date`. */
+async function dragTo(source: HTMLElement, date: string) {
+	const dt = await startDragging(source);
 	fireEvent.dragOver(cell(date), { dataTransfer: dt });
 	await act(async () => {
 		fireEvent.drop(cell(date), { dataTransfer: dt });
@@ -403,6 +409,28 @@ describe("CalendarView rescheduling", () => {
 		expect(onRescheduleTask).toHaveBeenCalledWith("t1", {
 			due_date: iso("2026-03-13"),
 		});
+	});
+
+	it("ends an edge drag released outside the days", async () => {
+		const onRescheduleTask = vi.fn().mockResolvedValue({});
+		windowTasks = [dated()];
+		renderCalendar({ onRescheduleTask });
+		await screen.findByText("Launch");
+
+		const edge = chips("t1")[0].querySelector(
+			'[data-calendar-edge="end"]',
+		) as HTMLElement;
+		const dt = await startDragging(edge);
+		// The handle is still on the page, so its dragend reaches the view.
+		expect(edge).toBeInTheDocument();
+		fireEvent.dragEnd(edge, { dataTransfer: dt });
+
+		expect(chips("t1")[0]).toHaveClass("pointer-events-auto");
+		expect(chips("t1")[0]).not.toHaveClass("opacity-40");
+		// Nothing is left mid-drag for a later drop on a day to pick up.
+		fireEvent.dragOver(cell("2026-03-13"), { dataTransfer: dt });
+		fireEvent.drop(cell("2026-03-13"), { dataTransfer: dt });
+		expect(onRescheduleTask).not.toHaveBeenCalled();
 	});
 
 	it("puts the task back and reports the error when the save fails", async () => {

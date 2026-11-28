@@ -643,8 +643,10 @@ export function CalendarView({
 		const task = seg.item;
 		const status = task.status_id ? statusById.get(task.status_id) : undefined;
 		const days = seg.end - seg.start + 1;
-		const edgesAvailable =
-			canReschedule && dateField === "start_and_due" && drag === null;
+		// The handles stay mounted during a drag: React never sees the dragend
+		// of a drag source that left the page, so unmounting one would leave
+		// the view mid-drag. The bar's pointer-events-none lets drops through.
+		const edgesAvailable = canReschedule && dateField === "start_and_due";
 		const span = placementSpan(task, dateField);
 		const grabbed = drag?.task.id === task.id;
 		return (
